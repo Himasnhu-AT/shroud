@@ -21,6 +21,7 @@ mod player;
 mod save;
 mod state;
 mod telemetry;
+mod trainer_task;
 mod ui;
 mod weapon;
 

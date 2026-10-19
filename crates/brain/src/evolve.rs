@@ -1,7 +1,7 @@
 //! Between-match evolution and the persisted brain (docs/EVOLUTION.md).
 
 use crate::arena::Arena;
-use crate::genome::{GENE_COUNT, GaConfig, Gene, TraitPopulation};
+use crate::genome::{GENE_COUNT, GaConfig, Gene, TraitGenome, TraitPopulation};
 use crate::limits::Limits;
 use crate::math::{BrainRng, rng_from_seed};
 use crate::mind::{EnemyMind, NEAT_INPUTS, NEAT_OUTPUTS};
@@ -11,7 +11,9 @@ use crate::sim::{self, RoundResult};
 use rand::Rng;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrd};
 use std::time::{Duration, Instant};
 
 pub const SAVE_VERSION: u32 = 1;
@@ -54,6 +56,15 @@ pub struct MatchSummary {
     pub avg_fitness: f32,
     #[serde(default)]
     pub stats: MatchStats,
+    /// Sim-vs-real for the squad that played this match: its sim win rate when it was
+    /// deployed, and the share of real rounds it won.
+    #[serde(default)]
+    pub deployed_sim_win: Option<f32>,
+    #[serde(default)]
+    pub real_win: Option<f32>,
+    /// Total simulated rounds behind this generation.
+    #[serde(default)]
+    pub sim_rounds: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -76,6 +87,12 @@ pub struct EvolveSummary {
     pub ghost_skill: f32,
     pub neat_generations: u32,
     pub elapsed_ms: u128,
+    /// Simulated rounds in this evolve call / in the brain's lifetime.
+    pub sim_rounds: u64,
+    pub total_sim_rounds: u64,
+    /// Sim-vs-real for the squad that just played (see `MatchSummary`).
+    pub deployed_sim_win: Option<f32>,
+    pub real_win: Option<f32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -89,6 +106,174 @@ pub struct BrainState {
     pub squad: Vec<SquadSlot>,
     pub evaluated: bool,
     pub history: Vec<MatchSummary>,
+    /// Best whole squad so far; competes in every generation so selection can't regress.
+    #[serde(default)]
+    pub champion: Option<Champion>,
+    /// Simulated rounds spent training this brain.
+    #[serde(default)]
+    pub sim_rounds: u64,
+}
+
+/// A whole squad (one trait + one NEAT genome per slot), kept outside the populations so
+/// it survives breeding.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Champion {
+    pub traits: Vec<TraitGenome>,
+    pub neat: Vec<neat::Genome>,
+    pub score: SquadScore,
+    /// Where it sits in the current populations, if it does (valid until they breed).
+    #[serde(default)]
+    pub slots: Option<Vec<SquadSlot>>,
+}
+
+/// A candidate squad's result in one generation. Selection order: survived more halving
+/// rungs, then win probability, then mean shaping reward (tiebreak).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SquadScore {
+    pub wins: u32,
+    pub rounds: u32,
+    /// Sum over rounds of the squad-mean shaping reward (rho-bar).
+    pub shaping: f32,
+    pub rung: u32,
+}
+
+impl SquadScore {
+    pub fn win_rate(&self) -> f32 {
+        self.wins as f32 / self.rounds.max(1) as f32
+    }
+    pub fn mean_shaping(&self) -> f32 {
+        self.shaping / self.rounds.max(1) as f32
+    }
+    /// `Greater` = better.
+    pub fn compare(&self, o: &Self) -> Ordering {
+        self.rung
+            .cmp(&o.rung)
+            .then(self.win_rate().total_cmp(&o.win_rate()))
+            .then(self.mean_shaping().total_cmp(&o.mean_shaping()))
+    }
+    /// Scalar genome fitness: win probability dominates; shaping is worth a few rounds at most.
+    pub fn fitness(&self, mean_reward: f32) -> f32 {
+        100.0 * self.win_rate() + 0.1 * mean_reward
+    }
+}
+
+/// Successive halving: every candidate plays `base_rounds`, the better half plays on until it
+/// has twice as many, and so on for `rungs` rungs.
+#[derive(Clone, Copy, Debug)]
+pub struct Halving {
+    pub base_rounds: usize,
+    pub rungs: usize,
+}
+
+/// One simulated round from a candidate's point of view.
+pub struct RoundOutcome<T> {
+    pub won: bool,
+    pub shaping: f32,
+    pub detail: T,
+}
+
+/// Per-candidate scores and round details, plus the ranking (best first).
+pub struct HalvingResult<T> {
+    pub scores: Vec<SquadScore>,
+    pub details: Vec<Vec<T>>,
+    pub ranking: Vec<usize>,
+}
+
+/// Seed of round `r` in a generation. Every candidate plays the same seeds (common random numbers).
+pub fn round_seed(gen_seed: u64, r: usize) -> u64 {
+    let mut z = gen_seed.wrapping_add((r as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Successive halving over `n` candidates. `play(candidate, round_index)` must derive all its
+/// randomness from `round_index` so that candidates are compared on identical rounds.
+/// Returns `None` if cancelled.
+pub fn successive_halving<T: Send>(
+    n: usize,
+    plan: Halving,
+    par: &Parallel,
+    play: impl Fn(usize, usize) -> RoundOutcome<T> + Sync,
+) -> Option<HalvingResult<T>> {
+    let mut scores = vec![SquadScore::default(); n];
+    let mut details: Vec<Vec<T>> = (0..n).map(|_| Vec::new()).collect();
+    let mut alive: Vec<usize> = (0..n).collect();
+    let (mut done, mut target) = (0, plan.base_rounds.max(1));
+    let rungs = plan.rungs.max(1);
+    for rung in 0..rungs {
+        let jobs: Vec<(usize, usize)> = alive.iter().flat_map(|&c| (done..target).map(move |r| (c, r))).collect();
+        let out = par.run(&jobs, |&(c, r)| play(c, r))?;
+        for ((c, _), o) in jobs.into_iter().zip(out) {
+            let s = &mut scores[c];
+            s.rounds += 1;
+            s.wins += u32::from(o.won);
+            s.shaping += o.shaping;
+            s.rung = rung as u32;
+            details[c].push(o.detail);
+        }
+        if alive.len() <= 1 || rung + 1 == rungs {
+            break;
+        }
+        alive.sort_by(|&a, &b| scores[b].compare(&scores[a]).then(a.cmp(&b)));
+        alive.truncate(alive.len().div_ceil(2));
+        done = target;
+        target *= 2;
+    }
+    let mut ranking: Vec<usize> = (0..n).collect();
+    ranking.sort_by(|&a, &b| scores[b].compare(&scores[a]).then(a.cmp(&b)));
+    Some(HalvingResult { scores, details, ranking })
+}
+
+/// How sim work is spread over threads, and how it is stopped.
+#[derive(Clone, Copy, Default)]
+pub struct Parallel<'a> {
+    pub threads: usize,
+    pub cancel: Option<&'a AtomicBool>,
+    /// Called at the start of each worker thread (e.g. to lower its priority).
+    pub worker_init: Option<fn()>,
+}
+
+impl Parallel<'_> {
+    pub fn cancelled(&self) -> bool {
+        self.cancel.is_some_and(|c| c.load(AtomicOrd::Relaxed))
+    }
+
+    /// Run `f` over `items` on up to `threads` scoped threads, keeping order. `None` if cancelled.
+    pub fn run<T: Sync, R: Send>(&self, items: &[T], f: impl Fn(&T) -> R + Sync) -> Option<Vec<R>> {
+        let threads = self.threads.max(1).min(items.len().max(1));
+        let chunk = items.len().div_ceil(threads).max(1);
+        let work = |c: &[T]| -> Option<Vec<R>> {
+            if let Some(init) = self.worker_init {
+                init();
+            }
+            c.iter().map(|x| (!self.cancelled()).then(|| f(x))).collect()
+        };
+        let parts: Vec<Option<Vec<R>>> = std::thread::scope(|s| {
+            let handles: Vec<_> = items.chunks(chunk).map(|c| s.spawn(|| work(c))).collect();
+            handles.into_iter().map(|h| h.join().expect("sim thread panicked")).collect()
+        });
+        let mut out = Vec::with_capacity(items.len());
+        for p in parts {
+            out.extend(p?);
+        }
+        Some(out)
+    }
+}
+
+/// What one training generation produced.
+#[derive(Clone, Copy, Debug)]
+pub struct GenReport {
+    pub rounds: u64,
+    /// The champion's score this generation (on the shared seeds).
+    pub champion: SquadScore,
+    /// Win rate over every round played this generation.
+    pub mean_win: f32,
+}
+
+/// Team-spirit weight tau, annealed from 0.3 to 1 over a training session (`frac` in 0..=1).
+pub fn team_spirit(frac: f32) -> f32 {
+    0.3 + 0.7 * frac.clamp(0.0, 1.0)
 }
 
 #[derive(Clone, Debug)]
@@ -96,8 +281,12 @@ pub struct EvolveConfig {
     /// Wall-clock budget for training.
     pub budget: Duration,
     pub max_neat_generations: u32,
-    /// Rounds each NEAT genome plays per generation.
+    /// Rounds every candidate squad plays in the first successive-halving rung.
     pub rounds_per_genome: usize,
+    /// Candidate squads built from the populations each generation (plus the champion).
+    pub squads: usize,
+    /// Successive-halving rungs (survivors double their rounds each rung).
+    pub rungs: usize,
     pub threads: usize,
 }
 
@@ -107,6 +296,8 @@ impl Default for EvolveConfig {
             budget: Duration::from_secs(8),
             max_neat_generations: 40,
             rounds_per_genome: 3,
+            squads: 8,
+            rungs: 3,
             threads: std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 6),
         }
     }
@@ -138,6 +329,50 @@ impl BrainState {
             squad,
             evaluated: false,
             history: Vec::new(),
+            champion: None,
+            sim_rounds: 0,
+        }
+    }
+
+    /// Take over populations trained in the background from a copy of this brain. Only valid
+    /// between matches, and only if the copy started from this generation. The player model
+    /// and history stay ours.
+    pub fn adopt(&mut self, trained: BrainState) -> bool {
+        if trained.seed != self.seed || trained.generation != self.generation || !trained.evaluated {
+            return false;
+        }
+        self.traits = trained.traits;
+        self.neat = trained.neat;
+        self.champion = trained.champion;
+        self.sim_rounds = self.sim_rounds.max(trained.sim_rounds);
+        self.evaluated = true;
+        self.deploy_champion();
+        true
+    }
+
+    /// Make the champion the deployed squad. If it isn't in the populations, write it over the
+    /// weakest genomes (with the champion's fitness, so it breeds).
+    pub fn deploy_champion(&mut self) {
+        let Some(ch) = &mut self.champion else { return };
+        if ch.slots.is_none() {
+            let fit = ch.score.fitness(ch.score.mean_shaping());
+            let mut weak_t = self.traits.ranked();
+            weak_t.reverse();
+            let mut weak_n: Vec<usize> = (0..self.neat.genomes.len()).collect();
+            weak_n.sort_by(|&a, &b| self.neat.genomes[a].fitness.total_cmp(&self.neat.genomes[b].fitness));
+            let mut slots = Vec::new();
+            for (k, (tg, ng)) in ch.traits.iter().zip(&ch.neat).enumerate() {
+                let (t, n) = (weak_t[k % weak_t.len()], weak_n[k % weak_n.len()]);
+                self.traits.genomes[t] = TraitGenome { fitness: fit, ..tg.clone() };
+                let mut ng = ng.clone();
+                ng.fitness = fit;
+                self.neat.genomes[n] = ng;
+                slots.push(SquadSlot { trait_id: t, neat_id: n });
+            }
+            ch.slots = Some(slots);
+        }
+        if let Some(s) = &ch.slots {
+            self.squad = s.clone();
         }
     }
 
@@ -184,8 +419,23 @@ impl BrainState {
     }
 
     /// The whole between-match pipeline. `progress` gets 0..=1.
-    pub fn evolve(&mut self, report: &MatchReport, arena: &Arena, cfg: &EvolveConfig, mut progress: impl FnMut(f32)) -> EvolveSummary {
+    pub fn evolve(&mut self, report: &MatchReport, arena: &Arena, cfg: &EvolveConfig, progress: impl FnMut(f32)) -> EvolveSummary {
+        self.evolve_merged(report, None, arena, cfg, progress)
+    }
+
+    /// `evolve`, first adopting populations a background `Trainer` built from this brain
+    /// (after the real-match steps, which refer to the squad that actually played).
+    pub fn evolve_merged(
+        &mut self,
+        report: &MatchReport,
+        trained: Option<BrainState>,
+        arena: &Arena,
+        cfg: &EvolveConfig,
+        mut progress: impl FnMut(f32),
+    ) -> EvolveSummary {
         let start = Instant::now();
+        let rounds_before = self.sim_rounds;
+        let deployed_sim_win = self.champion.as_ref().map(|c| c.score.win_rate());
         let mut rng = rng_from_seed(self.seed ^ (self.generation as u64).wrapping_mul(0x2545_F491_4F6C_DD1D));
         let before = squad_avg(&self.traits, &self.squad);
 
@@ -209,6 +459,7 @@ impl BrainState {
             real_player_win = Some(real);
             ghost_player_win = Some(sim_rate);
         }
+        let real_win = (rounds > 0).then(|| report.enemy_rounds as f32 / rounds as f32);
 
         // 2. Real-match fitness bonus for the deployed genomes (blended with their sim fitness).
         if self.evaluated {
@@ -218,7 +469,7 @@ impl BrainState {
                     kills: e.kills,
                     time_alive: e.time_alive,
                     time_engaged: e.time_engaged,
-                    damage_taken: 0.0,
+                    ..Default::default()
                 }
                 .fitness();
                 if let Some(g) = self.traits.genomes.get_mut(e.trait_id) {
@@ -228,30 +479,30 @@ impl BrainState {
                     g.fitness = 0.6 * g.fitness + 0.4 * real;
                 }
             }
-            // 3. Breed new trait genomes.
-            self.traits.evolve(&mut rng);
+        }
+        // 3. Take over background training, if any (its populations replace ours).
+        if let Some(t) = trained {
+            self.adopt(t);
         }
 
-        // 4. Train against the ghost.
-        let mut sim_win_rate = 0.0;
+        // 4. Train against the ghost: whole squads, common random numbers, successive halving.
+        //    (Both populations breed every generation inside `train_generation`.)
+        let mut sim_win_rate = self.champion.as_ref().map_or(0.0, |c| c.score.win_rate());
         let mut gens = 0;
         let limits = Limits::for_generation(self.generation + 1);
+        let par = Parallel { threads: cfg.threads, ..Default::default() };
         while gens < cfg.max_neat_generations && (gens == 0 || start.elapsed() < cfg.budget) {
-            if self.evaluated {
-                self.neat.evolve(&mut rng);
+            let frac = (gens as f32 / cfg.max_neat_generations as f32).max(start.elapsed().as_secs_f32() / cfg.budget.as_secs_f32());
+            if let Some(r) = self.train_generation(arena, limits, cfg, team_spirit(frac), &par, &mut rng) {
+                sim_win_rate = r.champion.win_rate();
             }
-            sim_win_rate = self.evaluate(arena, limits, cfg, &mut rng);
-            self.evaluated = true;
             gens += 1;
             progress((start.elapsed().as_secs_f32() / cfg.budget.as_secs_f32()).min(0.95).max(gens as f32 / cfg.max_neat_generations as f32 * 0.95));
         }
 
-        // 5. Pick the next squad: top traits + explorers, each with a strong NEAT genome.
+        // 5. Deploy the champion squad.
         self.generation += 1;
-        let trait_ids = self.traits.pick_squad(3, SQUAD - 3, &mut rng);
-        let mut neat_rank: Vec<usize> = (0..self.neat.genomes.len()).collect();
-        neat_rank.sort_by(|&a, &b| self.neat.genomes[b].fitness.total_cmp(&self.neat.genomes[a].fitness));
-        self.squad = trait_ids.iter().enumerate().map(|(k, &t)| SquadSlot { trait_id: t, neat_id: neat_rank[k % neat_rank.len().min(3)] }).collect();
+        self.deploy_champion();
 
         let after = squad_avg(&self.traits, &self.squad);
         let mut deltas: Vec<TraitDelta> = Gene::ALL
@@ -270,6 +521,9 @@ impl BrainState {
             sim_win_rate,
             avg_fitness,
             stats: MatchStats::from_telemetry(&report.telemetry),
+            deployed_sim_win,
+            real_win,
+            sim_rounds: self.sim_rounds,
         });
         let prev = self.history.len().checked_sub(2).map(|i| self.history[i].stats.clone());
         progress(1.0);
@@ -283,47 +537,67 @@ impl BrainState {
             ghost_skill: self.player_model.ghost_skill,
             neat_generations: gens,
             elapsed_ms: start.elapsed().as_millis(),
+            sim_rounds: self.sim_rounds - rounds_before,
+            total_sim_rounds: self.sim_rounds,
+            deployed_sim_win,
+            real_win,
         }
     }
 
-    /// Evaluate every NEAT genome (and the trait genomes they're paired with) in sim rounds.
-    /// Overwrites fitness with sim averages. Returns the squad win rate.
-    fn evaluate(&mut self, arena: &Arena, limits: Limits, cfg: &EvolveConfig, rng: &mut BrainRng) -> f32 {
-        // Build round line-ups.
-        let mut lineups: Vec<(Vec<SquadSlot>, u64)> = Vec::new();
-        for _ in 0..cfg.rounds_per_genome {
-            let mut ids: Vec<usize> = (0..self.neat.genomes.len()).collect();
-            ids.shuffle(rng);
-            for chunk in ids.chunks(SQUAD) {
-                let slots = chunk
-                    .iter()
-                    .map(|&n| SquadSlot { trait_id: rng.random_range(0..self.traits.genomes.len()), neat_id: n })
-                    .collect();
-                lineups.push((slots, rng.random()));
+    /// One training generation (paper section 4.3): breed both populations (once evaluated),
+    /// build `cfg.squads` whole squads plus the champion, score them on shared seeds with
+    /// successive halving, and set genome fitness from squad win rate plus the team-spirit
+    /// reward r_i = (1 - tau) rho_i + tau rho_bar. Returns `None` if cancelled, in which case the
+    /// populations may be bred but unscored: callers that cancel should work on a copy.
+    pub fn train_generation(&mut self, arena: &Arena, limits: Limits, cfg: &EvolveConfig, tau: f32, par: &Parallel, rng: &mut BrainRng) -> Option<GenReport> {
+        if self.evaluated {
+            self.neat.evolve(rng);
+            self.traits.evolve(rng);
+            if let Some(c) = &mut self.champion {
+                c.slots = None; // the populations changed under it
             }
         }
-        let results: Vec<RoundResult> = run_parallel(&lineups, cfg.threads, |(slots, seed)| {
-            let minds = slots
-                .iter()
-                .enumerate()
-                .map(|(k, s)| {
-                    EnemyMind::new(&self.traits.genomes[s.trait_id], s.trait_id, &self.neat.genomes[s.neat_id], s.neat_id, &limits, seed ^ k as u64)
+        // Fixed pairing for the whole generation: position k of a shuffled NEAT order goes with
+        // position k of a shuffled trait order, and consecutive positions form a squad.
+        let mut on: Vec<usize> = (0..self.neat.genomes.len()).collect();
+        let mut ot: Vec<usize> = (0..self.traits.genomes.len()).collect();
+        on.shuffle(rng);
+        ot.shuffle(rng);
+        let mut squads: Vec<Vec<SquadSlot>> = (0..cfg.squads.max(1))
+            .map(|k| (0..SQUAD).map(|j| SquadSlot { trait_id: ot[(k * SQUAD + j) % ot.len()], neat_id: on[(k * SQUAD + j) % on.len()] }).collect())
+            .collect();
+        let pop_n = squads.len();
+        let champ = self.champion.clone().filter(|c| c.traits.len() == SQUAD && c.neat.len() == SQUAD);
+        if champ.is_some() {
+            squads.push(Vec::new()); // the champion plays with its own genomes
+        }
+        let gen_seed: u64 = rng.random();
+        let plan = Halving { base_rounds: cfg.rounds_per_genome, rungs: cfg.rungs };
+        let res = successive_halving(squads.len(), plan, par, |c, r| {
+            let seed = round_seed(gen_seed, r);
+            let minds = (0..SQUAD)
+                .map(|j| match (&champ, c >= pop_n) {
+                    (Some(ch), true) => EnemyMind::new(&ch.traits[j], 0, &ch.neat[j], 0, &limits, seed ^ j as u64),
+                    _ => {
+                        let s = squads[c][j];
+                        EnemyMind::new(&self.traits.genomes[s.trait_id], s.trait_id, &self.neat.genomes[s.neat_id], s.neat_id, &limits, seed ^ j as u64)
+                    }
                 })
                 .collect();
-            sim::run_round(arena, &self.player_model, limits, minds, *seed)
-        });
+            let rr: RoundResult = sim::run_round(arena, &self.player_model, limits, minds, seed);
+            let rho: Vec<f32> = rr.enemies.iter().map(sim::EnemyStats::fitness).collect();
+            let mean = rho.iter().sum::<f32>() / rho.len().max(1) as f32;
+            let reward: Vec<f32> = rho.iter().map(|&p| (1.0 - tau) * p + tau * mean).collect();
+            RoundOutcome { won: !rr.player_won, shaping: mean, detail: reward }
+        })?;
 
         let mut nf = vec![(0.0f32, 0u32); self.neat.genomes.len()];
         let mut tf = vec![(0.0f32, 0u32); self.traits.genomes.len()];
-        let mut wins = 0;
-        for ((slots, _), r) in lineups.iter().zip(&results) {
-            if !r.player_won {
-                wins += 1;
-            }
-            // Team bonus: everyone in a winning squad shares credit.
-            let team = if r.player_won { 0.0 } else { 30.0 };
-            for (s, st) in slots.iter().zip(&r.enemies) {
-                let f = st.fitness() + team;
+        for (c, slots) in squads.iter().enumerate().take(pop_n) {
+            let rounds = &res.details[c];
+            for (j, s) in slots.iter().enumerate() {
+                let mean_r = rounds.iter().map(|d| d[j]).sum::<f32>() / rounds.len().max(1) as f32;
+                let f = res.scores[c].fitness(mean_r);
                 nf[s.neat_id].0 += f;
                 nf[s.neat_id].1 += 1;
                 tf[s.trait_id].0 += f;
@@ -334,12 +608,31 @@ impl BrainState {
             g.fitness = if n > 0 { s / n as f32 } else { 0.0 };
         }
         for (g, (s, n)) in self.traits.genomes.iter_mut().zip(tf) {
-            if n > 0 {
-                g.fitness = s / n as f32;
-                g.evals = n;
-            }
+            g.fitness = if n > 0 { s / n as f32 } else { 0.0 };
+            g.evals = n;
         }
-        wins as f32 / lineups.len().max(1) as f32
+
+        let best = res.ranking[0];
+        self.champion = Some(match champ {
+            Some(mut ch) if best >= pop_n => {
+                ch.score = res.scores[best];
+                ch
+            }
+            _ => {
+                let slots = squads[best].clone();
+                Champion {
+                    traits: slots.iter().map(|s| self.traits.genomes[s.trait_id].clone()).collect(),
+                    neat: slots.iter().map(|s| self.neat.genomes[s.neat_id].clone()).collect(),
+                    score: res.scores[best],
+                    slots: Some(slots),
+                }
+            }
+        });
+        self.evaluated = true;
+        let rounds: u64 = res.scores.iter().map(|s| s.rounds as u64).sum();
+        let wins: u64 = res.scores.iter().map(|s| s.wins as u64).sum();
+        self.sim_rounds += rounds;
+        Some(GenReport { rounds, champion: res.scores[best], mean_win: wins as f32 / rounds.max(1) as f32 })
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
@@ -364,14 +657,4 @@ impl BrainState {
             Err(_) => BrainState::new(seed),
         }
     }
-}
-
-/// Run `f` over `items` on up to `threads` scoped threads, keeping order.
-fn run_parallel<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
-    let threads = threads.max(1).min(items.len().max(1));
-    let chunk = items.len().div_ceil(threads);
-    std::thread::scope(|s| {
-        let handles: Vec<_> = items.chunks(chunk.max(1)).map(|c| s.spawn(|| c.iter().map(&f).collect::<Vec<R>>())).collect();
-        handles.into_iter().flat_map(|h| h.join().expect("sim thread panicked")).collect()
-    })
 }
