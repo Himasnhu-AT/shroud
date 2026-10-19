@@ -98,9 +98,10 @@ pub fn pef_score(p: V2, c: &PefCtx, w: &[f32; PEF_TERMS]) -> f32 {
     pef_features(p, c).iter().zip(w).map(|(f, w)| f * w).sum()
 }
 
-/// Candidate positions: cover points within reach plus a ring around the target.
-fn candidates(arena: &Arena, target: V2, me: V2, ring: f32) -> Vec<V2> {
-    let mut out: Vec<V2> = arena.cover.iter().map(|c| c.pos).filter(|p| p.dist(me) < 35.0 && p.dist(target) > 4.0).collect();
+/// Candidate positions: cover points at fighting range of the target plus a ring around it.
+fn candidates(arena: &Arena, target: V2, ring: f32) -> Vec<V2> {
+    let max_d = (ring + 4.0).clamp(10.0, 24.0);
+    let mut out: Vec<V2> = arena.cover.iter().map(|c| c.pos).filter(|p| (4.0..max_d).contains(&p.dist(target))).collect();
     for k in 0..16 {
         let p = target + V2::from_angle(k as f32 * TAU / 16.0) * ring.max(6.0);
         if arena.in_bounds(p) && arena.nav.walkable_at(p) {
@@ -114,22 +115,28 @@ fn candidates(arena: &Arena, target: V2, me: V2, ring: f32) -> Vec<V2> {
 /// `mates` when possible. Falls back to the unconstrained best.
 pub fn best_position(c: &PefCtx, w: &[f32; PEF_TERMS], min_sep: f32, exclude_near: Option<V2>) -> Option<V2> {
     let mut best: Option<(f32, V2)> = None;
+    let mut best_sep: Option<(f32, V2)> = None;
     let mut best_any: Option<(f32, V2)> = None;
-    for p in candidates(c.arena, c.target, c.me, c.pref_range) {
+    for p in candidates(c.arena, c.target, c.pref_range) {
         if exclude_near.is_some_and(|x| x.dist(p) < 5.0) || c.mates.iter().any(|m| m.dist(p) < 2.5) {
             continue;
         }
         let s = pef_score(p, c, w);
         let bearing = (p - c.target).angle();
+        // Prefer firing positions that see the target (standing) and keep the separation.
         let sep_ok = c.mates.iter().all(|m| angle_diff(bearing, (*m - c.target).angle()).abs() > min_sep);
-        if sep_ok && best.is_none_or(|(b, _)| s > b) {
+        let lof = c.arena.line_of_sight(p, false, c.target, false);
+        if sep_ok && lof && best.is_none_or(|(b, _)| s > b) {
             best = Some((s, p));
+        }
+        if sep_ok && best_sep.is_none_or(|(b, _)| s > b) {
+            best_sep = Some((s, p));
         }
         if best_any.is_none_or(|(b, _)| s > b) {
             best_any = Some((s, p));
         }
     }
-    best.or(best_any).map(|b| b.1)
+    best.or(best_sep).or(best_any).map(|b| b.1)
 }
 
 /// Tactical A* extra cost per metre at `p` (use with `NavGrid::find_path_cost`): the PEF terms
@@ -244,6 +251,22 @@ impl Belief {
         self.normalize();
     }
 
+    /// Pull a little mass toward where this player habitually spends time (`PlayerModel::heat`).
+    pub fn habit_prior(&mut self, model: &PlayerModel, mix: f32) {
+        let mut prior = vec![0.0; self.p.len()];
+        for (i, h) in model.heat.iter().enumerate() {
+            prior[cell_of(crate::player_model::heat_center(i))] += *h;
+        }
+        let s: f32 = prior.iter().sum();
+        if s <= 0.0 {
+            return;
+        }
+        for (p, q) in self.p.iter_mut().zip(prior) {
+            *p = (1.0 - mix) * *p + mix * q / s;
+        }
+        self.normalize();
+    }
+
     pub fn sighting(&mut self, at: V2) {
         self.gaussian(at, 1.5, 1.0);
     }
@@ -264,7 +287,8 @@ impl Belief {
             if dist > range || (dist > 3.0 && angle_diff(d.angle(), look.angle()).abs() > half_angle) {
                 continue;
             }
-            if arena.line_of_sight(eye, false, c, false) {
+            // Only clear a cell if even a crouched player there would have been seen.
+            if arena.line_of_sight(eye, false, c, true) {
                 self.p[i] *= 0.15;
             }
         }
@@ -302,6 +326,8 @@ pub enum Play {
     PinFlank,
     Collapse,
     Bait,
+    /// Player lost and far away: converge on the belief peak along different routes.
+    Sweep,
 }
 
 impl Play {
@@ -314,6 +340,7 @@ impl Play {
             Play::PinFlank => "pin and flank",
             Play::Collapse => "collapse",
             Play::Bait => "bait",
+            Play::Sweep => "sweep",
         }
     }
 }
@@ -374,6 +401,7 @@ pub struct MemberView {
 }
 
 const REPLAN_S: f32 = 1.0;
+const SWEEP_DIST: f32 = 18.0;
 const MIN_PLAY_S: f32 = 3.0;
 const KNOWN_S: f32 = 3.0;
 const BELIEF_RANGE: f32 = 40.0;
@@ -510,6 +538,9 @@ impl SquadCoordinator {
         self.radio_t = RADIO_PERIOD_S;
         self.radio_ticks += 1;
         self.belief.diffuse(RADIO_PERIOD_S);
+        if self.board.age > KNOWN_S {
+            self.belief.habit_prior(model, 0.03);
+        }
         let mut sighted = false;
         for (i, m) in members.iter().enumerate() {
             if !m.alive {
@@ -561,18 +592,25 @@ impl SquadCoordinator {
 
     fn choose_play(&self, members: &[MemberView], model: &PlayerModel) -> Play {
         let alive = members.iter().filter(|m| m.alive).count();
-        if !self.enabled || alive < 2 {
+        if !self.enabled || alive == 0 {
             return Play::Free;
+        }
+        let known = self.board.age < KNOWN_S;
+        if alive == 1 && self.force_play.is_none() {
+            // A lone survivor still searches with the squad's belief.
+            return if known { Play::Free } else { Play::Sweep };
         }
         if let Some(p) = self.force_play {
             return p;
         }
-        let known = self.board.age < KNOWN_S;
         if !known && self.heard_t < 2.0 {
             return Play::Collapse;
         }
         if !known {
-            return if std::env::var_os("SQ_NOOW").is_some() { Play::Free } else { Play::Overwatch }; // DBGHACK
+            // Bound with overwatch near where he probably is; sweep there quickly when far.
+            let peak = self.belief.peak();
+            let near = members.iter().filter(|m| m.alive).any(|m| m.pos.dist(peak) < SWEEP_DIST);
+            return if near && std::env::var_os("SQ_NOOW").is_none() { Play::Overwatch } else { Play::Sweep };
         }
         if self.play_t < MIN_PLAY_S && matches!(self.play, Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait) {
             return self.play;
@@ -594,6 +632,10 @@ impl SquadCoordinator {
     fn plan(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
         let play = self.choose_play(members, model);
         let changed = play != self.play;
+        if changed && std::env::var_os("SQ_TRACE").is_some() { // DBGHACK
+            let ps: Vec<String> = members.iter().map(|m| format!("({:.0},{:.0}{})", m.pos.x, m.pos.y, if m.alive {""} else {"x"})).collect();
+            eprintln!("t {:.1} {:?} -> {:?} board ({:.0},{:.0}) age {:.1} peak {:?} {}", self.time, self.play, play, self.board.pos.x, self.board.pos.y, self.board.age, self.belief.peak(), ps.join(" "));
+        }
         if changed {
             self.play = play;
             self.play_t = 0.0;
@@ -616,7 +658,7 @@ impl SquadCoordinator {
             return;
         }
         let target = match play {
-            Play::Overwatch => arena.nav.nearest_walkable(self.belief.peak()),
+            Play::Overwatch | Play::Sweep => arena.nav.nearest_walkable(self.belief.peak()),
             Play::Collapse => self.heard_at.unwrap_or(self.board.pos),
             _ => self.predicted(arena),
         };
@@ -631,8 +673,9 @@ impl SquadCoordinator {
                 if full || changed {
                     self.assign_positions(&by_dist, members, arena, model, target, None);
                 }
-                for &i in &alive {
-                    self.orders[i] = Some(hold(self.claims[i], Role::Crossfire));
+                // The two closest are the crossfire pair (> 60 deg apart); the rest support.
+                for (r, &i) in by_dist.iter().enumerate() {
+                    self.orders[i] = Some(hold(self.claims[i], if r < 2 { Role::Crossfire } else { Role::Support }));
                 }
                 if changed {
                     self.bark(by_dist[0], "Spread out - crossfire".into(), true);
@@ -699,7 +742,7 @@ impl SquadCoordinator {
                     self.bark(p, "Pinning him - go".into(), false);
                 }
             }
-            Play::Collapse => {
+            Play::Collapse | Play::Sweep => {
                 // Converge along different bearings so they come from different routes.
                 let mut by_bearing = alive.clone();
                 by_bearing.sort_by(|&a, &b| (members[a].pos - target).angle().total_cmp(&(members[b].pos - target).angle()));
@@ -711,7 +754,8 @@ impl SquadCoordinator {
                 }
                 if changed {
                     let z = arena.zone_of(target).map_or("there", |z| z.name);
-                    self.bark(by_dist[0], format!("Shots at {z} - collapse"), true);
+                    let text = if play == Play::Collapse { format!("Shots at {z} - collapse") } else { format!("Checking {z}") };
+                    self.bark(by_dist[0], text, play == Play::Collapse);
                 }
             }
             Play::Bait => {
@@ -767,10 +811,12 @@ impl SquadCoordinator {
     /// Fill `who` (in priority order) with PEF-best positions, crossfire-separated (> 60°).
     fn assign_positions(&mut self, who: &[usize], members: &[MemberView], arena: &Arena, model: &PlayerModel, target: V2, avoid: Option<V2>) {
         let mut mates: Vec<V2> = avoid.into_iter().collect();
-        for &i in who {
+        for (k, &i) in who.iter().enumerate() {
             let m = &members[i];
             let c = PefCtx { arena, model, target, me: m.pos, pref_range: m.traits.preferred_range, mates: &mates };
-            let p = best_position(&c, &m.traits.pef, PI / 3.0 + 0.1, None);
+            // The first pair must cross (> 60 deg); later members just spread out.
+            let min_sep = if mates.len() < 2 && k < 2 { PI / 3.0 + 0.1 } else { 0.6 };
+            let p = best_position(&c, &m.traits.pef, min_sep, None);
             self.claims[i] = p;
             if let Some(p) = p {
                 mates.push(p);

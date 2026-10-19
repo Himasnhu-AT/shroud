@@ -94,7 +94,8 @@ fn crossfire_positions_are_separated() {
         let (frames, _) = run_play(Play::Crossfire, player, 2.0, seed);
         let last = frames.last().unwrap();
         let dests: Vec<V2> = last.orders.iter().flatten().filter(|o| o.role == Role::Crossfire).filter_map(|o| o.dest).collect();
-        assert!(dests.len() >= 2, "seed {seed}: crossfire needs two positions");
+        assert_eq!(dests.len(), 2, "seed {seed}: crossfire needs a pair of positions");
+        eprintln!("{:?}", dests.iter().map(|d| ((*d - player).angle().to_degrees() as i32, d.dist(player) as i32)).collect::<Vec<_>>());
         let (b0, b1) = ((dests[0] - player).angle(), (dests[1] - player).angle());
         let sep = angle_diff(b0, b1).abs().to_degrees();
         eprintln!("seed {seed}: crossfire bearing separation {sep:.0} deg");
@@ -124,7 +125,7 @@ fn trade_follower_stays_behind_entry() {
 
 #[test]
 fn bounding_overwatch_holds_while_moving() {
-    let player = V2::new(0.0, -26.0);
+    let player = V2::new(0.0, 29.0);
     let (frames, calls) = run_play(Play::Overwatch, player, 8.0, 4);
     let mut both = 0;
     for w in frames.windows(2) {
@@ -154,7 +155,7 @@ fn coordinated_beats_uncoordinated() {
     let limits = Limits::for_generation(0);
     let (mut on, mut off) = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0));
     let rounds: u64 = std::env::var("SQ_ROUNDS").ok().and_then(|s| s.parse().ok()).unwrap_or(120);
-    for k in 0..rounds {
+    for k in std::env::var("SQ_FROM").ok().and_then(|s| s.parse().ok()).unwrap_or(0)..rounds {
         let b = BrainState::new(100 + k / 8);
         for (coord, acc) in [(true, &mut on), (false, &mut off)] {
             let r = sim::run_round_squad(&a, &model, limits, b.squad_minds(k), 5000 + k, GhostMode::V2, coord);

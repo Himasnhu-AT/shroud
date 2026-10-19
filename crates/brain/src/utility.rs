@@ -80,7 +80,9 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
 
 /// Score of a goal the squad ordered: beats normal tactics (attacking included), but not
 /// retreating at low health or a cover-loving enemy under heavy fire (survival instinct stays).
-pub const ORDER_PRIORITY: f32 = 1.05;
+pub const ORDER_PRIORITY: f32 = 1.1;
+/// Seconds without contact after which a retreated member follows squad orders again.
+pub const REGROUP_S: f32 = 6.0;
 
 /// Pick the best goal, with hysteresis toward the current one. `ordered`: the squad's order.
 pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>) -> Goal {
@@ -92,7 +94,9 @@ pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>
         let lapse = i.taking_fire || (i.visible && g != Goal::Flank);
         let base = match ordered {
             Some(o) if o == g && !lapse => raw.max(ORDER_PRIORITY),
-            Some(_) if g == Goal::Retreat && raw > 0.0 => raw.max(ORDER_PRIORITY + 0.1),
+            // Hurt members fall back while the fight is hot; once it has gone quiet the
+            // squad's order (regroup, sweep) wins again instead of cowering for the round.
+            Some(_) if g == Goal::Retreat && raw > 0.0 && (i.taking_fire || i.time_since_seen < REGROUP_S) => raw.max(ORDER_PRIORITY + 0.1),
             _ => raw,
         };
         let s = base + if g == current { 0.1 } else { 0.0 };
