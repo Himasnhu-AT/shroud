@@ -1,0 +1,10 @@
+# Memory/disk guard rails (see scripts/memguard.sh).
+# One shared target dir for every git worktree: Bevy is compiled once, and cargo's
+# build-dir lock makes parallel builds queue instead of eating RAM side by side.
+[build]
+target-dir = "/Users/himanshu/codes/game/shroud/target"
+jobs = 6
+
+[env]
+# Keep test binaries from oversubscribing cores.
+RUST_TEST_THREADS = "4"

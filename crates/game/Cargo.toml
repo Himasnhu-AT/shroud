@@ -1,0 +1,17 @@
+[package]
+name = "game"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "shroud"
+path = "src/main.rs"
+
+[dependencies]
+brain = { path = "../brain" }
+bevy = "=0.19.1"
+avian3d = "=0.7.0"
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
