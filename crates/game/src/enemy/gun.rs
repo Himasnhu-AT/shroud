@@ -16,9 +16,9 @@ pub const ENEMY_RIFLE_MODEL: &str = "models/enemy_rifle.glb";
 /// Right-hand bone of the Quaternius mannequin (fingers point along its +Y).
 const HAND_BONE: &str = "hand_r";
 const GUN_SCALE: f32 = 0.85;
-/// In gun model space (Kenney blaster-a: barrel along -Z, grip below the back half).
-const GRIP: Vec3 = Vec3::new(0.0, -0.1, 0.2);
-const MUZZLE: Vec3 = Vec3::new(0.0, 0.05, -0.42);
+/// In gun model space (Kenney blaster-a: barrel along +Z, pistol grip under the back).
+const GRIP: Vec3 = Vec3::new(0.0, -0.1, -0.2);
+const MUZZLE: Vec3 = Vec3::new(0.0, 0.05, 0.44);
 /// Gun pitch while not engaged (low ready), radians.
 const LOW_READY: f32 = 0.45;
 
@@ -150,7 +150,8 @@ fn aim_guns(
         let fwd = root.forward().as_vec3();
         let low = (fwd * LOW_READY.cos() - Vec3::Y * LOW_READY.sin()).normalize();
         let dir = c.aim_at.map_or(low, |p| (p - palm).try_normalize().unwrap_or(fwd));
-        let want = Transform::IDENTITY.looking_to(dir, Vec3::Y).rotation;
+        // The model faces +Z, so point -Z away from the target.
+        let want = Transform::IDENTITY.looking_to(-dir, Vec3::Y).rotation;
         let rot = g.rot.map_or(want, |r| r.slerp(want, k));
         g.rot = Some(rot);
         let world = Transform {
@@ -256,13 +257,14 @@ fn spawn_fx(
 ) {
     let (ball, cube, flash_mat, tracer_mat, glint_mat) = assets
         .get_or_insert_with(|| {
-            let glow = |c: LinearRgba| StandardMaterial { base_color: Color::WHITE, emissive: c, unlit: true, ..default() };
+            // Unlit ignores emissive, so the HDR colour goes in base_color (bloom picks up > 1).
+            let glow = |c: LinearRgba| StandardMaterial { base_color: c.into(), unlit: true, ..default() };
             (
                 meshes.add(Sphere::new(1.0)),
                 meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                materials.add(glow(LinearRgba::rgb(14.0, 8.0, 2.0))),
-                materials.add(glow(LinearRgba::rgb(5.0, 3.2, 1.2))),
-                materials.add(glow(LinearRgba::rgb(10.0, 12.0, 16.0))),
+                materials.add(glow(LinearRgba::rgb(9.0, 5.0, 1.2))),
+                materials.add(glow(LinearRgba::rgb(3.0, 1.7, 0.5))),
+                materials.add(glow(LinearRgba::rgb(6.0, 7.5, 10.0))),
             )
         })
         .clone();
@@ -279,7 +281,7 @@ fn spawn_fx(
                     bevy::light::NotShadowCaster,
                 ));
                 match parent {
-                    Some(m) => flash.insert((Transform::from_xyz(0.0, 0.0, -0.06).with_scale(Vec3::new(0.05, 0.05, 0.12)), ChildOf(m))),
+                    Some(m) => flash.insert((Transform::from_xyz(0.0, 0.0, 0.06).with_scale(Vec3::new(0.05, 0.05, 0.12)), ChildOf(m))),
                     None => flash.insert(Transform::from_translation(from).with_scale(Vec3::splat(0.07))),
                 };
                 flash.with_child(PointLight {

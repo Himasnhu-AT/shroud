@@ -30,6 +30,8 @@ const ENGAGE_MEMORY: f32 = 1.5;
 const TELEGRAPH_S: f32 = 0.25;
 /// Enemy tracers that hit the player stop this far short, so nothing draws at the camera.
 const TRACER_CLEARANCE: f32 = 1.5;
+/// Near-misses stop a bit further out: a streak right past the face reads as noise, not a shot.
+const TRACER_MISS_CLEARANCE: f32 = 2.5;
 
 pub struct EnemyPlugin;
 
@@ -411,13 +413,14 @@ fn think_and_act(
         let Ok(dir3) = Dir3::new(dir) else { continue };
         shots_out.write(ShotFired { origin: muzzle, dir, by: e });
         let hit = spatial.cast_ray(muzzle, dir3, brain::sim::VISION_RANGE, true, &filter);
-        // Tracer: stop where the bullet stops, but never within TRACER_CLEARANCE of the player's eye.
+        // Tracer: stop where the bullet stops, but never near the player's eye.
         let mut len = hit.map_or(60.0, |h| h.distance);
         let cam = p_center + Vec3::Y * 0.6;
-        if let Some(t) = ray_sphere_enter(muzzle, dir, cam, TRACER_CLEARANCE) {
+        let clearance = if hit.is_some_and(|h| h.entity == player) { TRACER_CLEARANCE } else { TRACER_MISS_CLEARANCE };
+        if let Some(t) = ray_sphere_enter(muzzle, dir, cam, clearance) {
             len = len.min(t);
         }
-        let to = (muzzle.distance(cam) > TRACER_CLEARANCE).then_some(muzzle + dir * len);
+        let to = (muzzle.distance(cam) > clearance).then_some(muzzle + dir * len);
         fx.write(EnemyFx::Shot { shooter: e, from: muzzle, to });
         if hit.is_some_and(|h| h.entity == player) && player_hp_left > 0.0 {
             let amount = limits.damage_per_hit;
