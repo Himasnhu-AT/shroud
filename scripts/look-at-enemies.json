@@ -1,0 +1,14 @@
+[
+  {"cmd": "enemy.freeze", "params": {"on": true}},
+  {"cmd": "player.teleport", "params": {"x": 0, "z": -16}},
+  {"cmd": "player.look", "params": {"at": [0, 1.2, -28]}},
+  {"sleep": 2},
+  {"shot": "frozen_squad"},
+  {"cmd": "enemy.freeze", "params": {"on": false}},
+  {"cmd": "player.god", "params": {"on": true}},
+  {"sleep": 5},
+  {"shot": "firefight"},
+  {"cmd": "player.fire", "params": {"shots": 10}},
+  {"shot": "player_firing"},
+  {"cmd": "enemy.list"}
+]
