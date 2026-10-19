@@ -2,7 +2,7 @@
 //! heartbeat, footsteps (player and enemies), reload foley, round stingers and an ambient bed.
 //!
 //! Everything is driven by existing messages and state; nothing here touches gameplay.
-//! Disabled in `--headless` and with `--mute`. Missing files are skipped silently.
+//! Disabled in `--headless`, with `--mute`, and in test runs (`--control`/`--mcp`/`--offscreen`) unless `--sound`. Missing files are skipped silently.
 //! Master volume: [`MasterVolume`] (`--volume 0.5` on the command line).
 
 use std::collections::HashMap;
@@ -64,7 +64,9 @@ impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         let args: Vec<String> = std::env::args().collect();
         let headless = app.world().get_resource::<Headless>().is_some_and(|h| h.0);
-        let mute = args.iter().any(|a| a == "--mute");
+        // Test runs (control port / MCP / offscreen) are silent unless `--sound` is given.
+        let test_run = args.iter().any(|a| a == "--control" || a == "--mcp" || a == "--offscreen");
+        let mute = args.iter().any(|a| a == "--mute") || (test_run && !args.iter().any(|a| a == "--sound"));
         let mut master = MasterVolume::default();
         if let Some(v) = args.iter().position(|a| a == "--volume").and_then(|i| args.get(i + 1))
             && let Ok(v) = v.parse::<f32>()
