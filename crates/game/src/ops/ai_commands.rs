@@ -42,6 +42,7 @@ fn enemy_list(world: &mut World, _: Value) -> Result<Value, String> {
                 "pos": [p.x, p.y],
                 "hp": hp.hp,
                 "goal": m.0.goal().label(),
+                "alert": m.0.alert().label(),
                 "sees_player": c.sees_player,
                 "crouched": c.crouched,
                 "trait_id": m.0.trait_id,

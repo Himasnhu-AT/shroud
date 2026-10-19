@@ -48,35 +48,49 @@ pub struct UtilityInput {
     pub model_confidence: f32,
     pub player_aiming_at_me: f32,
     pub player_reloading: bool,
+    /// The player just took damage.
+    pub player_hurt: bool,
+    /// The squad is in combat (someone saw him, got shot, or heard a gunshot).
+    pub combat: bool,
+    /// Holds an attack token (may shoot/push); without one, reposition to a flank.
+    pub token: bool,
 }
 
+/// Retreat only below this fraction of the genome's retreat health (aggressive baseline).
+pub const RETREAT_SCALE: f32 = 0.6;
+
 pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
-    let seen_recently = i.visible || i.time_since_seen < 3.0;
+    let seen_recently = i.visible || i.time_since_seen < 3.0 || i.combat;
     let range_fit = 1.0 - ((i.dist - t.preferred_range).abs() / 20.0).min(1.0);
+    // Without a token, attacking/pushing yields to repositioning (unless point blank).
+    let tok = if i.token || i.dist < 12.0 { 1.0 } else { 0.45 };
+    // Windows to push: reloading, hurt, low.
+    let window = if i.player_reloading { 0.6 } else { 0.0 } + if i.player_hurt { 0.25 } else { 0.0 } + if i.player_hp < 0.4 { 0.25 } else { 0.0 };
     match goal {
         Goal::Attack if i.visible => {
             // Well beyond preferred range: close in (Push) rather than plink from afar.
             let too_far = ((i.dist - t.preferred_range - 6.0).max(0.0) / 15.0).min(1.0);
-            0.35 + 0.25 * t.aggression + 0.2 * i.hp + 0.2 * range_fit - 0.5 * too_far
+            (0.45 + 0.3 * t.aggression + 0.15 * i.hp + 0.2 * range_fit - 0.45 * too_far) * tok
         }
         Goal::Push if seen_recently => {
             let far = if i.dist > t.preferred_range + 4.0 { 0.25 } else { 0.0 };
-            // The player reloading is the classic window to push.
-            let reload = if i.player_reloading { 0.35 } else { 0.0 };
-            0.15 + 0.45 * t.aggression * (1.0 - i.player_hp) + far + 0.15 * i.hp + reload
+            (0.25 + 0.5 * t.aggression * (1.0 - 0.5 * i.player_hp) + far + 0.15 * i.hp + window) * tok
         }
         Goal::Flank if seen_recently && i.dist > 8.0 => {
             let support = if i.allies_engaged > 0 { 1.0 } else { 0.3 };
             let crowd = if i.flankers >= 2 { 0.6 } else { 0.0 };
-            0.1 + 0.6 * t.flank_bias * support - crowd
+            let reposition = if i.token { 0.0 } else { 0.4 };
+            0.1 + 0.6 * t.flank_bias * support - crowd + reposition
         }
         Goal::TakeCover => {
-            let pressure = if i.player_reloading { 0.0 } else if i.taking_fire { 1.0 } else { 0.4 * i.player_aiming_at_me.max(0.0) * i.visible as u8 as f32 };
-            pressure * (0.25 + 0.55 * t.cover_affinity) + (1.0 - i.hp) * 0.35 * t.cover_affinity
+            let pressure = if i.player_reloading { 0.0 } else if i.taking_fire { 0.8 } else { 0.25 * i.player_aiming_at_me.max(0.0) * i.visible as u8 as f32 };
+            pressure * (0.15 + 0.45 * t.cover_affinity) + (1.0 - i.hp) * 0.3 * t.cover_affinity
         }
-        Goal::Retreat if i.hp < t.retreat_health => 0.95,
-        Goal::Ambush if !i.visible && i.time_since_seen > 1.5 => 0.1 + 0.8 * t.prediction_trust * i.model_confidence,
-        Goal::Hunt if !i.visible => 0.35,
+        Goal::Retreat if i.hp < t.retreat_health * RETREAT_SCALE => 0.95,
+        Goal::Ambush if !i.visible && !i.combat && i.time_since_seen > 1.5 => 0.1 + 0.8 * t.prediction_trust * i.model_confidence,
+        Goal::Hunt if !i.visible => {
+            if i.combat { 0.5 } else { 0.35 }
+        }
         _ => 0.0,
     }
 }
@@ -95,7 +109,11 @@ pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>
         let raw = score(g, i, t);
         // Orders lapse while under fire and while in contact (fight first), except sticky ones
         // (flanking, following the entry), which keep going and shoot on the move.
-        let lapse = i.taking_fire || (i.in_contact && !sticky);
+        // In a fight, token holders fight on their own judgement; the rest run the play.
+        // Static holds lapse in a fight too: pressure beats waiting.
+        // An ordered push (the entry) keeps pushing in contact: that is the aggressive play.
+        let pushing = ordered == Some(Goal::Push);
+        let lapse = i.taking_fire || (i.in_contact && !sticky && !pushing) || (i.combat && !sticky && !pushing && (i.token || ordered == Some(Goal::Hold)));
         let base = match ordered {
             Some(o) if o == g && !lapse => raw.max(ORDER_PRIORITY),
             // Hurt members fall back while the fight is hot; once it has gone quiet the

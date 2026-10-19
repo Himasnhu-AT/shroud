@@ -6,6 +6,7 @@ use crate::genome::{TraitGenome, Traits};
 use crate::limits::Limits;
 use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::neat;
+use crate::perception::{Alert, COMBAT_CALM_S, Heard, SUSPICIOUS_CALM_S, Sound};
 use crate::player_model::PlayerModel;
 use crate::squad::{self, Order};
 use crate::utility::{self, Goal, UtilityInput};
@@ -29,35 +30,78 @@ pub struct AllyInfo {
 /// How often the squad radios sightings to each other.
 pub const RADIO_PERIOD_S: f32 = 0.35;
 
-/// Squad blackboard: the freshest player sighting any squad member has radioed in.
-/// Updated every `RADIO_PERIOD_S`, so shared info is slightly late (fair, human-like).
+/// Squad blackboard: the freshest player sighting any squad member has radioed in, plus the
+/// squad's alert level. Out of combat, stale chatter is shared every `RADIO_PERIOD_S` (fair,
+/// human-like); a fresh sighting, being shot, or anything in combat relays at once.
 #[derive(Clone, Copy, Debug)]
 pub struct Blackboard {
     pub pos: V2,
     /// Seconds since that sighting.
     pub age: f32,
+    pub alert: Alert,
+    /// Seconds since the last stimulus of any kind (drives calming down).
+    pub calm: f32,
     timer: f32,
 }
 
 impl Default for Blackboard {
     fn default() -> Self {
-        Blackboard { pos: V2::ZERO, age: 999.0, timer: 0.0 }
+        Blackboard { pos: V2::ZERO, age: 999.0, alert: Alert::Unaware, calm: 999.0, timer: 0.0 }
     }
 }
 
+/// A sighting this fresh (s) is "seeing him now": the squad goes to combat at once.
+pub const FRESH_SIGHTING_S: f32 = 0.15;
+/// Age given to a heard gunshot / footstep on the board: less certain than a sighting.
+pub const HEARD_SHOT_AGE: f32 = 0.8;
+pub const HEARD_STEP_AGE: f32 = 2.0;
+
 impl Blackboard {
-    /// Advance time; on a radio tick take the freshest of the members' (pos, seconds since seen).
+    /// Advance time and take the freshest of the members' (pos, seconds since seen).
     pub fn tick(&mut self, dt: f32, sightings: impl Iterator<Item = (V2, f32)>) {
         self.age += dt;
+        self.calm += dt;
         self.timer -= dt;
-        if self.timer <= 0.0 {
+        let radio = self.timer <= 0.0;
+        if radio {
             self.timer = RADIO_PERIOD_S;
-            for (pos, age) in sightings {
-                if age < self.age {
-                    self.pos = pos;
-                    self.age = age;
-                }
+        }
+        for (pos, age) in sightings {
+            let fresh = age < FRESH_SIGHTING_S;
+            if fresh {
+                self.alert = Alert::Combat;
+                self.calm = 0.0;
             }
+            if (fresh || radio || self.alert == Alert::Combat) && age < self.age {
+                self.pos = pos;
+                self.age = age;
+            }
+        }
+        if self.alert == Alert::Combat && self.calm > COMBAT_CALM_S && self.age > COMBAT_CALM_S {
+            self.alert = Alert::Suspicious;
+            self.calm = 0.0;
+        } else if self.alert == Alert::Suspicious && self.calm > SUSPICIOUS_CALM_S {
+            self.alert = Alert::Unaware;
+        }
+    }
+
+    /// Damage is a sense: an enemy was hit, so everyone knows where the shooter stood. No delay.
+    pub fn reveal(&mut self, shooter: V2) {
+        self.pos = shooter;
+        self.age = 0.0;
+        self.alert = Alert::Combat;
+        self.calm = 0.0;
+    }
+
+    /// A member heard something. Gunshots start a fight; steps and reloads make the squad
+    /// suspicious. The heard spot goes on the board as an older (less certain) sighting.
+    pub fn hear(&mut self, h: &Heard) {
+        self.calm = 0.0;
+        self.alert = self.alert.max(h.sound.alert());
+        let age = if h.sound == Sound::Gunshot { HEARD_SHOT_AGE } else { HEARD_STEP_AGE };
+        if age < self.age {
+            self.pos = h.pos;
+            self.age = age;
         }
     }
 
@@ -87,6 +131,13 @@ pub struct Observation {
     pub taking_fire: bool,
     /// The player is reloading (a window to push).
     pub player_reloading: bool,
+    /// The player just took damage (another window to push).
+    pub player_hurt: bool,
+    /// The squad's alert level (`Blackboard::alert`).
+    pub squad_alert: Alert,
+    /// The squad gave this member no attack token: reposition to a flank rather than trade
+    /// shots (it still shoots in self-defence or up close).
+    pub token_denied: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -151,8 +202,33 @@ pub struct EnemyMind {
     was_reloading: bool,
     /// Seconds since this enemy itself last saw the player.
     own_unseen: f32,
+    /// This enemy's awareness (its own senses, raised by the squad's).
+    alert: Alert,
+    /// Seconds in the current goal (commit time against oscillation).
+    goal_t: f32,
+    /// Last sound heard and seconds since (turn to face it, investigate).
+    heard_prev: Option<V2>,
+    heard_t: f32,
+    /// Stuck detection: position at the start of the window, window timer, strikes.
+    stuck_ref: V2,
+    stuck_t: f32,
+    stuck_n: u32,
+    sidestep_t: f32,
+    sidestep_dir: V2,
+    force_repath: bool,
+    /// Strafe while shooting (A-D rhythm).
+    strafe_t: f32,
+    strafe_sign: f32,
     pub debug: MindDebug,
 }
+
+/// Minimum time in a goal before switching (unless hit): no flip-flopping between goals.
+pub const GOAL_COMMIT_S: f32 = 0.6;
+/// Stuck: less than `STUCK_MIN_MOVE` m of progress in `STUCK_S` s while trying to move.
+pub const STUCK_S: f32 = 0.7;
+pub const STUCK_MIN_MOVE: f32 = 0.35;
+/// How long a heard sound keeps an enemy looking at / investigating it.
+pub const HEARD_MEMORY_S: f32 = 6.0;
 
 impl EnemyMind {
     pub fn new(tg: &TraitGenome, trait_id: usize, ng: &neat::Genome, neat_id: usize, limits: &Limits, seed: u64) -> Self {
@@ -181,12 +257,28 @@ impl EnemyMind {
             bark: None,
             was_reloading: false,
             own_unseen: 99.0,
+            alert: Alert::Unaware,
+            goal_t: 0.0,
+            heard_prev: None,
+            heard_t: 99.0,
+            stuck_ref: V2::ZERO,
+            stuck_t: 0.0,
+            stuck_n: 0,
+            sidestep_t: 0.0,
+            sidestep_dir: V2::ZERO,
+            force_repath: false,
+            strafe_t: 0.0,
+            strafe_sign: flank_side,
             debug: MindDebug::default(),
         }
     }
 
     pub fn goal(&self) -> Goal {
         self.goal
+    }
+
+    pub fn alert(&self) -> Alert {
+        self.alert
     }
 
     pub fn order(&self) -> Option<Order> {
@@ -225,11 +317,35 @@ impl EnemyMind {
         let engaged = o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S;
         let aiming_at_me = V2::from_angle(o.player_facing).dot(-dir_p);
 
-        // 1. Tactics (~4 Hz, or immediately when hit).
+        // Alert: own senses (sight, pain, sound), raised to the squad's level.
+        if o.heard_shot.is_some() && o.heard_shot != self.heard_prev {
+            self.heard_prev = o.heard_shot;
+            self.heard_t = 0.0;
+        } else {
+            self.heard_t += o.dt;
+        }
+        let heard_fresh = self.heard_t < HEARD_MEMORY_S;
+        let own = if o.player_visible || o.taking_fire {
+            Alert::Combat
+        } else if heard_fresh {
+            Alert::Suspicious
+        } else {
+            Alert::Unaware
+        };
+        self.alert = own.max(o.squad_alert);
+        let combat = self.alert == Alert::Combat;
+        self.goal_t += o.dt;
+
+        // 1. Tactics (~4 Hz, or immediately when hit or stuck).
         self.think_timer -= o.dt;
-        if self.think_timer <= 0.0 || o.taking_fire && self.goal != Goal::TakeCover && self.goal != Goal::Retreat {
+        let urgent = o.taking_fire && self.goal != Goal::TakeCover && self.goal != Goal::Retreat;
+        if self.think_timer <= 0.0 || urgent || self.force_repath {
             self.think_timer = 0.25;
+            let repath = std::mem::take(&mut self.force_repath);
             let ui = UtilityInput {
+                combat,
+                token: !o.token_denied,
+                player_hurt: o.player_hurt,
                 in_contact: self.own_unseen < ENGAGE_MEMORY_S,
                 visible: o.player_visible,
                 dist,
@@ -243,11 +359,20 @@ impl EnemyMind {
                 player_aiming_at_me: aiming_at_me,
                 player_reloading: o.player_reloading,
             };
-            let new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal), self.order.is_some_and(|o| o.sticky));
+            let mut new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal), self.order.is_some_and(|o| o.sticky));
+            // Commit: hold a fresh goal briefly (being hit or ordered overrides).
+            let ordered = self.order.is_some_and(|od| od.goal == new_goal);
+            if self.goal_t < GOAL_COMMIT_S && !urgent && !ordered && new_goal != Goal::Retreat {
+                new_goal = self.goal;
+            }
             if new_goal != self.goal {
+                self.goal_t = 0.0;
                 match new_goal {
                     Goal::Retreat => self.bark = Some("Falling back"),
                     Goal::TakeCover if o.taking_fire => self.bark = Some("Taking fire"),
+                    Goal::Push if o.player_reloading => self.bark = Some("He's reloading - pushing"),
+                    Goal::Push => self.bark = Some("Pushing"),
+                    Goal::Flank => self.bark = Some("Flanking"),
                     _ => {}
                 }
             }
@@ -261,7 +386,7 @@ impl EnemyMind {
                 (Some(a), Some(b)) => a.dist(b) > 2.0,
                 (a, b) => a.is_some() != b.is_some(),
             };
-            if new_goal != self.goal || moved || self.path.is_empty() {
+            if new_goal != self.goal || moved || self.path.is_empty() || repath {
                 self.path = match (new_dest, order.and_then(|od| od.threat)) {
                     (Some(d), Some(threat)) => {
                         let cost = squad::tactical_cost(cx.arena, cx.model, threat, &t.pef);
@@ -284,6 +409,51 @@ impl EnemyMind {
             }
         }
         let path_dir = self.path.first().map(|&wp| (wp - o.pos).norm()).unwrap_or(V2::ZERO);
+
+        // Stuck detection: trying to move but barely progressing over a window → sidestep and
+        // repath; after repeated strikes, detour via a nearby open spot.
+        self.stuck_t += o.dt;
+        if self.stuck_t >= STUCK_S {
+            let trying = !self.path.is_empty();
+            if trying && o.pos.dist(self.stuck_ref) < STUCK_MIN_MOVE {
+                self.stuck_n += 1;
+                let side = if self.stuck_n.is_multiple_of(2) { 1.0 } else { -1.0 };
+                self.sidestep_dir = (path_dir.perp() * side - path_dir * 0.3).norm();
+                self.sidestep_t = 0.4;
+                self.force_repath = true;
+                if self.stuck_n >= 3 {
+                    // Pick a new waypoint: the most open nearby walkable spot toward the goal.
+                    let goal_dir = self.dest.map_or(path_dir, |d| (d - o.pos).norm());
+                    let mut best: Option<(f32, V2)> = None;
+                    for k in 0..12 {
+                        let dir = V2::from_angle(k as f32 * std::f32::consts::TAU / 12.0);
+                        let p = o.pos + dir * 3.0;
+                        if cx.arena.nav.walkable_at(p) && cx.arena.nav.clear_line(o.pos, p) {
+                            let s = dir.dot(goal_dir) + self.rng_f() * 0.5;
+                            if best.is_none_or(|(b, _)| s > b) {
+                                best = Some((s, p));
+                            }
+                        }
+                    }
+                    if let Some((_, p)) = best {
+                        self.path = vec![p];
+                        self.force_repath = false;
+                        self.think_timer = 0.6;
+                    }
+                    self.stuck_n = 0;
+                }
+            } else if o.pos.dist(self.stuck_ref) >= STUCK_MIN_MOVE {
+                self.stuck_n = 0;
+            }
+            self.stuck_t = 0.0;
+            self.stuck_ref = o.pos;
+        }
+        let path_dir = if self.sidestep_t > 0.0 {
+            self.sidestep_t -= o.dt;
+            self.sidestep_dir
+        } else {
+            self.path.first().map(|&wp| (wp - o.pos).norm()).unwrap_or(V2::ZERO)
+        };
 
         // 3. NEAT micro in the engagement frame (forward = toward player).
         let mut micro = [0.0; NEAT_OUTPUTS];
@@ -319,20 +489,30 @@ impl EnemyMind {
         let micro_move = if engaged { dir_p * micro[0] + dir_p.perp() * micro[1] } else { V2::ZERO };
         let mut move_dir = path_dir + micro_move * w_micro;
 
-        // Spacing from allies.
-        let spacing = 2.5 + 2.0 * (1.0 - t.team_cohesion);
-        for a in &o.allies {
-            let d = o.pos - a.pos;
-            let l = d.len();
-            if l > 0.01 && l < spacing {
-                move_dir += d.norm() * ((spacing - l) / spacing);
+        // Strafe while shooting: never stand still in the open trading shots.
+        if o.player_visible && matches!(self.goal, Goal::Attack | Goal::Push | Goal::Hold) && self.sidestep_t <= 0.0 {
+            self.strafe_t -= o.dt;
+            if self.strafe_t <= 0.0 {
+                self.strafe_sign = -self.strafe_sign;
+                self.strafe_t = 0.45 + 0.6 * self.rng_f();
             }
+            let w = if self.path.is_empty() { 0.6 } else { 0.3 };
+            move_dir += dir_p.perp() * self.strafe_sign * w;
         }
-        let move_dir = move_dir.clamp_len(1.0);
 
-        // 4. Aim: turn toward the player (with a small lead) at a capped rate.
+        // Context steering: keep the desired heading unless allies or walls make it dangerous.
+        let spacing = 2.5 + 2.0 * (1.0 - t.team_cohesion);
+        let move_dir = context_steer(move_dir.clamp_len(1.0), o.pos, &o.allies, spacing, cx.arena);
+        // Standoff: never walk into the player (a body filling his camera is neither fair nor
+        // readable); back off a little inside the minimum distance.
+        let move_dir = if o.time_since_seen < 3.0 { standoff(move_dir, o.pos, o.player_pos) } else { move_dir };
+
+        // 4. Aim: turn toward the player (with a small lead) at a capped rate; out of contact,
+        // turn to face a fresh sound.
         let target_dir = if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S {
             (o.player_pos + o.player_vel * 0.08 - o.pos).norm()
+        } else if let Some(h) = self.heard_prev.filter(|_| self.heard_t < 2.5 && !self.path.is_empty() || self.heard_t < 1.0) {
+            (h - o.pos).norm()
         } else if let Some(w) = self.following().and_then(|od| od.watch) {
             // Hold the angle the squad expects him from.
             (w - o.pos).norm()
@@ -352,10 +532,12 @@ impl EnemyMind {
             self.on_target_time = 0.0;
         }
 
-        // 5. Trigger: reaction delay, aim settled, NEAT fire gate, bursts.
-        // The net can veto a shot only when it's strongly against it (e.g. to stay hidden).
-        let fire_gate = if engaged { micro[2] > -0.6 } else { true };
-        let ready = o.player_visible && self.seen_time >= t.reaction_time && aim_off < 0.07 && fire_gate && o.ammo_frac > 0.0;
+        // 5. Trigger: reaction delay (fairness floor), aim settled, bursts. Out of combat the
+        // net may veto a shot to stay hidden; in combat they shoot as soon as they can.
+        // Attack tokens: members without one hold fire unless defending themselves.
+        let fire_gate = if engaged && !combat { micro[2] > -0.6 } else { true };
+        let may_shoot = !o.token_denied || o.taking_fire || dist < 12.0 || aiming_at_me > 0.97;
+        let ready = o.player_visible && self.seen_time >= t.reaction_time && aim_off < 0.07 && fire_gate && may_shoot && o.ammo_frac > 0.0;
         self.debug.seen_time = self.seen_time;
         self.debug.aim_off = aim_off;
         let mut fire = false;
@@ -366,7 +548,7 @@ impl EnemyMind {
             self.burst_timer += o.dt;
             if self.burst_timer >= t.burst_length as f32 * 0.1 {
                 self.burst_timer = 0.0;
-                self.burst_pause = 0.3 + 0.2 * self.rng_f();
+                self.burst_pause = if combat { 0.18 + 0.15 * self.rng_f() } else { 0.3 + 0.2 * self.rng_f() };
             }
         } else {
             self.burst_timer = 0.0;
@@ -394,7 +576,11 @@ impl EnemyMind {
         let gap = if self.following().is_some_and(|od| od.sticky) { 1.0 } else { 2.0 };
         let far = self.dest.is_some_and(|d| d.dist(o.pos) > gap);
         let sticky = self.following().is_some_and(|od| od.sticky);
-        let sprint = (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far) && (!o.player_visible || sticky && far);
+        // Cover-to-cover: a push dashes between covers even in view; a combat hunt runs.
+        let dash = self.goal == Goal::Push && far && !fire && self.following().is_none();
+        let sprint = dash
+            || (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far || combat && self.goal == Goal::Hunt)
+                && (!o.player_visible || sticky && far);
         let reload = o.ammo_frac <= 0.0 || (!engaged && o.ammo_frac < 0.4);
         if reload && !self.was_reloading {
             self.bark = Some("Reloading");
@@ -443,7 +629,11 @@ impl EnemyMind {
                 // Fight at the player's weakest range if we trust the model, else our own.
                 let trust = t.prediction_trust * cx.model.confidence();
                 let range = t.preferred_range + (cx.model.weakest_range() - t.preferred_range) * trust;
-                Some(player + (o.pos - player).norm() * range.min(o.pos.dist(player) - 2.0).max(4.0))
+                // Cover-to-cover: bound to the next cover that gains ground, if there is one.
+                let ranged = player + (o.pos - player).norm() * range.min(o.pos.dist(player) - 2.0).max(4.0);
+                // (An ordered entry walks the direct line so its trader can follow.)
+                let ordered = self.order.is_some_and(|od| od.goal == Goal::Push);
+                Some(if ordered { ranged } else { advance_cover(o.pos, player, range, cx).unwrap_or(ranged) })
             }
             Goal::Flank => {
                 // Crossfire: pick the angle around the player farthest (in bearing) from where
@@ -492,7 +682,11 @@ impl EnemyMind {
                 }
                 best.map(|b| b.1).or(Some(predicted))
             }
-            Goal::Hunt => Some(o.heard_shot.unwrap_or(player)),
+            // Investigate a fresh sound unless the squad knows something newer.
+            Goal::Hunt => Some(match self.heard_prev {
+                Some(h) if self.heard_t < HEARD_MEMORY_S && self.heard_t < o.time_since_seen => h,
+                _ => player,
+            }),
             Goal::Hold => None,
         };
         dest.map(|d| a.nav.nearest_walkable(d))
@@ -514,4 +708,94 @@ impl EnemyMind {
         }
         best.map(|b| b.1)
     }
+}
+
+/// The next cover point on the way to `player`: hidden from him (crouched), within a short
+/// dash, and at least 3 m closer to him, but no closer than ~`range`/2.
+fn advance_cover(me: V2, player: V2, range: f32, cx: &MindCtx) -> Option<V2> {
+    let d_now = me.dist(player);
+    let mut best: Option<(f32, V2)> = None;
+    for c in &cx.arena.cover {
+        let (d_me, d_pl) = (c.pos.dist(me), c.pos.dist(player));
+        if !(1.5..=12.0).contains(&d_me) || d_pl > d_now - 3.0 || d_pl < (range * 0.5).max(5.0) {
+            continue;
+        }
+        if cx.arena.line_of_sight(player, false, c.pos, true) {
+            continue;
+        }
+        let score = d_pl + 0.5 * d_me;
+        if best.is_none_or(|(s, _)| score < s) {
+            best = Some((score, c.pos));
+        }
+    }
+    best.map(|b| b.1)
+}
+
+/// Context steering (Fray, Game AI Pro 2): 16 headings scored by interest (the desired
+/// direction) minus danger (allies too close in that direction, walls just ahead). Keeps the
+/// desired vector untouched when its own heading is safe, so path following stays exact.
+pub fn context_steer(desired: V2, pos: V2, allies: &[AllyInfo], spacing: f32, arena: &Arena) -> V2 {
+    let danger_of = |d: V2| {
+        let mut danger: f32 = 0.0;
+        for a in allies {
+            let to = a.pos - pos;
+            let l = to.len();
+            if l > 0.01 && l < spacing {
+                danger = danger.max((1.0 - l / spacing) * d.dot(to * (1.0 / l)).max(0.0));
+            }
+        }
+        if !arena.nav.walkable_at(pos + d * 0.7) && arena.nav.walkable_at(pos) {
+            danger = 1.0;
+        }
+        danger
+    };
+    let mag = desired.len();
+    if mag < 0.05 {
+        // Standing: just keep some spacing.
+        let mut push = V2::ZERO;
+        for a in allies {
+            let d = pos - a.pos;
+            let l = d.len();
+            if l > 0.01 && l < spacing {
+                push += d.norm() * ((spacing - l) / spacing);
+            }
+        }
+        return push.clamp_len(1.0);
+    }
+    let want = desired * (1.0 / mag);
+    if danger_of(want) < 0.05 {
+        return desired;
+    }
+    let mut best = (f32::MIN, want);
+    for k in 0..16 {
+        let d = V2::from_angle(k as f32 * std::f32::consts::TAU / 16.0);
+        let s = d.dot(want) - 2.0 * danger_of(d);
+        if s > best.0 {
+            best = (s, d);
+        }
+    }
+    best.1 * mag
+}
+
+/// Enemies keep at least this far (m) from the player.
+pub const STANDOFF_M: f32 = 2.0;
+
+/// Remove any approach toward `player` within `STANDOFF_M + 0.75` m, and back off inside
+/// `STANDOFF_M`. Sideways motion (strafing, flanking around him) is kept.
+pub fn standoff(move_dir: V2, pos: V2, player: V2) -> V2 {
+    let to = player - pos;
+    let d = to.len();
+    if d < 1e-3 || d > STANDOFF_M + 0.75 {
+        return move_dir;
+    }
+    let toward = to * (1.0 / d);
+    let mut m = move_dir;
+    let inward = m.dot(toward);
+    if inward > 0.0 {
+        m = m - toward * inward;
+    }
+    if d < STANDOFF_M {
+        m = m - toward * (0.6 * (1.0 - d / STANDOFF_M) + 0.2);
+    }
+    m.clamp_len(1.0)
 }

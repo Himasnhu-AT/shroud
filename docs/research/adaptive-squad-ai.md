@@ -450,3 +450,97 @@ Modules refer to the current tree. Costs assume one engineer. Impact is relative
 51. Shacklett, B. et al. "An Extensible, Data-Oriented Architecture for High-Performance, Many-World Simulation" (Madrona). SIGGRAPH 2023. https://github.com/shacklettbp/madrona
 52. Apple. "Apple unleashes M5, the next big leap in AI performance for Apple silicon." Oct 2025. https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/
 53. Tracel AI. "Burn: a deep learning framework in Rust" (wgpu/Metal backends). https://github.com/tracel-ai/burn
+
+## Addendum: perception, alertness, aggression and movement
+
+Written after player feedback asking for an enemy that is more aggressive and perceptive: *"they should attack when I'm seen; I shot one, everyone knows where I am; they are perceptive to sound; more robust movement."* The references below are numbered [A1]–[A16] so they don't collide with §10.
+
+### What the sources say
+
+**Perception as stimuli.**
+- Treat each sense as a timestamped stimulus record of {sense, location, strength, age}. Sight, hearing and damage are peer senses that write into one memory [A1].
+- **Damage is a sense.** A hit records the instigator's location at the moment of the hit, so a victim always has a search target, even when it never saw the shooter [A2].
+- Crytek gives each stimulus type its own peak value: footsteps 25, gunfire 50, primary-FOV sight 100. Each runs an attack/decay/sustain/release envelope [A4].
+- Awareness accumulates rather than switching instantly. The threshold is high before first contact and low once combat has started [A5]. Splinter Cell scales the detection timer by distance, light and the NPC's state [A3].
+- Keep a last-known position (LKP) with a timestamp, share it across the squad, and avoid omniscience [A5].
+
+**Alert states and search.**
+- Use idle → investigate → search → combat, with a single investigator [A5].
+- TLOU capped the combat → search loop: after 10 s without contact, one NPC checks the LKP. That cut the loop from about 2 min to about 30 s [A5].
+- Always bark on a hearing-triggered alert [A3].
+
+**Sound.**
+- Compare distance against a per-sound radius (footstep < gunshot) [A1][A4].
+- Across rooms, use path distance through portals rather than straight-line distance [A3].
+- Only emit sounds that matter to the AI [A4].
+
+**Movement.**
+- Context steering: an N-slot interest map and danger map. Mask out every slot more dangerous than the minimum, then pick the most interesting remaining slot [A6].
+- ORCA/RVO shares avoidance between each pair of agents [A7][A8].
+- Repath when avoidance has pushed the agent off its corridor [A9].
+- String-pull paths with the funnel algorithm [A10].
+
+**Aggression.**
+- Attack tokens with capacities. Enemies without a token drift to free slots outside the ring, which produces flanking for free [A11].
+- DOOM's push-forward combat favours pressure over turtling [A12]. (The DOOM token pool itself is confirmed only by secondary write-ups.)
+- F.E.A.R.: simple squad orders plus barks that make the coordination readable [A13].
+- Halo 3: prioritized objective tasks [A14].
+
+**Learned bots.**
+- ViZDoom [A15] is a fast testbed.
+- Raycast "sensors" were enough for human-like imitation-learned shooter bots [A16]. That matches our 2D sim's sensor budget.
+
+### What Shroud now does (`perception.rs`, `mind.rs`, `squad.rs`, `utility.rs`)
+
+1. **Alert states.**
+   - Each enemy and the squad blackboard carry `Alert::{Unaware, Suspicious, Combat}`.
+   - Any member's fresh sighting (< 0.15 s old), any hit, any near-miss and any heard gunshot put the whole squad in Combat on the same tick.
+   - Footsteps and reloads make the squad Suspicious: members turn to face the sound and investigate it.
+   - Combat calms to Suspicious after 15 s without information, and Suspicious calms to Unaware 20 s after that.
+2. **Damage reveals position** [A2]. `SquadCoordinator::reveal` writes the shooter's position at shot time onto the blackboard with age 0, with no radio delay.
+   - In Combat, every sighting relays at once.
+   - The 0.35 s radio period now applies only to stale, non-combat chatter.
+3. **Hearing** [A1][A3][A4].
+   - Ranges: gunshot 45 m, running footsteps 12 m, walking 6 m, crouch-walking 3 m, crouched and slow is silent, reload 8 m.
+   - Loudness falls off linearly with distance and is multiplied by 0.3 for each tall block or wall on the segment.
+   - A heard sound goes on the belief grid with σ = 1.5 + 6·(1 − loudness), and on the blackboard as an older sighting (gunshot 0.8 s, other sounds 2 s).
+   - A bullet passing within 2.5 m counts as a gunshot at full loudness.
+4. **Aggression** [A11][A12].
+   - Higher base scores for Attack and Push. Push gets bonuses when the player is reloading (+0.6), was just hurt (+0.25) or is below 40 % HP (+0.25).
+   - Lower cover pressure. Retreat now needs HP below 0.6 × the genome's `retreat_health`.
+   - Attack tokens: 2 for squads of 3 or fewer, 3 otherwise. Tokens rotate after about 6 s and are applied in both coordinated and solo modes.
+   - Members without a token flank, and fire only in self-defence: when hit, closer than 12 m, or aimed at directly.
+   - Once in combat the NEAT fire veto is off, so an enemy shoots as soon as the reaction-time floor and aim settling allow. Burst pauses are shorter. The fairness floors in `limits.rs` are unchanged.
+   - Static Hold orders lapse in a fight. An ordered entry keeps pushing in contact.
+5. **Movement** [A6][A9].
+   - Context steering: 16 headings, with danger from allies inside the spacing radius and from walls 0.7 m ahead. The desired vector is kept exact when its own heading is safe.
+   - Stuck detection: under 0.35 m of progress in 0.7 s triggers a 0.4 s sidestep plus a repath. A third strike detours to an open spot 3 m away.
+   - A 0.6 s goal commit stops goal flip-flopping (being hit or ordered overrides it).
+   - Strafing while shooting uses a randomized A-D rhythm.
+   - Pushes advance cover-to-cover with short sprints.
+   - A 2 m standoff from the player is enforced in the brain and again in the game with the true player position.
+6. **Callouts.**
+   - Contact callouts name the zone of the freshest real sighting, never the belief peak.
+   - New callouts: "Taking fire - at <zone>", "Shots - at <zone>", "Footsteps", "Pushing", "He's reloading - pushing", "Flanking" and "Lost him - last seen <zone>". They keep the existing rate limits.
+   - The game now drains callouts even while enemies are frozen, so stale ones never play later.
+
+**Measured (sim_bench, 40 rounds, gen-0 squad vs Ghost v2):** the squad won 0.10 of rounds before this change and 0.48 after. Against Ghost v1 it went from 0.35 to 0.68. Held-out win rate after the first evolution went from 0.34 to 0.84–0.94. In `coordinated_beats_uncoordinated` (480 rounds), the coordinated squad went from 0.060 to 0.435 and the solo squad from 0.038 to 0.417.
+
+### References (addendum)
+
+- [A1] Epic Games, "AI Perception in Unreal Engine". https://dev.epicgames.com/documentation/en-us/unreal-engine/ai-perception-in-unreal-engine
+- [A2] Epic Games, `UAISense_Damage` / `ReportDamageEvent` API. https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/AIModule/UAISense_Damage
+- [A3] M. Walsh, "Modeling Perception and Awareness in Tom Clancy's Splinter Cell Blacklist", Game AI Pro 2, ch. 28, 2015. http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter28_Modeling_Perception_and_Awareness_in_Tom_Clancy's_Splinter_Cell_Blacklist.pdf
+- [A4] R. Welsh, "Crytek's Target Tracks Perception System", Game AI Pro, ch. 31, 2013. http://www.gameaipro.com/GameAIPro/GameAIPro_Chapter31_Crytek's_Target_Tracks_Perception_System.pdf
+- [A5] T. McIntosh, "Human Enemy AI in The Last of Us", Game AI Pro 2, ch. 34, 2015. http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter34_Human_Enemy_AI_in_The_Last_of_Us.pdf (GDC 2014 talk: https://gdcvault.com/play/1020338/The-Last-of-Us-Human)
+- [A6] A. Fray, "Context Steering: Behavior-Driven Steering at the Macro Scale", Game AI Pro 2, ch. 18, 2015. http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter18_Context_Steering_Behavior-Driven_Steering_at_the_Macro_Scale.pdf
+- [A7] J. van den Berg, S. J. Guy, J. Snape, M. C. Lin, D. Manocha, "RVO2 Library: Reciprocal Collision Avoidance (ORCA)", UNC GAMMA. https://gamma.cs.unc.edu/RVO2/
+- [A8] B. Sunshine-Hill, "RVO and ORCA: How They Really Work", Game AI Pro 3, ch. 19, 2017. http://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter19_RVO_and_ORCA_How_They_Really_Work.pdf
+- [A9] G. Pentheny, "Advanced Techniques for Robust, Efficient Crowds", Game AI Pro 2, ch. 17, 2015. http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter17_Advanced_Techniques_for_Robust_Efficient_Crowds.pdf
+- [A10] M. Mononen, "Simple Stupid Funnel Algorithm", 2010. http://digestingduck.blogspot.com/2010/03/simple-stupid-funnel-algorithm.html
+- [A11] M. Dawe, "Beyond the Kung-Fu Circle: A Flexible System for Managing NPC Attacks", Game AI Pro, ch. 28, 2013. http://www.gameaipro.com/GameAIPro/GameAIPro_Chapter28_Beyond_the_Kung-Fu_Circle_A_Flexible_System_for_Managing_NPC_Attacks.pdf
+- [A12] K. Loudy, J. Campbell, "Embracing Push Forward Combat in DOOM", GDC 2018. https://gdcvault.com/play/1024940/Embracing-Push-Forward-Combat-in
+- [A13] J. Orkin, "Three States and a Plan: The A.I. of F.E.A.R.", GDC 2006. https://pages.cs.wisc.edu/~dyer/cs540/handouts/gdc2006_orkin_jeff_fear.pdf
+- [A14] D. Isla, "Building a Better Battle: The Halo 3 AI Objectives System", GDC 2008. https://web.cs.wpi.edu/~rich/courses/imgd4000-d10/lectures/halo3.pdf
+- [A15] M. Kempka et al., "ViZDoom: A Doom-based AI Research Platform for Visual Reinforcement Learning", IEEE CIG 2016, arXiv:1605.02097. https://arxiv.org/abs/1605.02097
+- [A16] N. Justesen et al., "Human-like Bots for Tactical Shooters Using Compute-Efficient Sensors", arXiv:2501.00078, 2024. https://arxiv.org/abs/2501.00078

@@ -10,6 +10,7 @@ pub mod limits;
 pub mod math;
 pub mod mind;
 pub mod nav;
+pub mod perception;
 pub mod neat;
 pub mod player_model;
 pub mod sim;

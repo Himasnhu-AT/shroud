@@ -12,7 +12,8 @@ use brain::math::V2;
 use brain::mind::{Action, AllyInfo, EnemyMind, MindCtx, Observation};
 use brain::squad::{MemberView, SquadCoordinator, callsign};
 use brain::utility::Goal;
-use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, HEARING_RANGE, MAG, RELOAD_S, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
+use brain::perception::{self, GUNSHOT_RANGE, Heard, RELOAD_RANGE, Sound};
+use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, MAG, RELOAD_S, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
 
 use crate::assets::{AssetsDir, ENEMY_MODEL};
 use crate::map::{ArenaRes, to_ground, to_world};
@@ -226,7 +227,8 @@ pub fn spawn_squad(
 /// What enemies heard/felt since last frame (a system can't read and write the same message type).
 #[derive(Resource, Default)]
 struct Inbox {
-    player_shots: Vec<Vec3>,
+    /// (muzzle, direction) of each player shot.
+    player_shots: Vec<(Vec3, Vec3)>,
     hits: Vec<(Entity, bool)>,
 }
 
@@ -237,7 +239,7 @@ fn collect_inbox(
     mut damage: MessageReader<Damage>,
 ) {
     let player = players.single().ok();
-    inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| s.origin).collect();
+    inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| (s.origin, s.dir)).collect();
     inbox.hits = damage.read().filter(|d| Some(d.source) == player).map(|d| (d.target, d.headshot)).collect();
 }
 
@@ -283,6 +285,7 @@ fn think_and_act(
     mut fx: MessageWriter<EnemyFx>,
     slots: Query<&Enemy>,
     mut callouts: MessageWriter<Callout>,
+    mut hurt: Local<(f32, f32)>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
@@ -297,9 +300,27 @@ fn think_and_act(
     let p_fwd = ptf.forward();
     let p_facing = V2::new(p_fwd.x, p_fwd.z).angle();
     let p_vel = V2::new(motor.velocity.x, motor.velocity.z);
+    // The player just took damage (a window to push): (last hp, seconds since hurt).
+    hurt.1 += dt;
+    if php.hp < hurt.0 {
+        hurt.1 = 0.0;
+    }
+    hurt.0 = php.hp;
+    let player_hurt = hurt.1 < 0.8;
 
     let player_shots = &inbox.player_shots;
     let hits = &inbox.hits;
+    // Stimuli the player makes this frame (perception.rs): gunshots, footsteps, reload.
+    let mut sounds: Vec<(Sound, V2, f32)> = player_shots.iter().map(|(o, _)| (Sound::Gunshot, to_ground(*o), GUNSHOT_RANGE)).collect();
+    let steps = if motor.grounded { perception::footstep_range(p_vel.len(), motor.crouched) } else { 0.0 };
+    if steps > 0.0 {
+        sounds.push((Sound::Footstep, p_ground, steps));
+    }
+    if player_reloading {
+        sounds.push((Sound::Reload, p_ground, RELOAD_RANGE));
+    }
+    let mut heard_events: Vec<(usize, Heard)> = Vec::new();
+    let mut reveals: Vec<usize> = Vec::new();
 
     let snapshot: Vec<(Entity, V2, bool, bool)> = enemies
         .iter()
@@ -309,8 +330,21 @@ fn think_and_act(
     // --- Squad layer: one coordinator tick before the minds think (perception from last frame).
     let n = squad.size;
     let mut views: Vec<Option<MemberView>> = vec![None; n];
-    for (e, tf, mut mind, c, _, hp, _) in &mut enemies {
+    for (e, tf, mut mind, mut c, _, hp, _) in &mut enemies {
         let Ok(slot) = slots.get(e).map(|s| s.slot) else { continue };
+        if !c.dead {
+            let pos = to_ground(tf.translation);
+            // Damage is a sense: being hit reveals where the shooter stands, to everyone.
+            if hits.iter().any(|h| h.0 == e) {
+                reveals.push(slot);
+            }
+            let near_miss = player_shots.iter().any(|(o, d)| perception::near_miss(&arena.0, to_ground(*o), V2::new(d.x, d.z).norm(), pos));
+            let h = if near_miss { Some(Heard { sound: Sound::Gunshot, pos: p_ground, loud: 1.0 }) } else { perception::listen(&arena.0, &sounds, pos) };
+            if let Some(h) = h {
+                c.heard = Some(h.pos);
+                heard_events.push((slot, h));
+            }
+        }
         if slot < n {
             views[slot] = Some(MemberView {
                 pos: to_ground(tf.translation),
@@ -327,13 +361,22 @@ fn think_and_act(
     }
     let Some(coord) = squad.coord.as_mut() else { return };
     let views: Vec<MemberView> = views.into_iter().map(|v| v.unwrap_or_else(MemberView::gone)).collect();
+    for &slot in &reveals {
+        coord.reveal(slot, p_ground, &arena.0);
+    }
+    for (slot, h) in &heard_events {
+        coord.hear(*slot, h, &arena.0);
+    }
     let orders = coord.tick(dt, &views, &arena.0, &brain.state.player_model).to_vec();
+    // Always drain (a frozen squad's queued callouts would play stale later); speak if live.
+    let calls = coord.drain_callouts();
     if !freeze.0 {
-        for c in coord.drain_callouts() {
+        for c in calls {
             callouts.write(Callout { speaker: callsign(c.speaker), text: c.text });
         }
     }
     let board = coord.board;
+    let tokens = coord.tokens.clone();
     let limits = brain.state.limits();
     let cx = MindCtx { arena: &arena.0, model: &brain.state.player_model, limits };
     let mut player_hp_left = php.hp;
@@ -383,9 +426,6 @@ fn think_and_act(
         } else {
             c.last_seen += dt;
         }
-        if let Some(o) = player_shots.iter().find(|o| to_ground(**o).dist(pos) < HEARING_RANGE) {
-            c.heard = Some(to_ground(*o));
-        }
         c.report.time_alive += dt;
         c.report.goal_time[brain::evolve::goal_index(mind.0.goal())] += dt;
         if c.last_seen < ENGAGE_MEMORY {
@@ -413,6 +453,9 @@ fn think_and_act(
                 .collect(),
             taking_fire: c.hit_t < 0.6,
             player_reloading,
+            player_hurt,
+            squad_alert: board.alert,
+            token_denied: slots.get(e).is_ok_and(|en| !tokens.get(en.slot).copied().unwrap_or(true)),
         };
         if let Ok(en) = slots.get(e) {
             mind.0.set_order(orders.get(en.slot).copied().flatten());
@@ -429,7 +472,8 @@ fn think_and_act(
         // --- Movement (horizontal collide-and-slide; the floor is flat).
         c.crouched = act.crouch;
         let speed = if c.crouched { CROUCH_SPEED } else if act.sprint { SPRINT } else { WALK };
-        c.vel = act.move_dir * speed;
+        // Hard standoff with the true player position (the mind also keeps it from its belief).
+        c.vel = if freeze.0 { V2::ZERO } else { brain::mind::standoff(act.move_dir, pos, p_ground) * speed };
         let shape = Collider::capsule(0.35, 0.5);
         let center = tf.translation + Vec3::Y * 0.95;
         let slid = collide_and_slide(&spatial, &shape, center, v2_dir3(c.vel) * dt, &filter);
