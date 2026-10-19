@@ -3,6 +3,7 @@
 
 use crate::limits::Limits;
 use crate::math::{BrainRng, gauss};
+use crate::squad::PEF_TERMS;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +55,9 @@ impl Gene {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TraitGenome {
     pub genes: [f32; GENE_COUNT],
+    /// Position-evaluation weights w_k (one shared set; see `squad::PEF_LABELS`), in [0, 1].
+    #[serde(default = "default_pef")]
+    pub pef: [f32; PEF_TERMS],
     pub fitness: f32,
     /// How many evaluations contributed to `fitness` (for averaging).
     pub evals: u32,
@@ -72,6 +76,12 @@ pub struct Traits {
     pub retreat_health: f32,
     pub team_cohesion: f32,
     pub prediction_trust: f32,
+    /// Position-evaluation weights w_k in [0, 2] (`squad::pef_score`).
+    pub pef: [f32; PEF_TERMS],
+}
+
+fn default_pef() -> [f32; PEF_TERMS] {
+    [0.5; PEF_TERMS]
 }
 
 impl TraitGenome {
@@ -80,7 +90,11 @@ impl TraitGenome {
         for g in &mut genes {
             *g = rng.random();
         }
-        TraitGenome { genes, fitness: 0.0, evals: 0 }
+        let mut pef = [0.0; PEF_TERMS];
+        for g in &mut pef {
+            *g = rng.random();
+        }
+        TraitGenome { genes, pef, fitness: 0.0, evals: 0 }
     }
 
     pub fn get(&self, g: Gene) -> f32 {
@@ -101,6 +115,7 @@ impl TraitGenome {
             retreat_health: 0.6 * g(Gene::RetreatHealth),
             team_cohesion: g(Gene::TeamCohesion),
             prediction_trust: g(Gene::PredictionTrust),
+            pef: self.pef.map(|w| 2.0 * w),
         }
     }
 
@@ -109,11 +124,15 @@ impl TraitGenome {
         for (i, g) in genes.iter_mut().enumerate() {
             *g = if rng.random::<bool>() { a.genes[i] } else { b.genes[i] };
         }
-        TraitGenome { genes, fitness: 0.0, evals: 0 }
+        let mut pef = [0.0; PEF_TERMS];
+        for (i, g) in pef.iter_mut().enumerate() {
+            *g = if rng.random::<bool>() { a.pef[i] } else { b.pef[i] };
+        }
+        TraitGenome { genes, pef, fitness: 0.0, evals: 0 }
     }
 
     pub fn mutate(&mut self, rate: f32, sigma: f32, rng: &mut BrainRng) {
-        for g in &mut self.genes {
+        for g in self.genes.iter_mut().chain(self.pef.iter_mut()) {
             if rng.random::<f32>() < rate {
                 *g = (*g + gauss(rng) * sigma).clamp(0.0, 1.0);
             }

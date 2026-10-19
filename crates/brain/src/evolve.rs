@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-pub const SAVE_VERSION: u32 = 1;
+/// v2: trait genomes gained position-evaluation weights (squad layer); older saves reset.
+pub const SAVE_VERSION: u32 = 2;
 pub const SQUAD: usize = 5;
 pub const NEAT_POP: usize = 40;
 

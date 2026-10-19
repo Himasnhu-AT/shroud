@@ -4,7 +4,8 @@
 use crate::arena::Arena;
 use crate::limits::Limits;
 use crate::math::{BrainRng, V2, angle_diff, rng_from_seed};
-use crate::mind::{AllyInfo, Blackboard, EnemyMind, MindCtx, Observation};
+use crate::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
+use crate::squad::{MemberView, SquadCoordinator};
 use crate::utility::Goal;
 use crate::player_model::{HEAT_W, PlayerModel, ROUTE_W, heat_center, range_bin, route_idx};
 use rand::Rng;
@@ -183,7 +184,12 @@ fn visible(arena: &Arena, from: &Body, look: V2, to: &Body, use_cone: bool) -> b
 }
 
 /// Run one round. `minds` are consumed (one per enemy spawn).
-pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: Vec<EnemyMind>, seed: u64) -> RoundResult {
+pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, minds: Vec<EnemyMind>, seed: u64) -> RoundResult {
+    run_round_with(arena, model, limits, minds, seed, true)
+}
+
+/// `run_round` with the squad coordinator's plays on or off (off: minds act alone).
+pub fn run_round_with(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: Vec<EnemyMind>, seed: u64, coordinated: bool) -> RoundResult {
     let n = minds.len();
     let mut enemies: Vec<Body> = arena.enemy_spawns.iter().take(n).map(|&p| Body::new(p)).collect();
     let mut looks: Vec<V2> = vec![V2::new(0.0, 1.0); n];
@@ -196,7 +202,10 @@ pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: 
     let cx = MindCtx { arena, model, limits };
     let mut t = 0.0;
     let mut ghost_shot = false;
-    let mut board = Blackboard::default();
+    // --- squad layer (squad.rs) ---
+    let mut squad = SquadCoordinator::new(arena, n);
+    squad.enabled = coordinated;
+    // --- end squad layer ---
 
     while t < ROUND_TIME && ghost.body.alive() && enemies.iter().any(Body::alive) {
         t += DT;
@@ -204,7 +213,27 @@ pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: 
         let snapshot: Vec<(V2, bool, bool, bool)> = (0..n)
             .map(|i| (enemies[i].pos, enemies[i].alive(), last_seen[i] < 1.5, minds[i].goal() == Goal::Flank))
             .collect();
-        board.tick(DT, (0..n).filter(|&i| enemies[i].alive()).map(|i| (last_known[i], last_seen[i])));
+        // --- squad layer: one coordinator tick before the minds think ---
+        let views: Vec<MemberView> = (0..n)
+            .map(|i| MemberView {
+                pos: enemies[i].pos,
+                alive: enemies[i].alive(),
+                hp: enemies[i].hp / HP,
+                last_known: last_known[i],
+                last_seen: last_seen[i],
+                heard: heard[i],
+                look: looks[i],
+                traits: minds[i].traits,
+                bark: minds[i].take_bark(),
+            })
+            .collect();
+        let orders = squad.tick(DT, &views, arena, model).to_vec();
+        squad.drain_callouts();
+        for (m, o) in minds.iter_mut().zip(orders) {
+            m.set_order(o);
+        }
+        let board = squad.board;
+        // --- end squad layer ---
         for i in 0..n {
             if !enemies[i].alive() {
                 continue;

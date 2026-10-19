@@ -12,10 +12,12 @@ pub enum Goal {
     Retreat,
     Ambush,
     Hunt,
+    /// Squad order: go to a position (if any) and hold the angle there.
+    Hold,
 }
 
 impl Goal {
-    pub const ALL: [Goal; 7] = [Goal::Attack, Goal::Push, Goal::Flank, Goal::TakeCover, Goal::Retreat, Goal::Ambush, Goal::Hunt];
+    pub const ALL: [Goal; 8] = [Goal::Attack, Goal::Push, Goal::Flank, Goal::TakeCover, Goal::Retreat, Goal::Ambush, Goal::Hunt, Goal::Hold];
     pub fn label(self) -> &'static str {
         match self {
             Goal::Attack => "attack",
@@ -25,6 +27,7 @@ impl Goal {
             Goal::Retreat => "retreat",
             Goal::Ambush => "ambush",
             Goal::Hunt => "hunt",
+            Goal::Hold => "hold",
         }
     }
 }
@@ -75,11 +78,24 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
     }
 }
 
-/// Pick the best goal, with hysteresis toward the current one.
-pub fn choose(current: Goal, i: &UtilityInput, t: &Traits) -> Goal {
+/// Score of a goal the squad ordered: beats normal tactics (attacking included), but not
+/// retreating at low health or a cover-loving enemy under heavy fire (survival instinct stays).
+pub const ORDER_PRIORITY: f32 = 1.05;
+
+/// Pick the best goal, with hysteresis toward the current one. `ordered`: the squad's order.
+pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>) -> Goal {
     let mut best = (f32::MIN, current);
     for g in Goal::ALL {
-        let s = score(g, i, t) + if g == current { 0.1 } else { 0.0 };
+        let raw = score(g, i, t);
+        // Orders lapse while under fire, and while the player is in sight (fight first),
+        // except for a flanker on the way.
+        let lapse = i.taking_fire || (i.visible && g != Goal::Flank);
+        let base = match ordered {
+            Some(o) if o == g && !lapse => raw.max(ORDER_PRIORITY),
+            Some(_) if g == Goal::Retreat && raw > 0.0 => raw.max(ORDER_PRIORITY + 0.1),
+            _ => raw,
+        };
+        let s = base + if g == current { 0.1 } else { 0.0 };
         if s > best.0 {
             best = (s, g);
         }

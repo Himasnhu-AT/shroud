@@ -109,6 +109,12 @@ impl NavGrid {
 
     /// A* from `from` to `to`. Returns smoothed waypoints (excluding the start).
     pub fn find_path(&self, from: V2, to: V2) -> Option<Vec<V2>> {
+        self.find_path_cost(from, to, None)
+    }
+
+    /// Tactical A*: `extra(p)` adds cost per metre at cell centre `p` (e.g. `squad::tactical_cost`,
+    /// exposure to the player). Smoothing only shortcuts where the shortcut isn't costlier.
+    pub fn find_path_cost(&self, from: V2, to: V2, extra: Option<&dyn Fn(V2) -> f32>) -> Option<Vec<V2>> {
         let start = self.idx_of(self.nearest_walkable(from));
         let goal_pos = self.nearest_walkable(to);
         let goal = self.idx_of(goal_pos);
@@ -133,7 +139,7 @@ impl NavGrid {
                 }
                 cells.reverse();
                 let pts: Vec<V2> = cells.iter().map(|&i| self.center(i)).collect();
-                let mut path = self.smooth(from, &pts);
+                let mut path = if extra.is_some() { self.smooth_short(from, &pts) } else { self.smooth(from, &pts) };
                 if let Some(last) = path.last_mut() {
                     *last = goal_pos;
                 }
@@ -153,7 +159,8 @@ impl NavGrid {
                 if dx != 0 && dz != 0 && (!self.walkable[(z * w + nx) as usize] || !self.walkable[(nz * w + x) as usize]) {
                     continue;
                 }
-                let cost = if dx != 0 && dz != 0 { std::f32::consts::SQRT_2 } else { 1.0 } * self.cell;
+                let step = if dx != 0 && dz != 0 { std::f32::consts::SQRT_2 } else { 1.0 } * self.cell;
+                let cost = step * (1.0 + extra.map_or(0.0, |f| f(self.center(ni)).max(0.0)));
                 let ng = g[idx] + cost;
                 if ng < g[ni] {
                     g[ni] = ng;
@@ -163,6 +170,23 @@ impl NavGrid {
             }
         }
         None
+    }
+
+    /// Smoothing for tactical paths: only shortcut a few cells so the route keeps its shape.
+    fn smooth_short(&self, from: V2, pts: &[V2]) -> Vec<V2> {
+        let mut out = Vec::new();
+        let mut anchor = from;
+        let mut i = 0;
+        while i < pts.len() {
+            let mut j = (i + 4).min(pts.len() - 1);
+            while j > i && !self.clear_line(anchor, pts[j]) {
+                j -= 1;
+            }
+            out.push(pts[j]);
+            anchor = pts[j];
+            i = j + 1;
+        }
+        out
     }
 
     fn smooth(&self, from: V2, pts: &[V2]) -> Vec<V2> {

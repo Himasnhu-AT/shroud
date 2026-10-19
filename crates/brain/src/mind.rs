@@ -7,6 +7,7 @@ use crate::limits::Limits;
 use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::neat;
 use crate::player_model::PlayerModel;
+use crate::squad::{self, Order};
 use crate::utility::{self, Goal, UtilityInput};
 
 pub const NEAT_INPUTS: usize = 14;
@@ -143,6 +144,11 @@ pub struct EnemyMind {
     was_hit: bool,
     flinch_t: f32,
     inputs: [f32; NEAT_INPUTS],
+    /// Current squad order (from `squad::SquadCoordinator`), treated as a high-priority goal.
+    order: Option<Order>,
+    /// A callout the mind wants to make (taken by the coordinator).
+    bark: Option<&'static str>,
+    was_reloading: bool,
     pub debug: MindDebug,
 }
 
@@ -169,12 +175,34 @@ impl EnemyMind {
             was_hit: false,
             flinch_t: 0.0,
             inputs: [0.0; NEAT_INPUTS],
+            order: None,
+            bark: None,
+            was_reloading: false,
             debug: MindDebug::default(),
         }
     }
 
     pub fn goal(&self) -> Goal {
         self.goal
+    }
+
+    pub fn order(&self) -> Option<Order> {
+        self.order
+    }
+
+    /// Set (or clear) the squad's order. Call before `think`.
+    pub fn set_order(&mut self, order: Option<Order>) {
+        self.order = order;
+    }
+
+    /// A pending callout ("Reloading", "Falling back", ...), if any.
+    pub fn take_bark(&mut self) -> Option<&'static str> {
+        self.bark.take()
+    }
+
+    /// The order applies to the current goal.
+    fn following(&self) -> Option<Order> {
+        self.order.filter(|o| o.goal == self.goal)
     }
 
     pub fn think(&mut self, o: &Observation, cx: &MindCtx) -> Action {
@@ -210,16 +238,32 @@ impl EnemyMind {
                 player_aiming_at_me: aiming_at_me,
                 player_reloading: o.player_reloading,
             };
-            let new_goal = utility::choose(self.goal, &ui, &t);
-            let new_dest = self.destination(new_goal, o, cx);
+            let new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal));
+            if new_goal != self.goal {
+                match new_goal {
+                    Goal::Retreat => self.bark = Some("Falling back"),
+                    Goal::TakeCover if o.taking_fire => self.bark = Some("Taking fire"),
+                    _ => {}
+                }
+            }
+            let order = self.order.filter(|od| od.goal == new_goal);
+            let new_dest = match order {
+                Some(Order { dest: Some(d), .. }) => Some(cx.arena.nav.nearest_walkable(d)),
+                Some(Order { goal: Goal::Hold, dest: None, .. }) => None,
+                _ => self.destination(new_goal, o, cx),
+            };
             let moved = match (new_dest, self.dest) {
                 (Some(a), Some(b)) => a.dist(b) > 2.0,
                 (a, b) => a.is_some() != b.is_some(),
             };
             if new_goal != self.goal || moved || self.path.is_empty() {
-                self.path = match new_dest {
-                    Some(d) => cx.arena.nav.find_path(o.pos, d).unwrap_or_default(),
-                    None => Vec::new(),
+                self.path = match (new_dest, order.and_then(|od| od.threat)) {
+                    (Some(d), Some(threat)) => {
+                        let cost = squad::tactical_cost(cx.arena, cx.model, threat, &t.pef);
+                        cx.arena.nav.find_path_cost(o.pos, d, Some(&cost)).unwrap_or_default()
+                    }
+                    (Some(d), None) => cx.arena.nav.find_path(o.pos, d).unwrap_or_default(),
+                    (None, _) => Vec::new(),
                 };
             }
             self.goal = new_goal;
@@ -264,6 +308,7 @@ impl EnemyMind {
         let w_micro = match self.goal {
             Goal::Attack => 1.0,
             Goal::Push | Goal::Flank => 0.4,
+            Goal::Hold if self.path.is_empty() => 0.3,
             _ => 0.0,
         };
         let micro_move = if engaged { dir_p * micro[0] + dir_p.perp() * micro[1] } else { V2::ZERO };
@@ -283,6 +328,9 @@ impl EnemyMind {
         // 4. Aim: turn toward the player (with a small lead) at a capped rate.
         let target_dir = if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S {
             (o.player_pos + o.player_vel * 0.08 - o.pos).norm()
+        } else if let Some(w) = self.following().and_then(|od| od.watch) {
+            // Hold the angle the squad expects him from.
+            (w - o.pos).norm()
         } else if move_dir.len() > 0.1 {
             move_dir.norm()
         } else {
@@ -337,7 +385,13 @@ impl EnemyMind {
             Goal::Attack => micro[3] > 0.3 && !fire,
             _ => false,
         };
-        let sprint = matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) && !o.player_visible;
+        let far = self.dest.is_some_and(|d| d.dist(o.pos) > 2.0);
+        let sprint = (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far) && !o.player_visible;
+        let reload = o.ammo_frac <= 0.0 || (!engaged && o.ammo_frac < 0.4);
+        if reload && !self.was_reloading {
+            self.bark = Some("Reloading");
+        }
+        self.was_reloading = reload;
 
         self.debug.goal = Some(self.goal);
         self.debug.dest = self.dest;
@@ -351,7 +405,7 @@ impl EnemyMind {
             fire,
             shot_dir,
             shot_pitch_err,
-            reload: o.ammo_frac <= 0.0 || (!engaged && o.ammo_frac < 0.4),
+            reload,
         }
     }
 
@@ -431,6 +485,7 @@ impl EnemyMind {
                 best.map(|b| b.1).or(Some(predicted))
             }
             Goal::Hunt => Some(o.heard_shot.unwrap_or(player)),
+            Goal::Hold => None,
         };
         dest.map(|d| a.nav.nearest_walkable(d))
     }

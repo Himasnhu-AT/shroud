@@ -11,4 +11,5 @@ pub mod nav;
 pub mod neat;
 pub mod player_model;
 pub mod sim;
+pub mod squad;
 pub mod utility;
