@@ -1,20 +1,28 @@
-//! Perf monitor: process RAM/CPU/GPU, per-thread CPU, frame-time percentiles and per-system-set
-//! cost, sampled at 1 Hz on a background thread, logged to the session log and the tracer.
+//! Perf monitor: process RAM/CPU/GPU, per-thread CPU, machine top-N processes, frame-time
+//! percentiles and per-system-set cost, sampled on a background thread, logged to the session
+//! log and the tracer. How every number is computed: docs/PERF.md.
 //!
 //! Frame side (cheap, every frame): push the real frame time, time `EnemySet` (AI), avian's
 //! `StepSimulation` (physics) and `WeaponSet` with marker systems, detect hitches (> 50 ms).
-//! Once a second it sends a [`FrameAgg`] to the `perf-sampler` thread, which probes the OS
-//! (`perf_sys`), merges both into a [`PerfSnapshot`] (read by the overlay and `perf.stats`),
-//! writes a `perf` line to the session log and sets the tracer gauges.
+//! Once a second it sends a [`FrameAgg`] to the `perf-sampler` thread. The sampler polls the
+//! GPU driver's utilisation counters 8×/s (one read is near-instant and jumps 0↔100 %), and
+//! once a second probes the OS (`perf_sys`), smooths every metric (EMA + 60 s min/max,
+//! `perf_stats`), builds a [`PerfSnapshot`] (read by the overlay and `perf.stats`), writes a
+//! `perf` line to the session log, adds to the session report (`perf.report`) and sets the
+//! tracer gauges.
 //!
-//! GPU frame time is this process's IOKit GPU time per frame (macOS). Per-pass GPU times come
-//! from Bevy's `RenderDiagnosticsPlugin`; Apple GPUs can't take timestamps inside passes (Bevy
-//! reads 0), so on macOS it's only added with `--gpu-passes`. Game events (state, match/round, evolution, AI reset) are logged from
+//! GPU frame time is this process's GPU busy fraction (IOKit `accumulatedGPUTime`) × the mean
+//! frame time. Per-pass GPU times come from Bevy's `RenderDiagnosticsPlugin`; Apple GPUs can't
+//! take timestamps inside passes (Bevy reads 0), so on macOS it's only added with
+//! `--gpu-passes`. Game events (state, match/round, evolution, AI reset) are logged from
 //! existing resources.
 
+#[path = "perf_stats.rs"]
+mod stats;
+
 use std::collections::{HashMap, VecDeque};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -24,7 +32,10 @@ use bevy::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::perf_sys::{self, GpuProbe, ThreadCpu};
+pub use stats::Stat;
+use stats::{Report, Track, pool_of, thread_label};
+
+use super::perf_sys::{self, GpuProbe, GpuUtil, ProcProbe, ThreadCpu};
 use super::session_log::SessionLog;
 use super::trace::GameTracer;
 use super::{data_dir, has_flag};
@@ -36,22 +47,34 @@ use crate::weapon::WeaponSet;
 
 /// A frame longer than this (once playing) is logged as a hitch.
 const HITCH: Duration = Duration::from_millis(50);
-/// Frame times kept for the percentiles (~10 s at 60 fps).
+/// Frame times kept for the percentiles (~5 s at 120 fps).
 const RING: usize = 600;
 /// Threads listed in a snapshot.
-const TOP_THREADS: usize = 8;
+const TOP_THREADS: usize = 10;
+/// Machine processes listed per table (CPU / RAM / GPU); `SHROUD_PERF_TOP` overrides.
+const TOP_PROCS: usize = 6;
+/// GPU driver utilisation polls per second.
+const GPU_POLL: Duration = Duration::from_millis(125);
 
 /// Perf overlay visible (F2 toggles; `--perf` starts on; `perf.overlay` over the control port).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PerfOverlay(pub bool);
 
-/// Latest snapshot from the sampler thread.
+/// Latest snapshot from the sampler thread, and the session report.
 #[derive(Resource, Clone, Default)]
-pub struct PerfShared(pub Arc<Mutex<Option<Arc<PerfSnapshot>>>>);
+pub struct PerfShared(pub Arc<Mutex<Option<Arc<PerfSnapshot>>>>, Arc<Mutex<Report>>);
 
 impl PerfShared {
     pub fn latest(&self) -> Option<Arc<PerfSnapshot>> {
         self.0.lock().ok().and_then(|s| s.clone())
+    }
+
+    /// `{seconds, metrics: {name: {min, avg, p95, max, n}}}` over the session so far.
+    pub fn report(&self) -> Value {
+        self.1
+            .lock()
+            .map(|r| json!({"seconds": r.seconds, "metrics": r.summary()}))
+            .unwrap_or(Value::Null)
     }
 }
 
@@ -84,6 +107,7 @@ pub struct Pct {
 #[derive(Serialize, Clone, Debug)]
 pub struct ThreadRow {
     pub name: String,
+    /// % of one core over the last second.
     pub cpu_pct: f32,
 }
 
@@ -94,18 +118,46 @@ pub struct PassRow {
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
+pub struct CpuRow {
+    /// This process, % of one core (100 = one core busy; Activity Monitor's convention).
+    pub process: Stat,
+    /// Same, as % of the whole machine (process / cores).
+    pub machine_pct: f32,
+    pub cores: usize,
+    /// Busiest threads, labelled (main, render, compute N, trainer, evolve, audio, ...).
+    pub threads: Vec<ThreadRow>,
+    /// Thread pools summed (compute pool, io pool, ...), % of one core.
+    pub pools: Vec<ThreadRow>,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct RamRow {
+    /// phys_footprint, MiB: Activity Monitor's "Memory" and `vmmap --summary`'s footprint.
+    pub footprint_mb: Stat,
+    /// Resident set, MiB (`ps -o rss`); counts shared pages, not compressed ones.
+    pub rss_mb: Option<f32>,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
 pub struct GpuRow {
-    /// This process's share of GPU time, % (IOKit AppUsage).
-    pub process_util_pct: Option<f32>,
-    /// Whole-device utilisation, % (all apps).
-    pub device_util_pct: Option<f32>,
-    /// This process's Metal allocations, MB.
+    /// Whole-device utilisation, % (all apps): mean of the driver's 8 Hz reads, smoothed.
+    pub device: Stat,
+    /// Renderer (fragment) and tiler (vertex/tiling) utilisation, %, same source.
+    pub renderer: Stat,
+    pub tiler: Stat,
+    /// This process's GPU busy time / wall time, % (IOKit AppUsage).
+    pub process: Stat,
+    /// This process's GPU busy time per frame, ms.
+    pub frame_ms: Stat,
+    /// This process's Metal allocations, MiB.
     pub process_alloc_mb: Option<f32>,
-    /// Whole-device GPU memory in use, MB.
-    pub device_in_use_mb: Option<f32>,
-    /// This process's GPU busy time per frame, ms (IOKit time / frames).
-    pub frame_ms: Option<f32>,
-    /// Sum of top-level render pass GPU times, ms (timestamp queries).
+    /// Device-wide GPU memory in use, MiB (driver "In use system memory").
+    pub device_in_use_mb: Stat,
+    /// Device-wide GPU memory allocated, MiB (driver "Alloc system memory").
+    pub device_alloc_mb: Option<f32>,
+    /// Driver reads averaged into this sample.
+    pub polls: u32,
+    /// Sum of top-level render pass GPU times, ms (timestamp queries; `--gpu-passes`).
     pub passes_ms: Option<f32>,
     pub passes: Vec<PassRow>,
 }
@@ -121,36 +173,76 @@ pub struct GameRow {
     pub weapons_ms: f32,
 }
 
+/// One process on the machine.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct ProcRow {
+    pub pid: i32,
+    pub name: String,
+    /// % of one core.
+    pub cpu_pct: Option<f32>,
+    /// phys_footprint (macOS) or resident, MiB. None: not readable without root.
+    pub mem_mb: Option<f32>,
+    /// GPU busy time / wall time, % (None: no GPU client).
+    pub gpu_pct: Option<f32>,
+    /// This game.
+    pub me: bool,
+}
+
+/// Machine-wide top-N processes, each list with this game added if it isn't in the top N.
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct ProcTables {
+    pub by_cpu: Vec<ProcRow>,
+    pub by_mem: Vec<ProcRow>,
+    pub by_gpu: Vec<ProcRow>,
+    /// CPU of all readable processes (root-owned ones need root), % of one core.
+    pub total_cpu_pct: f32,
+    /// Readable processes.
+    pub count: usize,
+}
+
+/// Last-60 s histories (oldest first) for the overlay's sparklines.
+#[derive(Clone, Debug, Default)]
+pub struct History {
+    pub frame_ms: Vec<f32>,
+    pub cpu: Vec<f32>,
+    pub gpu: Vec<f32>,
+    pub ram: Vec<f32>,
+}
+
 /// Everything the monitor knows, once a second.
 #[derive(Serialize, Clone, Debug, Default)]
 pub struct PerfSnapshot {
-    pub fps: f32,
+    /// Frames / real seconds over the last second.
+    pub fps: Stat,
+    /// Mean frame time, ms.
+    pub frame_avg_ms: Stat,
+    /// Percentiles over the last ~5 s of frames.
     pub frame_ms: Pct,
-    /// Process CPU, % of one core.
-    pub cpu_pct: Option<f32>,
-    pub cores: usize,
-    pub threads: Vec<ThreadRow>,
-    /// Thread pools (name without ` (n)`), summed % of one core.
-    pub pools: Vec<ThreadRow>,
-    pub rss_mb: Option<f32>,
-    pub footprint_mb: Option<f32>,
+    pub cpu: CpuRow,
+    pub ram: RamRow,
     pub gpu: GpuRow,
+    pub procs: ProcTables,
     pub game: GameRow,
     pub hitches: u32,
     /// Monitor's own main-thread cost, µs per frame (average, worst) over the last second.
     pub overhead_us: f32,
     pub overhead_max_us: f32,
+    /// Sampler thread's own time for this sample, ms (off the frame).
+    pub sampler_ms: f32,
     /// The main thread sent nothing for > 1.5 s (frame data is stale).
     pub stalled: bool,
+    #[serde(skip)]
+    pub history: History,
 }
 
 /// What the main thread hands the sampler once a second.
 #[derive(Clone, Debug, Default)]
 struct FrameAgg {
     frames: u32,
-    fps: f32,
+    /// Real time the frames covered, s.
+    secs: f32,
     frame_ms: Pct,
-    gpu_frame_ms: Option<f32>,
+    gpu_passes_ms: Option<f32>,
     passes: Vec<PassRow>,
     game: GameRow,
     hitches: u32,
@@ -182,10 +274,7 @@ impl Span {
     }
     /// `(avg ms per frame, max ms)`, then reset.
     fn take(&mut self, frames: u32) -> (f32, f32) {
-        let r = (
-            self.sum_ns as f32 / frames.max(1) as f32 / 1e6,
-            self.max_ns as f32 / 1e6,
-        );
+        let r = (self.sum_ns as f32 / frames.max(1) as f32 / 1e6, self.max_ns as f32 / 1e6);
         self.sum_ns = 0;
         self.max_ns = 0;
         r
@@ -208,6 +297,8 @@ struct PerfFrame {
     hitches: u32,
     armed: bool,
     next: Duration,
+    /// Real time at the start of the current 1 s window.
+    window_start: Duration,
 }
 
 pub struct PerfPlugin;
@@ -260,6 +351,7 @@ impl Plugin for PerfPlugin {
                 hitches: 0,
                 armed: false,
                 next: Duration::from_secs(1),
+                window_start: Duration::ZERO,
             })
             .add_systems(
                 Update,
@@ -291,6 +383,18 @@ impl Plugin for PerfPlugin {
                     Ok(json!({"on": on}))
                 },
             );
+            app.add_control_command(
+                "perf.report",
+                "Session perf summary: min/avg/p95/max of every 1 Hz metric since start",
+                params(&[]),
+                |world: &mut World, _: Value| {
+                    let r = world.resource::<PerfShared>().report();
+                    if let Some(l) = world.get_resource::<SessionLog>() {
+                        l.write("perf.report", r.clone());
+                    }
+                    Ok(r)
+                },
+            );
         }
     }
 }
@@ -312,11 +416,13 @@ pub fn stats_json(world: &World) -> Value {
     json!({
         "monitor": snap.map(|s| serde_json::to_value(&*s).unwrap_or(Value::Null)),
         "overhead_us": cost.map(|c| c.avg_us),
+        "overhead_max_us": cost.map(|c| c.max_us),
         "overlay": world.get_resource::<PerfOverlay>().map(|o| o.0),
         "session_log": world.get_resource::<SessionLog>().map(|l| l.path.display().to_string()),
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn frame_tick(
     real: Res<Time<Real>>,
     mut pf: ResMut<PerfFrame>,
@@ -352,22 +458,24 @@ fn frame_tick(
     clock.physics.close_frame();
     clock.weapons.close_frame();
 
-    if real.elapsed() >= pf.next {
-        pf.next = real.elapsed() + Duration::from_secs(1);
+    let now = real.elapsed();
+    if now >= pf.next {
+        pf.next = now + Duration::from_secs(1);
+        let secs = (now - pf.window_start).as_secs_f32();
+        pf.window_start = now;
         let mut v: Vec<f32> = pf.times.iter().copied().collect();
         v.sort_unstable_by(f32::total_cmp);
         let pct = |p: f32| v.get(((v.len().max(1) - 1) as f32 * p).round() as usize).map_or(0.0, |x| x * 1000.0);
-        let mean = if v.is_empty() { 0.0 } else { v.iter().sum::<f32>() / v.len() as f32 };
         let frames = pf.frames;
         let (ai_ms, ai_max_ms) = clock.ai.take(frames);
         let (physics_ms, _) = clock.physics.take(frames);
         let (weapons_ms, _) = clock.weapons.take(frames);
-        let (gpu_frame_ms, passes) = store.map(|s| gpu_passes(&s)).unwrap_or_default();
+        let (gpu_passes_ms, passes) = store.map(|s| gpu_passes(&s)).unwrap_or_default();
         let agg = FrameAgg {
             frames,
-            fps: if mean > 0.0 { 1.0 / mean } else { 0.0 },
+            secs,
             frame_ms: Pct { p50: pct(0.5), p95: pct(0.95), p99: pct(0.99), max: pf.max_dt * 1000.0 },
-            gpu_frame_ms,
+            gpu_passes_ms,
             passes,
             game: GameRow {
                 state: state.map(|s| format!("{:?}", s.get())).unwrap_or_default(),
@@ -490,12 +598,14 @@ fn watch_events(
     cost.add(t0.elapsed());
 }
 
+
 /// Tracer gauges (only when tracing is on).
 struct Gauges {
     cpu: ashlar_trace::Gauge,
     rss: ashlar_trace::Gauge,
     footprint: ashlar_trace::Gauge,
     gpu_util: ashlar_trace::Gauge,
+    gpu_device: ashlar_trace::Gauge,
     gpu_mem: ashlar_trace::Gauge,
     gpu_ms: ashlar_trace::Gauge,
     p99: ashlar_trace::Gauge,
@@ -509,10 +619,59 @@ impl Gauges {
             rss: t.gauge("rss_mb"),
             footprint: t.gauge("footprint_mb"),
             gpu_util: t.gauge("gpu_util_pct"),
+            gpu_device: t.gauge("gpu_device_pct"),
             gpu_mem: t.gauge("gpu_mem_mb"),
             gpu_ms: t.gauge("gpu_frame_ms"),
             p99: t.gauge("frame_p99_ms"),
             ai_ms: t.gauge("ai_ms"),
+        })
+    }
+}
+
+/// Smoothing state for every 1 Hz metric.
+#[derive(Default)]
+struct Tracks {
+    fps: Track,
+    frame_avg: Track,
+    cpu: Track,
+    footprint: Track,
+    gpu_device: Track,
+    gpu_renderer: Track,
+    gpu_tiler: Track,
+    gpu_process: Track,
+    gpu_frame: Track,
+    gpu_mem: Track,
+}
+
+/// Mean of the driver's utilisation reads since the last sample.
+#[derive(Default)]
+struct UtilAcc {
+    n: u32,
+    sum: GpuUtil,
+}
+
+impl UtilAcc {
+    fn add(&mut self, u: GpuUtil) {
+        self.n += 1;
+        self.sum.device += u.device;
+        self.sum.renderer += u.renderer;
+        self.sum.tiler += u.tiler;
+        self.sum.in_use += u.in_use;
+        self.sum.alloc = u.alloc;
+    }
+    fn take(&mut self) -> Option<(GpuUtil, u32)> {
+        let n = std::mem::take(&mut self.n);
+        let s = std::mem::take(&mut self.sum);
+        (n > 0).then(|| {
+            let k = n as f64;
+            let u = GpuUtil {
+                device: s.device / k,
+                renderer: s.renderer / k,
+                tiler: s.tiler / k,
+                in_use: s.in_use / n as u64,
+                alloc: s.alloc,
+            };
+            (u, n)
         })
     }
 }
@@ -526,33 +685,62 @@ fn sampler(
     main_tid: u64,
 ) {
     let mut probe = gpu.then(GpuProbe::new);
+    let mut procs = ProcProbe::new();
+    let top_n = std::env::var("SHROUD_PERF_TOP").ok().and_then(|v| v.parse().ok()).unwrap_or(TOP_PROCS).max(1);
+    let me = std::process::id() as i32;
     let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
     let mut prev_t = Instant::now();
     let mut prev_cpu = perf_sys::process_cpu_ns();
     let mut prev_threads: HashMap<u64, u64> = HashMap::new();
-    let mut prev_gpu_ns: Option<u64> = None;
+    let mut prev_gpu: HashMap<i32, u64> = HashMap::new();
     let mut agg = FrameAgg::default();
+    let mut tracks = Tracks::default();
+    let mut util = UtilAcc::default();
+    let mut next_poll = Instant::now();
+    let mut last_agg = Instant::now();
     loop {
-        let stalled = match rx.recv_timeout(Duration::from_millis(1500)) {
+        // Poll the driver's utilisation at GPU_POLL until the main thread's 1 s aggregate
+        // arrives (or 1.5 s pass without one: the frame is stalled).
+        let wait = next_poll.saturating_duration_since(Instant::now());
+        let got = match rx.recv_timeout(wait) {
             Ok(a) => {
                 agg = rx.try_iter().last().unwrap_or(a);
-                false
+                last_agg = Instant::now();
+                true
             }
-            Err(RecvTimeoutError::Timeout) => true,
+            Err(RecvTimeoutError::Timeout) => false,
             Err(RecvTimeoutError::Disconnected) => break,
         };
-        let now = Instant::now();
-        let wall_ns = now.duration_since(prev_t).as_nanos().max(1) as f64;
-        prev_t = now;
+        if Instant::now() >= next_poll {
+            next_poll += GPU_POLL;
+            if next_poll < Instant::now() {
+                next_poll = Instant::now() + GPU_POLL;
+            }
+            if let Some(u) = probe.as_mut().and_then(|p| p.poll_util()) {
+                util.add(u);
+            }
+        }
+        let stalled = !got && last_agg.elapsed() >= Duration::from_millis(1500);
+        if !got && !stalled {
+            continue;
+        }
+        if stalled {
+            last_agg = Instant::now(); // one stalled sample per 1.5 s
+        }
+        let work = Instant::now();
+        let wall_ns = work.duration_since(prev_t).as_nanos().max(1) as f64;
+        prev_t = work;
+        let pct_of_wall = |ns: u64| (ns as f64 / wall_ns * 100.0) as f32;
 
+        // This process: CPU and threads.
         let cpu = perf_sys::process_cpu_ns();
         let cpu_pct = match (cpu, prev_cpu) {
-            (Some(c), Some(p)) => Some((c.saturating_sub(p) as f64 / wall_ns * 100.0) as f32),
+            (Some(c), Some(p)) => Some(pct_of_wall(c.saturating_sub(p))),
             _ => None,
         };
         prev_cpu = cpu;
-
         let threads: Vec<ThreadCpu> = perf_sys::threads();
+        let render_tid = RENDER_TID.load(Ordering::Relaxed);
         let mut rows: Vec<ThreadRow> = Vec::with_capacity(threads.len());
         let mut next_prev = HashMap::with_capacity(threads.len());
         for th in &threads {
@@ -560,23 +748,17 @@ fn sampler(
             next_prev.insert(th.id, th.cpu_ns);
             let name = if th.id == main_tid {
                 "main".to_string()
-            } else if th.id == RENDER_TID.load(Ordering::Relaxed) {
+            } else if th.id == render_tid {
                 "render".to_string()
-            } else if th.name.is_empty() {
-                format!("thread-{}", th.id)
             } else {
-                th.name.clone()
+                thread_label(&th.name, th.gcd)
             };
-            rows.push(ThreadRow { name, cpu_pct: (d as f64 / wall_ns * 100.0) as f32 });
+            rows.push(ThreadRow { name, cpu_pct: pct_of_wall(d) });
         }
         prev_threads = next_prev;
         let mut pools: HashMap<String, f32> = HashMap::new();
         for r in &rows {
-            let base = match r.name.rfind(" (") {
-                Some(i) if r.name.ends_with(')') => &r.name[..i],
-                _ => r.name.as_str(),
-            };
-            *pools.entry(base.to_string()).or_default() += r.cpu_pct;
+            *pools.entry(pool_of(&r.name)).or_default() += r.cpu_pct;
         }
         let mut pools: Vec<ThreadRow> = pools
             .into_iter()
@@ -586,58 +768,152 @@ fn sampler(
         pools.sort_by(|a, b| b.cpu_pct.total_cmp(&a.cpu_pct));
         rows.sort_by(|a, b| b.cpu_pct.total_cmp(&a.cpu_pct));
         rows.truncate(TOP_THREADS);
-
         let mem = perf_sys::process_mem();
-        let g = probe.as_mut().map(|p| p.sample()).unwrap_or_default();
-        let process_util_pct = match (g.process_gpu_ns, prev_gpu_ns) {
-            (Some(c), Some(p)) => Some((c.saturating_sub(p) as f64 / wall_ns * 100.0).min(100.0) as f32),
-            _ => None,
-        };
-        let gpu_frame_ms = match (g.process_gpu_ns, prev_gpu_ns) {
-            (Some(c), Some(p)) if !stalled && agg.frames > 0 => {
-                Some(c.saturating_sub(p) as f32 / agg.frames as f32 / 1e6)
-            }
-            _ => None,
-        };
-        prev_gpu_ns = g.process_gpu_ns;
-        let mb = |b: u64| b as f32 / 1_048_576.0;
 
+        // GPU: per-process busy time (all processes) and the driver's averaged utilisation.
+        let g = probe.as_mut().map(|p| p.sample()).unwrap_or_default();
+        let mut gpu_pct: HashMap<i32, (f32, String)> = HashMap::new();
+        let mut next_gpu = HashMap::with_capacity(g.clients.len());
+        for c in &g.clients {
+            if let Some(p) = prev_gpu.get(&c.pid) {
+                gpu_pct.insert(c.pid, (pct_of_wall(c.gpu_ns.saturating_sub(*p)), c.name.clone()));
+            }
+            next_gpu.insert(c.pid, c.gpu_ns);
+        }
+        prev_gpu = next_gpu;
+        let process_gpu = gpu_pct.get(&me).map(|(p, _)| p.min(100.0));
+        let (u, polls) = match util.take() {
+            Some((u, n)) => (Some(u), n),
+            None => (None, 0),
+        };
+
+        // Machine processes.
+        let all = procs.sample();
+        let total_cpu_pct = all.iter().map(|p| p.cpu_pct).sum::<f32>().max(0.0);
+        let mb = |b: u64| b as f32 / 1_048_576.0;
+        let mut table: Vec<ProcRow> = all
+            .iter()
+            .map(|p| ProcRow {
+                pid: p.pid,
+                name: p.name.clone(),
+                cpu_pct: Some(if p.pid == me { cpu_pct.unwrap_or(p.cpu_pct) } else { p.cpu_pct }),
+                mem_mb: Some(mb(p.mem)),
+                gpu_pct: gpu_pct.get(&p.pid).map(|g| g.0),
+                me: p.pid == me,
+            })
+            .collect();
+        for (pid, (pct, name)) in &gpu_pct {
+            if !all.iter().any(|p| p.pid == *pid) {
+                table.push(ProcRow { pid: *pid, name: name.clone(), gpu_pct: Some(*pct), me: *pid == me, ..default() });
+            }
+        }
+        let top = |key: fn(&ProcRow) -> f32| {
+            let mut t: Vec<&ProcRow> = table.iter().filter(|r| key(r) > 0.0 || r.me).collect();
+            t.sort_by(|a, b| key(b).total_cmp(&key(a)));
+            let mut out: Vec<ProcRow> = t.iter().take(top_n).map(|r| (*r).clone()).collect();
+            if !out.iter().any(|r| r.me)
+                && let Some(r) = t.iter().find(|r| r.me)
+            {
+                out.push((*r).clone());
+            }
+            out
+        };
+        let tables = ProcTables {
+            by_cpu: top(|r| r.cpu_pct.unwrap_or(0.0)),
+            by_mem: top(|r| r.mem_mb.unwrap_or(0.0)),
+            by_gpu: top(|r| r.gpu_pct.unwrap_or(0.0)),
+            total_cpu_pct,
+            count: all.len(),
+        };
+
+        // Smooth and assemble.
+        let fresh = !stalled && agg.secs > 0.0;
+        let fps = fresh.then(|| agg.frames as f32 / agg.secs);
+        let frame_avg = fps.filter(|f| *f > 0.0).map(|f| 1000.0 / f);
+        let gpu_frame = process_gpu.zip(frame_avg).map(|(p, ms)| p / 100.0 * ms);
+        let t = &mut tracks;
+        fn stat(t: &mut Track, v: Option<f32>) -> Stat {
+            match v {
+                Some(v) => t.push(v),
+                None => t.stat(),
+            }
+        }
         let snap = PerfSnapshot {
-            fps: agg.fps,
+            fps: stat(&mut t.fps, fps),
+            frame_avg_ms: stat(&mut t.frame_avg, frame_avg),
             frame_ms: agg.frame_ms.clone(),
-            cpu_pct,
-            cores,
-            threads: rows,
-            pools,
-            rss_mb: mem.map(|m| mb(m.0)),
-            footprint_mb: mem.map(|m| mb(m.1)),
+            cpu: CpuRow {
+                process: stat(&mut t.cpu, cpu_pct),
+                machine_pct: cpu_pct.unwrap_or(0.0) / cores as f32,
+                cores,
+                threads: rows,
+                pools,
+            },
+            ram: RamRow { footprint_mb: stat(&mut t.footprint, mem.map(|m| mb(m.1))), rss_mb: mem.map(|m| mb(m.0)) },
             gpu: GpuRow {
-                process_util_pct,
-                device_util_pct: g.device_util.map(|v| v as f32),
+                device: stat(&mut t.gpu_device, u.map(|u| u.device as f32)),
+                renderer: stat(&mut t.gpu_renderer, u.map(|u| u.renderer as f32)),
+                tiler: stat(&mut t.gpu_tiler, u.map(|u| u.tiler as f32)),
+                process: stat(&mut t.gpu_process, process_gpu),
+                frame_ms: stat(&mut t.gpu_frame, gpu_frame),
                 process_alloc_mb: g.process_alloc.map(mb),
-                device_in_use_mb: g.in_use_system_mem.map(mb),
-                frame_ms: gpu_frame_ms,
-                passes_ms: agg.gpu_frame_ms,
+                device_in_use_mb: stat(&mut t.gpu_mem, u.map(|u| mb(u.in_use))),
+                device_alloc_mb: u.map(|u| mb(u.alloc)),
+                polls,
+                passes_ms: agg.gpu_passes_ms,
                 passes: agg.passes.clone(),
             },
+            procs: tables,
             game: agg.game.clone(),
             hitches: if stalled { 0 } else { agg.hitches },
             overhead_us: agg.overhead_us,
             overhead_max_us: agg.overhead_max_us,
+            sampler_ms: work.elapsed().as_secs_f32() * 1000.0,
             stalled,
+            history: History {
+                frame_ms: t.frame_avg.history(),
+                cpu: t.cpu.history(),
+                gpu: t.gpu_process.history(),
+                ram: t.footprint.history(),
+            },
         };
+        if fresh && let Ok(mut r) = shared.1.lock() {
+            r.seconds += 1;
+            r.add("fps", fps);
+            r.add("frame_avg_ms", frame_avg);
+            r.add("frame_p50_ms", Some(snap.frame_ms.p50));
+            r.add("frame_p95_ms", Some(snap.frame_ms.p95));
+            r.add("frame_p99_ms", Some(snap.frame_ms.p99));
+            r.add("frame_max_ms", Some(snap.frame_ms.max));
+            r.add("cpu_pct", cpu_pct);
+            r.add("footprint_mb", mem.map(|m| mb(m.1)));
+            r.add("rss_mb", snap.ram.rss_mb);
+            r.add("gpu_process_pct", process_gpu);
+            r.add("gpu_device_pct", u.map(|u| u.device as f32));
+            r.add("gpu_renderer_pct", u.map(|u| u.renderer as f32));
+            r.add("gpu_tiler_pct", u.map(|u| u.tiler as f32));
+            r.add("gpu_frame_ms", gpu_frame);
+            r.add("gpu_process_alloc_mb", snap.gpu.process_alloc_mb);
+            r.add("gpu_device_in_use_mb", u.map(|u| mb(u.in_use)));
+            r.add("ai_ms", Some(snap.game.ai_ms));
+            r.add("physics_ms", Some(snap.game.physics_ms));
+            r.add("weapons_ms", Some(snap.game.weapons_ms));
+            r.add("monitor_overhead_us", Some(snap.overhead_us));
+            r.add("sampler_ms", Some(snap.sampler_ms));
+        }
         if let Some(gs) = &gauges {
             let set = |g: &ashlar_trace::Gauge, v: Option<f32>| {
                 if let Some(v) = v {
                     g.set(v as f64)
                 }
             };
-            set(&gs.cpu, snap.cpu_pct);
-            set(&gs.rss, snap.rss_mb);
-            set(&gs.footprint, snap.footprint_mb);
-            set(&gs.gpu_util, snap.gpu.process_util_pct.or(snap.gpu.device_util_pct));
+            set(&gs.cpu, cpu_pct);
+            set(&gs.rss, snap.ram.rss_mb);
+            set(&gs.footprint, mem.map(|m| mb(m.1)));
+            set(&gs.gpu_util, process_gpu);
+            set(&gs.gpu_device, u.map(|u| u.device as f32));
             set(&gs.gpu_mem, snap.gpu.process_alloc_mb);
-            set(&gs.gpu_ms, snap.gpu.frame_ms);
+            set(&gs.gpu_ms, gpu_frame);
             set(&gs.p99, Some(snap.frame_ms.p99));
             set(&gs.ai_ms, Some(snap.game.ai_ms));
         }

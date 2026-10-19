@@ -1,6 +1,9 @@
 //! Session log: `data_dir()/logs/session-<UTC timestamp>.jsonl`, one JSON object per line.
 //!
-//! - `{"t": 12.0, "ts": <unix ms>, "kind": "perf", ...}`: one per second from the perf sampler;
+//! - `{"t": 12.0, "ts": <unix ms>, "kind": "perf", ...}`: one per second from the perf sampler
+//!   (frame, CPU + threads, RAM, GPU device/renderer/tiler/process/memory, machine top-N
+//!   processes by CPU/RAM/GPU; see docs/PERF.md);
+//! - `{"kind": "perf.report", "seconds", "metrics": {name: {min, avg, p95, max, n}}}`: on `perf.report`;
 //! - `{"t": .., "ts": .., "kind": "event", "event": "match.start", ...}`: game events.
 //!
 //! Lines go over a channel to a background writer thread (the frame never touches the file).

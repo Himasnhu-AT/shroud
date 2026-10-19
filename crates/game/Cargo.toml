@@ -16,6 +16,8 @@ rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 directories = "6"
+# Perf monitor: machine-wide process CPU/RAM (same version/features ashlar-trace already pulls in).
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
 # Crash & performance reporting: always on (a no-op tracer unless SHROUD_TRACE_ENDPOINT/KEY are set).
 ashlar-trace = { path = "/Users/himanshu/codes/synthai/ashlar/crates/trace", features = ["sysinfo"] }
 # Test-only control port (TCP + MCP), behind the `control` feature.
