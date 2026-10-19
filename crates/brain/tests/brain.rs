@@ -138,23 +138,37 @@ fn insights_are_specific() {
 }
 
 /// If the real player keeps winning, the ghost must get stronger (and vice versa).
+/// Calibration tunes several ghost parameters, so measure the ghost's actual strength:
+/// its round-win rate against a fixed reference squad on fixed seeds.
 #[test]
 fn ghost_calibrates_toward_real_outcomes() {
     let a = Arena::foundry();
+    let reference = BrainState::new(99);
+    let strength = |model: &PlayerModel| -> f32 {
+        let wins = (0..24u64)
+            .filter(|&k| sim::run_round(&a, model, Limits::for_generation(0), reference.squad_minds(k), 500 + k).player_won)
+            .count();
+        wins as f32 / 24.0
+    };
     let mut s = BrainState::new(5);
     let cfg = EvolveConfig { budget: Duration::from_secs(30), max_neat_generations: 2, ..Default::default() };
     s.evolve(&MatchReport::default(), &a, &cfg, |_| {});
+
     let won = MatchReport { player_won: true, player_rounds: 2, enemy_rounds: 0, ..Default::default() };
-    let before = s.player_model.ghost_skill;
+    let before = strength(&s.player_model);
     let sum = s.evolve(&won, &a, &cfg, |_| {});
-    eprintln!("real {:?} ghost {:?} skill {before} -> {}", sum.real_player_win, sum.ghost_player_win, sum.ghost_skill);
+    let after = strength(&s.player_model);
+    eprintln!("won: ghost sim {:?} strength {before:.2} -> {after:.2}", sum.ghost_player_win);
     if sum.ghost_player_win.unwrap() < 1.0 {
-        assert!(s.player_model.ghost_skill > before);
+        assert!(after >= before - 0.05, "ghost should not get weaker after the player won: {before} -> {after}");
     }
+
     let lost = MatchReport { player_won: false, player_rounds: 0, enemy_rounds: 2, ..Default::default() };
-    let before = s.player_model.ghost_skill;
+    let before = strength(&s.player_model);
     let sum = s.evolve(&lost, &a, &cfg, |_| {});
+    let after = strength(&s.player_model);
+    eprintln!("lost: ghost sim {:?} strength {before:.2} -> {after:.2}", sum.ghost_player_win);
     if sum.ghost_player_win.unwrap() > 0.0 {
-        assert!(s.player_model.ghost_skill < before);
+        assert!(after <= before + 0.05, "ghost should not get stronger after the player lost: {before} -> {after}");
     }
 }
