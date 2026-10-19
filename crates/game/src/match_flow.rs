@@ -62,7 +62,7 @@ impl Plugin for MatchFlowPlugin {
     }
 }
 
-fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Telemetry>, brain: Res<Brain>, tracer: Option<Res<GameTracer>>) {
+pub(crate) fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Telemetry>, brain: Res<Brain>, tracer: Option<Res<GameTracer>>) {
     if flow.needs_new_match() {
         flow.match_no += 1;
         flow.round = 0;
@@ -82,12 +82,7 @@ fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Telemetry>, br
 
 fn merge(into: &mut Vec<EnemyReport>, r: &EnemyReport) {
     match into.iter_mut().find(|e| e.trait_id == r.trait_id && e.neat_id == r.neat_id) {
-        Some(e) => {
-            e.damage_dealt += r.damage_dealt;
-            e.kills += r.kills;
-            e.time_alive += r.time_alive;
-            e.time_engaged += r.time_engaged;
-        }
+        Some(e) => e.absorb(r),
         None => into.push(r.clone()),
     }
 }
