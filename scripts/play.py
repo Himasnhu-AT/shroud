@@ -46,7 +46,16 @@ def main():
     f = s.makefile("rw")
     n = 0
     try:
-        time.sleep(3)
+        # Wait until a round is live (first windowed frames can be slow while shaders compile;
+        # commands sent before the round starts get undone by its reset).
+        for _ in range(240):
+            n += 1
+            f.write(json.dumps({"id": n, "key": key, "method": "engine.execute", "params": {"command": "game.state"}}) + "\n"); f.flush()
+            st = json.loads(f.readline()).get("result") or {}
+            if st.get("state") == "Playing" and (st.get("frame") or 0) > 30:
+                break
+            time.sleep(0.5)
+        time.sleep(1)
         for st in steps:
             if "sleep" in st:
                 time.sleep(st["sleep"]); continue
