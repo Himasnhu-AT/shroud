@@ -25,6 +25,7 @@ and it has studied your habits: where you camp, the ranges you fight at, and whi
 | [ASSETS](docs/ASSETS.md) | CC0 asset sources, paths, fallbacks |
 | [BUILD](docs/BUILD.md) | Building safely: memguard, shared target dir, testing |
 | [TASKS](docs/TASKS.md) | Work breakdown, parallel streams, milestones, verification |
+| [ENGINE](docs/ENGINE.md) | Research: our own engine ("Kiln") on Bevy/wgpu, DX12/Vulkan/Metal ([ADR 0001](docs/adr/0001-engine-strategy.md)) |
 
 ## Quick start (once code lands)
 ```sh
