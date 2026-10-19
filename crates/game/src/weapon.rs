@@ -618,7 +618,7 @@ fn spawn_shot_fx(
         let (tint, alpha, size) = if hit.flesh {
             (Color::srgba(0.45, 0.03, 0.03, 1.0), 0.8, 0.25)
         } else {
-            (Color::srgba(0.62, 0.6, 0.56, 1.0), 0.55, 0.35)
+            (Color::srgba(0.62, 0.6, 0.56, 1.0), 0.6, 0.5)
         };
         let puff_mat = mats.add(StandardMaterial {
             base_color: tint,
@@ -659,7 +659,7 @@ fn spawn_shot_fx(
                     MeshMaterial3d(fx.decal.clone()),
                     Transform::from_translation(hit.pos + n * 0.004)
                         .looking_to(-n, up)
-                        .with_scale(Vec3::splat(rand::random_range(0.09..0.13))),
+                        .with_scale(Vec3::splat(rand::random_range(0.14..0.2))),
                     NotShadowCaster,
                 ))
                 .id();
@@ -737,13 +737,13 @@ fn animate_viewmodel(
         + Vec3::new(vm.sway.x * 0.35, -vm.sway.y * 0.35, 0.0)
         + bob
         + Vec3::new(0.0, 0.012 * k, 0.05 * k)
-        + Vec3::new(-0.04 * r, -0.07 * r + 0.02 * slap, 0.03 * r)
+        + Vec3::new(-0.03 * r, -0.09 * r + 0.02 * slap, 0.03 * r)
         + Vec3::new(0.0, -0.05 * w, w * 0.6);
     tf.rotation = Quat::from_euler(
         EulerRot::YXZ,
         vm.sway.x * 1.2 + vm.jitter * 0.012,
-        -vm.sway.y * 1.0 + 0.07 * k + 0.25 * r + 0.06 * slap - 0.5 * w,
-        vm.sway.x * 1.6 + vm.jitter * 0.03 + 0.4 * r,
+        -vm.sway.y * 1.0 + 0.07 * k + 0.12 * r + 0.06 * slap - 0.5 * w,
+        vm.sway.x * 1.6 + vm.jitter * 0.03 + 0.5 * r,
     );
 
     // Muzzle flash.
@@ -801,7 +801,7 @@ fn update_fx(
                 let shrink = 1.0 - life;
                 *tf = Transform::from_translation(tf.translation)
                     .looking_to(v.normalize_or(Vec3::Y), Vec3::Y)
-                    .with_scale(Vec3::new(0.012 * shrink, 0.012 * shrink, 0.07 * shrink + 0.01));
+                    .with_scale(Vec3::new(0.02 * shrink, 0.02 * shrink, 0.14 * shrink + 0.02));
             }
             FxKind::Puff { vel, size, alpha, mat } => {
                 tf.translation += *vel * dt;

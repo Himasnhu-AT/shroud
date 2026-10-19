@@ -92,7 +92,7 @@ fn spawn_sky_and_sun(mut commands: Commands, media: Option<ResMut<Assets<Scatter
     ));
     commands.insert_resource(GlobalAmbientLight {
         color: Color::srgb(0.7, 0.78, 0.95),
-        brightness: 1500.0,
+        brightness: 800.0,
         ..default()
     });
 }
