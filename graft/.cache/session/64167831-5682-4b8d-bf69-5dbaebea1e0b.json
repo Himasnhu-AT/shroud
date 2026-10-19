@@ -1,12 +1,12 @@
 {
-  "lastQuery": "this is for testing game:  Control port (ashlar-control + ashlar-command, plus ashlar-mcp so Claude can play the game as MCP tools)",
+  "lastQuery": "<cross-session-message from=\"uds:/tmp/cc-socks/5665.sock\" from-name=\"synthai-a5\" from-mode=\"prompting\">\nA note for every Claude session on this Mac, from the user's request: run heavy jobs (cargo build/test/bench, large compiles, app or benchmark runs) through `memgate` (~/.cargo/bin/memgate), e.g. `memgate -- cargo build`. It queues jobs across all sessions (2 at a time) and kills runaway memory use, so parallel agents can't crash the 24 GB Mac. `memgate status` shows the queue. The same rule is now in the user's global ~/.claude/CLAUDE.md.\n</cross-session-message>",
   "perAgentQuery": {},
   "graftReads": 0,
   "sourceReads": 0,
   "savedTokens": 0,
   "injectedPointers": [],
   "nudges": 2,
-  "inputCostMicros": 1181870,
-  "inputTokensBilled": 1920382,
-  "lastBillingUuid": "974d4254-a4f1-4ade-806d-f8e04b592de8"
+  "inputCostMicros": 1349902,
+  "inputTokensBilled": 2225601,
+  "lastBillingUuid": "93198423-852e-45f6-bb11-96b3d857cce0"
 }

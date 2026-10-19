@@ -1,7 +1,7 @@
 # Tasks & milestones
 
 ## Done
-- Workspace, cargo profiles, `.cargo/config.toml`, `scripts/memguard.sh`, `CLAUDE.md`
+- Workspace, cargo profiles, `.cargo/config.toml`, memgate, `CLAUDE.md`
 - `brain::math`, `brain::arena` (Foundry layout, zones, cover points, LOS, collision), `brain::nav` (grid + A* + smoothing)
 - `brain::neat` API stub (contract in the file header)
 - Base commit `f18e9ad`
@@ -40,8 +40,8 @@ After A + D merge:
 - [ ] F3 overlay shows goals/paths
 - [ ] Control port: headless game driven end-to-end by `tests/control.rs`
 - [ ] Trace: local ashlar-trace-server shows session, frame histogram, test crash
-- [ ] Builds never trip memguard on a normal run
+- [ ] Builds never trip memgate on a normal run
 
 ## Agent rules
-- Read `CLAUDE.md`; use memguard; test in batches; commit on the worktree branch.
+- Read `CLAUDE.md`; use memgate; test in batches; commit on the worktree branch.
 - Keep reports short (< 200 words): branch, files, public API added, what's unfinished.

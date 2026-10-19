@@ -19,7 +19,7 @@ Upgrade path: once Avian releases support for Bevy 0.20, bump both crates togeth
 shroud/
   Cargo.toml              workspace, profiles tuned for low RAM/disk
   .cargo/config.toml      shared target dir, jobs = 6
-  scripts/memguard.sh     RAM/disk guard for every cargo command
+  scripts/memgate.sh     RAM/disk guard for every cargo command
   crates/brain/           pure Rust AI, no Bevy dependency
   crates/game/            Bevy app, binary `shroud`
   assets/                 CC0 models (optional; primitives fallback)
