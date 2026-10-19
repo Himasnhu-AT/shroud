@@ -159,6 +159,14 @@ pub struct PlayerModel {
     /// EMA of shots per range bin (sample size behind `accuracy`).
     #[serde(default)]
     pub shots: [f32; 6],
+    /// Ghost calibration: scales the trainer ghost's aim and reaction so sim outcomes
+    /// match real ones (1.0 = the raw model).
+    #[serde(default = "one")]
+    pub ghost_skill: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 /// Headline numbers for one match (kept in history for trends).
@@ -206,6 +214,7 @@ impl Default for PlayerModel {
             matches_observed: 0,
             facing: [0.125; 8],
             shots: [0.0; 6],
+            ghost_skill: 1.0,
         }
     }
 }

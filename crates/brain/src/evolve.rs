@@ -70,6 +70,10 @@ pub struct EvolveSummary {
     pub deltas: Vec<TraitDelta>,
     /// Share of sim rounds the squad won against the ghost in the last trained generation.
     pub sim_win_rate: f32,
+    /// Ghost calibration: real player round-win rate vs the ghost's against the same squad.
+    pub real_player_win: Option<f32>,
+    pub ghost_player_win: Option<f32>,
+    pub ghost_skill: f32,
     pub neat_generations: u32,
     pub elapsed_ms: u128,
 }
@@ -188,6 +192,24 @@ impl BrainState {
         // 1. Learn the player.
         self.player_model.ingest(&report.telemetry);
 
+        // 1b. Calibrate the ghost: replay the squad the player just fought against the ghost and
+        // nudge ghost skill until the ghost wins as often as the real player did.
+        let rounds = report.player_rounds + report.enemy_rounds;
+        let (mut real_player_win, mut ghost_player_win) = (None, None);
+        if rounds > 0 && self.evaluated {
+            let real = report.player_rounds as f32 / rounds as f32;
+            let limits = self.limits();
+            let n = 16u64;
+            let ghost_wins = (0..n)
+                .filter(|&k| sim::run_round(arena, &self.player_model, limits, self.squad_minds(9000 + k), 7000 + k).player_won)
+                .count();
+            let sim_rate = ghost_wins as f32 / n as f32;
+            let m = &mut self.player_model;
+            m.ghost_skill = (m.ghost_skill * (1.5 * (real - sim_rate)).exp()).clamp(0.5, 3.0);
+            real_player_win = Some(real);
+            ghost_player_win = Some(sim_rate);
+        }
+
         // 2. Real-match fitness bonus for the deployed genomes (blended with their sim fitness).
         if self.evaluated {
             for e in &report.enemies {
@@ -256,6 +278,9 @@ impl BrainState {
             insights: self.player_model.insights(arena, Some(&report.telemetry), prev.as_ref(), self.squad_reaction_ms()),
             deltas,
             sim_win_rate,
+            real_player_win,
+            ghost_player_win,
+            ghost_skill: self.player_model.ghost_skill,
             neat_generations: gens,
             elapsed_ms: start.elapsed().as_millis(),
         }

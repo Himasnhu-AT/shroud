@@ -136,3 +136,25 @@ fn insights_are_specific() {
     assert!(ins.iter().any(|s| s.contains("deaths were in the east lane")), "{ins:?}");
     assert!(ins.iter().any(|s| s.contains("looked north")), "{ins:?}");
 }
+
+/// If the real player keeps winning, the ghost must get stronger (and vice versa).
+#[test]
+fn ghost_calibrates_toward_real_outcomes() {
+    let a = Arena::foundry();
+    let mut s = BrainState::new(5);
+    let cfg = EvolveConfig { budget: Duration::from_secs(30), max_neat_generations: 2, ..Default::default() };
+    s.evolve(&MatchReport::default(), &a, &cfg, |_| {});
+    let won = MatchReport { player_won: true, player_rounds: 2, enemy_rounds: 0, ..Default::default() };
+    let before = s.player_model.ghost_skill;
+    let sum = s.evolve(&won, &a, &cfg, |_| {});
+    eprintln!("real {:?} ghost {:?} skill {before} -> {}", sum.real_player_win, sum.ghost_player_win, sum.ghost_skill);
+    if sum.ghost_player_win.unwrap() < 1.0 {
+        assert!(s.player_model.ghost_skill > before);
+    }
+    let lost = MatchReport { player_won: false, player_rounds: 0, enemy_rounds: 2, ..Default::default() };
+    let before = s.player_model.ghost_skill;
+    let sum = s.evolve(&lost, &a, &cfg, |_| {});
+    if sum.ghost_player_win.unwrap() > 0.0 {
+        assert!(s.player_model.ghost_skill < before);
+    }
+}

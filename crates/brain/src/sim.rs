@@ -122,7 +122,7 @@ pub struct Ghost {
 impl Ghost {
     fn new(pos: V2, model: &PlayerModel, seed: u64) -> Self {
         let mut rng = rng_from_seed(seed ^ 0x9E37_79B9);
-        let reaction = model.reaction_s * (0.8 + 0.4 * rng.random::<f32>());
+        let reaction = model.reaction_s / model.ghost_skill.max(0.1) * (0.8 + 0.4 * rng.random::<f32>());
         let mids = [3.0, 7.5, 12.5, 17.5, 25.0, 32.0];
         let b = (0..6).max_by(|&a, &b| model.kill_share[a].total_cmp(&model.kill_share[b])).unwrap_or(2);
         Ghost {
@@ -309,7 +309,7 @@ pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: 
                 let want_fire = ghost.target_seen >= ghost.reaction;
                 if ghost.body.try_fire(want_fire) {
                     ghost_shot = true;
-                    let acc = model.accuracy[range_bin(dist)];
+                    let acc = (model.accuracy[range_bin(dist)] * model.ghost_skill).min(0.9);
                     if ghost.rng.random::<f32>() < acc {
                         let e = &mut enemies[i];
                         let dmg = if rng.random::<f32>() < 0.12 { PLAYER_DAMAGE * 2.0 } else { PLAYER_DAMAGE };

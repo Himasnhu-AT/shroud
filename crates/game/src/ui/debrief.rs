@@ -51,7 +51,15 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                 s.neat_generations,
                 s.elapsed_ms as f32 / 1000.0,
                 s.sim_win_rate * 100.0
-            ),
+            ) + &match (s.real_player_win, s.ghost_player_win) {
+                (Some(r), Some(g)) => format!(
+                    "\nYour ghost: you won {:.0}% of rounds, the ghost won {:.0}% vs the same squad -> ghost skill now {:.2}",
+                    r * 100.0,
+                    g * 100.0,
+                    s.ghost_skill
+                ),
+                _ => String::new(),
+            },
         ),
         None => (vec!["Evolution failed this time; same squad again.".into()], vec![], String::new()),
     };
