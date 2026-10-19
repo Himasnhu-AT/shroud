@@ -1,5 +1,10 @@
 # Engine research: our own high-performance engine on top of Bevy?
 
+> **Decision (2026-10-19):** use **stock Bevy**. No Kiln façade, no custom renderer. From the ideas below we keep only
+> the **control port** and **crash/performance reporting**, reusing ashlar's crates. See
+> [CONTROL_AND_TELEMETRY.md](CONTROL_AND_TELEMETRY.md) and [ADR 0001](adr/0001-engine-strategy.md).
+> The rest of this page is kept as the research record.
+
 **Question:** can we take Bevy and build our own engine (ashlar-style: one dependency, opinionated,
 fast to launch a game) that is hyper-performant across DX12, Vulkan (AMD/NVIDIA), Metal, and Linux?
 

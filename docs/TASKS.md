@@ -19,6 +19,7 @@ After A + D merge:
 |---|---|
 | **E. Trainer** | `sim` + ghost player + `evolve` + `BrainState` save/load + `--sim-bench`; test "gen-10 beats gen-0" |
 | **F. Enemy integration** | `game/enemy/*`: spawn, perception (raycast LOS, vision cone, hearing), brain bridge, animation |
+| **H. Ops** | control port + MCP + headless mode, ashlar-trace plugin (see CONTROL_AND_TELEMETRY.md) |
 | **G. Loop & UI** | telemetry, match flow (best of 3), Evolving screen (background thread + progress), Debrief, F3 overlay |
 
 ## Milestones
@@ -37,6 +38,8 @@ After A + D merge:
 - [ ] Game: 3 matches played; generation increments; debrief shows insights + trait deltas
 - [ ] Restart the game: generation and model persist
 - [ ] F3 overlay shows goals/paths
+- [ ] Control port: headless game driven end-to-end by `tests/control.rs`
+- [ ] Trace: local ashlar-trace-server shows session, frame histogram, test crash
 - [ ] Builds never trip memguard on a normal run
 
 ## Agent rules

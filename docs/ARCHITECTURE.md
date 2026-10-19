@@ -9,6 +9,8 @@
 | NEAT | in-house (~600 lines) | Rust NEAT crates are alpha or stale |
 | RNG | rand 0.9 + rand_chacha (seeded) | deterministic sims and tests |
 | Save | serde + serde_json | human-readable `brain.json` |
+| Control port | `ashlar-control` + `ashlar-command` + `ashlar-mcp` | agents/tests drive the game |
+| Crash/perf reporting | `ashlar-trace` (self-hosted server) | panics, hangs, frame times, match events |
 
 Upgrade path: once Avian releases support for Bevy 0.20, bump both crates together.
 
@@ -41,7 +43,8 @@ shroud/
 
 ### `game` (Bevy)
 `main`, `state` (Menu → Playing → Evolving → Debrief), `map`, `player`, `weapon`,
-`telemetry`, `match_flow`, `enemy/{spawn, perception, brain_bridge, animation}`, `ui/{hud, debrief, debug}`.
+`telemetry` (player habits for the AI), `match_flow`, `enemy/{spawn, perception, brain_bridge, animation}`, `ui/{hud, debrief, debug}`,
+`ops/{control, commands, trace}` (control port + crash/perf reporting, see [CONTROL_AND_TELEMETRY.md](CONTROL_AND_TELEMETRY.md)).
 
 ## Key design rule: one mind, two worlds
 Enemy decisions live only in `brain::mind::EnemyMind`. Both worlds feed it the same
