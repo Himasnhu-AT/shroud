@@ -785,7 +785,7 @@ pub const STANDOFF_M: f32 = 2.0;
 pub fn standoff(move_dir: V2, pos: V2, player: V2) -> V2 {
     let to = player - pos;
     let d = to.len();
-    if d < 1e-3 || d > STANDOFF_M + 0.75 {
+    if !(1e-3..=STANDOFF_M + 0.75).contains(&d) {
         return move_dir;
     }
     let toward = to * (1.0 / d);

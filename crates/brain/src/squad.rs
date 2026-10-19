@@ -574,8 +574,8 @@ impl SquadCoordinator {
         for &i in ranked.iter().take(k) {
             next[i] = true;
         }
-        for i in 0..n {
-            self.token_t[i] = if next[i] && self.tokens[i] { self.token_t[i] + dt } else { 0.0 };
+        for ((t, &now), &had) in self.token_t.iter_mut().zip(&next).zip(&self.tokens).take(n) {
+            *t = if now && had { *t + dt } else { 0.0 };
         }
         self.tokens = next;
     }
