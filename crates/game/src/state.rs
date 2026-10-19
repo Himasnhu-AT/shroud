@@ -25,7 +25,8 @@ pub struct StatePlugin;
 impl Plugin for StatePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GameState>()
-            .add_systems(Startup, skip_menu_when_headless);
+            .add_systems(Startup, skip_menu_when_headless)
+            .add_systems(Last, quit_after);
     }
 }
 
@@ -34,5 +35,14 @@ impl Plugin for StatePlugin {
 fn skip_menu_when_headless(h: Res<Headless>, mut next: ResMut<NextState<GameState>>) {
     if h.0 || std::env::args().any(|a| a == "--play") {
         next.set(GameState::Playing);
+    }
+}
+
+/// `--quit-after <seconds>`: exit after that much real time (soak/smoke runs).
+fn quit_after(time: Res<Time<Real>>, mut exit: MessageWriter<AppExit>, mut limit: Local<Option<Option<f32>>>) {
+    let limit = *limit.get_or_insert_with(|| crate::ops::arg_value("quit-after").and_then(|s| s.parse().ok()));
+    if limit.is_some_and(|l| time.elapsed_secs() > l) {
+        info!("quit-after reached");
+        exit.write(AppExit::Success);
     }
 }

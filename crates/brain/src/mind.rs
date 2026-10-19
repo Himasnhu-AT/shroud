@@ -73,6 +73,8 @@ pub struct MindDebug {
     pub path: Vec<V2>,
     pub predicted: Option<V2>,
     pub micro: [f32; NEAT_OUTPUTS],
+    pub seen_time: f32,
+    pub aim_off: f32,
 }
 
 pub struct EnemyMind {
@@ -134,7 +136,8 @@ impl EnemyMind {
         if o.player_visible {
             self.seen_time += o.dt;
         } else {
-            self.seen_time = 0.0;
+            // A brief occlusion doesn't make them start their reaction over.
+            self.seen_time = (self.seen_time - 2.0 * o.dt).max(0.0);
         }
         let engaged = o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S;
         let aiming_at_me = V2::from_angle(o.player_facing).dot(-dir_p);
@@ -248,6 +251,8 @@ impl EnemyMind {
         // The net can veto a shot only when it's strongly against it (e.g. to stay hidden).
         let fire_gate = if engaged { micro[2] > -0.6 } else { true };
         let ready = o.player_visible && self.seen_time >= t.reaction_time && aim_off < 0.07 && fire_gate && o.ammo_frac > 0.0;
+        self.debug.seen_time = self.seen_time;
+        self.debug.aim_off = aim_off;
         let mut fire = false;
         if self.burst_pause > 0.0 {
             self.burst_pause -= o.dt;
@@ -263,8 +268,8 @@ impl EnemyMind {
         }
 
         // Spread: base error, worse while moving, better once settled on target.
-        let settle = 1.0 + (1.0 - (self.on_target_time / 0.6).min(1.0));
-        let moving = 1.0 + move_dir.len() * 0.6;
+        let settle = 1.0 + 0.6 * (1.0 - (self.on_target_time / 0.6).min(1.0));
+        let moving = 1.0 + move_dir.len() * 0.35;
         let sigma = t.aim_error_deg.to_radians() * settle * moving;
         let shot_dir = V2::from_angle(self.aim_yaw + gauss(&mut self.rng) * sigma);
         let shot_pitch_err = gauss(&mut self.rng) * sigma * 0.6;

@@ -4,6 +4,8 @@
 //! - `control` + `commands`: the test-only control port and MCP server (`control` feature).
 
 #[cfg(feature = "control")]
+pub mod ai_commands;
+#[cfg(feature = "control")]
 pub mod commands;
 #[cfg(feature = "control")]
 pub mod control;
@@ -26,7 +28,10 @@ impl Plugin for OpsPlugin {
             .init_resource::<DebugOverlay>()
             .add_plugins(trace::TracePlugin);
         #[cfg(feature = "control")]
-        app.add_plugins(control::ControlPlugin);
+        {
+            app.add_plugins(control::ControlPlugin);
+            ai_commands::register(app);
+        }
     }
 }
 
@@ -42,6 +47,11 @@ pub struct DebugOverlay(pub bool);
 /// `~/.local/share/shroud` on Linux, `%APPDATA%\shroud\data` on Windows), created if missing.
 /// Falls back to `./shroud-data` when the platform has no home folder.
 pub fn data_dir() -> PathBuf {
+    if let Some(d) = std::env::var_os("SHROUD_DATA_DIR") {
+        let d = PathBuf::from(d);
+        let _ = std::fs::create_dir_all(&d);
+        return d;
+    }
     let dir = directories::ProjectDirs::from("", "", "shroud")
         .map(|d| d.data_dir().to_path_buf())
         .unwrap_or_else(|| PathBuf::from("shroud-data"));

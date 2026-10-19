@@ -47,7 +47,11 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
     let seen_recently = i.visible || i.time_since_seen < 3.0;
     let range_fit = 1.0 - ((i.dist - t.preferred_range).abs() / 20.0).min(1.0);
     match goal {
-        Goal::Attack if i.visible => 0.35 + 0.25 * t.aggression + 0.2 * i.hp + 0.2 * range_fit,
+        Goal::Attack if i.visible => {
+            // Well beyond preferred range: close in (Push) rather than plink from afar.
+            let too_far = ((i.dist - t.preferred_range - 6.0).max(0.0) / 15.0).min(1.0);
+            0.35 + 0.25 * t.aggression + 0.2 * i.hp + 0.2 * range_fit - 0.5 * too_far
+        }
         Goal::Push if seen_recently => {
             let far = if i.dist > t.preferred_range + 4.0 { 0.25 } else { 0.0 };
             0.15 + 0.45 * t.aggression * (1.0 - i.player_hp) + far + 0.15 * i.hp

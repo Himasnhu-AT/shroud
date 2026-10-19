@@ -29,6 +29,7 @@ pub struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Squad>()
+            .init_resource::<EnemyFreeze>()
             .configure_sets(
                 Update,
                 EnemySet.after(PlayerSet::Move).before(WeaponSet).run_if(in_state(GameState::Playing)),
@@ -43,6 +44,10 @@ impl Plugin for EnemyPlugin {
 /// Enemy AI runs here: after player movement, before weapons apply damage.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EnemySet;
+
+/// Test hook: frozen enemies still perceive but don't move or shoot.
+#[derive(Resource, Default)]
+pub struct EnemyFreeze(pub bool);
 
 #[derive(Component)]
 pub struct Enemy {
@@ -214,6 +219,7 @@ fn think_and_act(
     players: Query<(Entity, &Transform, &PlayerMotor, &Health), With<Player>>,
     mut enemies: Query<(Entity, &mut Transform, &mut Mind, &mut EnemyCombat, &Children, &Health), (With<Enemy>, Without<Player>)>,
     inbox: Res<Inbox>,
+    freeze: Res<EnemyFreeze>,
     mut damage_out: MessageWriter<Damage>,
     mut shots_out: MessageWriter<ShotFired>,
     mut tracers: MessageWriter<Tracer>,
@@ -225,7 +231,8 @@ fn think_and_act(
     let Ok((player, ptf, motor, php)) = players.single() else { return };
     let p_center = ptf.translation;
     let p_ground = to_ground(p_center);
-    let p_head = p_center + Vec3::Y * if motor.crouched { 0.35 } else { 0.75 };
+    // Aim inside the capsule (its very top grazes): ~1.45 m standing, ~0.95 m crouched.
+    let p_head = p_center + Vec3::Y * if motor.crouched { 0.25 } else { 0.55 };
     let p_fwd = ptf.forward();
     let p_facing = V2::new(p_fwd.x, p_fwd.z).angle();
     let p_vel = V2::new(motor.velocity.x, motor.velocity.z);
@@ -301,11 +308,12 @@ fn think_and_act(
                 .collect(),
             taking_fire: c.hit_t < 0.6,
         };
-        let act: Action = mind.0.think(&obs, &cx);
+        let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
         if log_ai {
             info!(
-                "ai {e}: pos ({:.1},{:.1}) goal {:?} sees {} hp {:.0} path {} dest {:?} move ({:.2},{:.2}) fire {}",
-                pos.x, pos.y, mind.0.goal(), sees, hp.hp, mind.0.debug.path.len(), mind.0.debug.dest, act.move_dir.x, act.move_dir.y, act.fire
+                "ai {e}: pos ({:.1},{:.1}) goal {:?} sees {} hp {:.0} path {} dest {:?} move ({:.2},{:.2}) fire {} seen_t {:.2} aim_off {:.3} gate {:.2} ammo {} reload {:.1} react {:.2}",
+                pos.x, pos.y, mind.0.goal(), sees, hp.hp, mind.0.debug.path.len(), mind.0.debug.dest, act.move_dir.x, act.move_dir.y, act.fire,
+                mind.0.debug.seen_time, mind.0.debug.aim_off, mind.0.debug.micro[2], c.ammo, c.reload, mind.0.traits.reaction_time
             );
         }
 
@@ -317,7 +325,7 @@ fn think_and_act(
         let center = tf.translation + Vec3::Y * 0.95;
         let slid = collide_and_slide(&spatial, &shape, center, v2_dir3(c.vel) * dt, &filter);
         tf.translation = Vec3::new(slid.position.x, 0.0, slid.position.z);
-        if act.look_dir.len() > 0.1 {
+        if !freeze.0 && act.look_dir.len() > 0.1 {
             tf.look_to(v2_dir3(act.look_dir), Vec3::Y);
         }
 

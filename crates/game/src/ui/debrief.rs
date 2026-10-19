@@ -111,6 +111,7 @@ fn input(
     mouse: Option<Res<ButtonInput<MouseButton>>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut brain: ResMut<Brain>,
+    tracer: Option<Res<crate::ops::trace::GameTracer>>,
     mut next: ResMut<NextState<GameState>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -126,7 +127,7 @@ fn input(
     if mouse.just_pressed(MouseButton::Left) || keys.just_pressed(KeyCode::Enter) {
         next.set(GameState::Playing);
     } else if keys.just_pressed(KeyCode::KeyR) {
-        brain.reset();
+        brain.reset(tracer.as_deref());
         next.set(GameState::Menu);
     } else if keys.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);

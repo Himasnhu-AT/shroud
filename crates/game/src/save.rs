@@ -4,20 +4,9 @@ use bevy::prelude::*;
 use brain::evolve::{BrainState, EvolveSummary};
 use std::path::PathBuf;
 
-/// `SHROUD_DATA_DIR` overrides (tests); otherwise the OS app-data folder.
-pub fn data_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("SHROUD_DATA_DIR") {
-        return PathBuf::from(d);
-    }
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
-    if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/shroud")
-    } else if cfg!(windows) {
-        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or(home).join("shroud")
-    } else {
-        std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share")).join("shroud")
-    }
-}
+use crate::ops::trace::{GameEvent, GameTracer, trace_event};
+
+pub use crate::ops::data_dir;
 
 #[derive(Resource)]
 pub struct Brain {
@@ -28,11 +17,7 @@ pub struct Brain {
 impl Brain {
     pub fn load() -> Self {
         let path = data_dir().join("brain.json");
-        let seed = std::env::args()
-            .skip_while(|a| a != "--seed")
-            .nth(1)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(rand::random);
+        let seed = crate::ops::arg_value("seed").and_then(|s| s.parse().ok()).unwrap_or_else(rand::random);
         let mut state = BrainState::load_or_new(&path, seed);
         if state.generation == 0 && !state.evaluated {
             let t = std::time::Instant::now();
@@ -50,7 +35,10 @@ impl Brain {
     }
 
     /// Back up the current brain and start over.
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, tracer: Option<&GameTracer>) {
+        if let Some(t) = tracer {
+            trace_event(t, GameEvent::AiReset, &[("from_generation", ashlar_trace::Prop::Int(self.state.generation as i64))]);
+        }
         let _ = std::fs::copy(&self.path, self.path.with_extension("json.bak"));
         self.state = BrainState::new(rand::random());
         self.state.bootstrap(&brain::arena::Arena::foundry(), &brain::evolve::EvolveConfig::default());

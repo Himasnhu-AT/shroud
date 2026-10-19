@@ -4,7 +4,10 @@
 use bevy::prelude::*;
 use brain::evolve::{EnemyReport, MatchReport};
 
+use ashlar_trace::Prop;
+
 use crate::enemy::{self, Enemy, EnemyCombat, Squad};
+use crate::ops::trace::{GameEvent, GameTracer, trace_event};
 use crate::map::to_ground;
 use crate::player::Player;
 use crate::save::Brain;
@@ -59,7 +62,7 @@ impl Plugin for MatchFlowPlugin {
     }
 }
 
-fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Telemetry>) {
+fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Telemetry>, brain: Res<Brain>, tracer: Option<Res<GameTracer>>) {
     if flow.needs_new_match() {
         flow.match_no += 1;
         flow.round = 0;
@@ -68,6 +71,9 @@ fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Telemetry>) {
         flow.enemies.clear();
         flow.started = true;
         telemetry.0 = Default::default();
+        if let Some(t) = &tracer {
+            trace_event(t, GameEvent::MatchStart, &[("generation", Prop::Int(brain.state.generation as i64 + 1))]);
+        }
     }
     flow.round += 1;
     flow.round_over = None;
@@ -94,6 +100,7 @@ fn check_round_end(
     enemies: Query<&EnemyCombat, With<Enemy>>,
     mut telemetry: ResMut<Telemetry>,
     visuals: Option<Res<crate::state::Headless>>,
+    tracer: Option<Res<GameTracer>>,
 ) {
     if flow.round_over.is_some() {
         return;
@@ -115,6 +122,12 @@ fn check_round_end(
         merge(&mut flow.enemies, r);
     }
     flow.round_over = Some((ROUND_END_PAUSE, player_won));
+    if let Some(t) = &tracer {
+        if !player_won {
+            trace_event(t, GameEvent::PlayerDied, &[("round", Prop::Int(flow.round as i64))]);
+        }
+        trace_event(t, GameEvent::RoundEnd, &[("round", Prop::Int(flow.round as i64)), ("player_won", Prop::Bool(player_won))]);
+    }
     if visuals.is_some_and(|h| !h.0) {
         let text = format!(
             "{}\n{} – {}",
@@ -142,6 +155,7 @@ fn tick_round_over(
     telemetry: Res<Telemetry>,
     mut pending: ResMut<PendingReport>,
     mut next: ResMut<NextState<GameState>>,
+    tracer: Option<Res<GameTracer>>,
 ) {
     let Some((left, _)) = flow.round_over.as_mut() else { return };
     *left -= time.delta_secs();
@@ -158,6 +172,9 @@ fn tick_round_over(
             player_rounds: flow.player_rounds,
             enemy_rounds: flow.enemy_rounds,
         });
+        if let Some(t) = &tracer {
+            trace_event(t, GameEvent::MatchEnd, &[("player_won", Prop::Bool(player_won)), ("player_rounds", Prop::Int(flow.player_rounds as i64)), ("enemy_rounds", Prop::Int(flow.enemy_rounds as i64))]);
+        }
         next.set(GameState::Evolving);
     } else {
         // Re-entering Playing resets player, rifle and HUD, and respawns the squad.

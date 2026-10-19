@@ -5,23 +5,21 @@ use brain::utility::Goal;
 
 use super::{Enemy, EnemyCombat, Mind};
 use crate::map::to_world;
+use crate::ops::DebugOverlay;
 use crate::state::has_visuals;
-
-#[derive(Resource, Default)]
-pub struct EnemyDebug(pub bool);
 
 pub struct EnemyDebugPlugin;
 
 impl Plugin for EnemyDebugPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<EnemyDebug>().add_systems(
+        app.init_resource::<DebugOverlay>().add_systems(
             Update,
-            (toggle, draw.run_if(|d: Res<EnemyDebug>| d.0)).chain().run_if(has_visuals),
+            (toggle, draw.run_if(|d: Res<DebugOverlay>| d.0)).chain().run_if(has_visuals),
         );
     }
 }
 
-fn toggle(keys: Res<ButtonInput<KeyCode>>, mut d: ResMut<EnemyDebug>) {
+fn toggle(keys: Res<ButtonInput<KeyCode>>, mut d: ResMut<DebugOverlay>) {
     if keys.just_pressed(KeyCode::F3) {
         d.0 = !d.0;
     }

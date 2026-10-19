@@ -46,7 +46,13 @@ fn start(mut commands: Commands, brain: Res<Brain>, mut pending: ResMut<PendingR
     commands.insert_resource(Job { handle, progress });
 }
 
-fn poll(mut job: ResMut<Job>, mut brain: ResMut<Brain>, mut last: ResMut<LastEvolve>, mut next: ResMut<NextState<GameState>>) {
+fn poll(
+    mut job: ResMut<Job>,
+    mut brain: ResMut<Brain>,
+    mut last: ResMut<LastEvolve>,
+    mut next: ResMut<NextState<GameState>>,
+    tracer: Option<Res<crate::ops::trace::GameTracer>>,
+) {
     let done = job.handle.as_ref().is_none_or(JoinHandle::is_finished);
     if !done {
         return;
@@ -56,6 +62,14 @@ fn poll(mut job: ResMut<Job>, mut brain: ResMut<Brain>, mut last: ResMut<LastEvo
             info!("evolved to generation {} in {} ms", summary.generation, summary.elapsed_ms);
             brain.state = state;
             brain.save();
+            if let Some(t) = &tracer {
+                use ashlar_trace::Prop;
+                crate::ops::trace::trace_event(
+                    t,
+                    crate::ops::trace::GameEvent::Evolved,
+                    &[("generation", Prop::Int(summary.generation as i64)), ("ms", Prop::Int(summary.elapsed_ms as i64)), ("sim_win_rate", Prop::Float(summary.sim_win_rate as f64))],
+                );
+            }
             last.0 = Some(summary);
         }
         // Training failed: keep the old squad and carry on.
