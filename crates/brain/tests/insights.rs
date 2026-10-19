@@ -181,6 +181,9 @@ fn old_saves_still_load() {
         squad: vec![],
         outcome_gap: None,
         calibration_error: None,
+        deployed_sim_win: None,
+        real_win: None,
+        sim_rounds: 0,
     });
     let mut v = serde_json::to_value(&s).unwrap();
     // Strip everything this change added: an old save has none of it.

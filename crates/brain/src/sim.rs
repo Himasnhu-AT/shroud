@@ -25,6 +25,8 @@ pub const BODY_RADIUS: f32 = 0.4;
 pub const VISION_RANGE: f32 = 55.0;
 pub const VISION_HALF_ANGLE: f32 = 1.05; // ~120° cone
 pub const HEARING_RANGE: f32 = 30.0;
+/// Window for assist and trade credit (s).
+pub const CREDIT_WINDOW: f32 = 3.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct EnemyStats {
@@ -33,13 +35,21 @@ pub struct EnemyStats {
     pub time_alive: f32,
     pub time_engaged: f32,
     pub damage_taken: f32,
+    /// Hit the player within `CREDIT_WINDOW` s before a teammate killed them.
+    pub assists: u32,
+    /// Damage dealt within `CREDIT_WINDOW` s after a teammate died (trading for them).
+    pub trade_damage: f32,
 }
 
 impl EnemyStats {
-    /// Fitness from docs/EVOLUTION.md.
+    /// Individual shaping reward rho_i (docs/EVOLUTION.md, paper section 4.3). Selection is on
+    /// squad win probability; this breaks ties and feeds the team-spirit blend.
     pub fn fitness(&self) -> f32 {
         let idle_penalty = if self.time_engaged <= 0.0 { 20.0 } else { 0.0 };
-        (self.damage_dealt + 40.0 * self.kills as f32 + 0.5 * self.time_alive + 0.3 * self.time_engaged - idle_penalty).max(0.0)
+        (self.damage_dealt + 40.0 * self.kills as f32 + 25.0 * self.assists as f32 + 0.5 * self.trade_damage + 0.5 * self.time_alive
+            + 0.3 * self.time_engaged
+            - idle_penalty)
+            .max(0.0)
     }
 }
 
@@ -148,6 +158,8 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
     let mut squad = SquadCoordinator::new(arena, n);
     squad.enabled = coordinated;
     // --- end squad layer ---
+    let mut last_hit: Vec<f32> = vec![f32::NEG_INFINITY; n]; // assist/trade bookkeeping
+    let mut last_ally_death = f32::NEG_INFINITY;
 
     while t < ROUND_TIME && ghost.body.alive() && enemies.iter().any(Body::alive) {
         t += DT;
@@ -235,8 +247,15 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                 ghost.body.hp -= dmg;
                 ghost.body.hit_t = 0.0;
                 stats[i].damage_dealt += dmg;
+                last_hit[i] = t;
+                if t - last_ally_death <= CREDIT_WINDOW {
+                    stats[i].trade_damage += dmg;
+                }
                 if !ghost.body.alive() {
                     stats[i].kills += 1;
+                    for j in (0..n).filter(|&j| j != i && t - last_hit[j] <= CREDIT_WINDOW) {
+                        stats[j].assists += 1;
+                    }
                 }
             }
         }
@@ -287,6 +306,9 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                 e.hit_t = 0.0;
                 stats[j].damage_taken += dmg;
                 killed = !e.alive();
+                if killed {
+                    last_ally_death = t;
+                }
             }
             let dist = enemies[shot.target].pos.dist(from);
             ghost.on_shot(dist, hit.is_some(), killed, &view);

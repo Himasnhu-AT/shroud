@@ -92,9 +92,9 @@ pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>
     let mut best = (f32::MIN, current);
     for g in Goal::ALL {
         let raw = score(g, i, t);
-        // Orders lapse while under fire and while in contact (fight first), except for a
-        // flanker on the way.
-        let lapse = i.taking_fire || (i.in_contact && g != Goal::Flank);
+        // Orders lapse while under fire and while in contact (fight first), except movement
+        // orders (flank, push/follow), which keep going and shoot on the move.
+        let lapse = i.taking_fire || (i.in_contact && !matches!(g, Goal::Flank | Goal::Push));
         let base = match ordered {
             Some(o) if o == g && !lapse => raw.max(ORDER_PRIORITY),
             // Hurt members fall back while the fight is hot; once it has gone quiet the

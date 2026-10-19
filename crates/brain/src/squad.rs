@@ -698,7 +698,7 @@ impl SquadCoordinator {
                             .find(|p| arena.nav.walkable_at(*p) && arena.nav.clear_line(ep, *p))
                             .unwrap_or_else(|| arena.nav.nearest_walkable(ep + away * 5.0))
                     });
-                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(follow), watch: Some(target), threat: None });
+                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Push, dest: Some(follow), watch: Some(target), threat: None });
                 }
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != entry && Some(i) != second).collect();
                 if full || changed {
