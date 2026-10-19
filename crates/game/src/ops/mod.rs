@@ -11,6 +11,9 @@ pub mod commands;
 pub mod control;
 #[cfg(feature = "control")]
 pub mod offscreen;
+pub mod perf;
+mod perf_sys;
+pub mod session_log;
 pub mod trace;
 
 use std::path::PathBuf;
@@ -28,7 +31,8 @@ impl Plugin for OpsPlugin {
             .unwrap_or_else(rand::random);
         app.insert_resource(GameSeed(seed))
             .init_resource::<DebugOverlay>()
-            .add_plugins(trace::TracePlugin);
+            .add_plugins(trace::TracePlugin)
+            .add_plugins(perf::PerfPlugin);
         #[cfg(feature = "control")]
         {
             app.add_plugins((control::ControlPlugin, offscreen::OffscreenPlugin));

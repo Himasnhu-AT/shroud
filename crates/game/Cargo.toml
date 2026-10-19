@@ -23,6 +23,9 @@ ashlar-control = { path = "/Users/himanshu/codes/synthai/ashlar/crates/control",
 ashlar-command = { path = "/Users/himanshu/codes/synthai/ashlar/crates/command", optional = true }
 ashlar-mcp = { path = "/Users/himanshu/codes/synthai/ashlar/crates/mcp", optional = true }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [features]
 # `control` is on for dev builds and tests. Release packaging builds with
 # `--no-default-features`, so the shipped binary has no control port, no flags and none of its crates.
