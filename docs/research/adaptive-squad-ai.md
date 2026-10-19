@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Shroud's enemy squad is supposed to get better at beating one particular player from match to match. Right now it doesn't do that convincingly. Players win 2–0 again and again at generation 8, and the debrief insights are things like "you hold the south yard 70%". This report reviews published work on learned and adaptive game agents: NVIDIA's ACE and GPU simulation work, DeepMind's Capture the Flag agents, GT Sophy, OpenAI Five, Forza's Drivatars, learned bots at Ubisoft and EA, Microsoft's WHAM, neuroevolution and quality diversity, player modelling, dynamic difficulty, shipped tactical FPS AI, and bot believability. The main conclusion is that **none of the systems that reached human or superhuman level did it with a handful of games of data.** They used hundreds of thousands of games (FTW: 450K [8]), days of console time (GT Sophy: 10–21 PS4s for 7–12 days [10]), or months of distributed self-play (OpenAI Five: 10 months [11]). Shroud gets roughly 2–3 rounds of real data per match. So the architecture should not try to learn a policy from the player's matches. It should **learn a model of the player** from those matches, then spend cheap, unlimited simulation **planning and evolving against that model**, and pick among a diverse archive of ready-made squad styles using a sample-efficient online bandit. We propose six layers: a situation-conditioned Bayesian player model with an optional behaviour-cloned player clone; a real squad layer (shared belief, roles, bounding overwatch, crossfires, and Killzone-style position evaluation whose weights evolve); a lower-noise training loop built on a MAP-Elites archive and an opponent pool; optional small-scale RL; explicit fairness limits; and a CPU-first compute plan for a 24 GB Apple M5 laptop. We also give an evaluation protocol that separates "smarter" from "stronger", a method for producing statistically sound counterfactual debrief insights, and a prioritised roadmap mapped onto the existing modules.
+Shroud's enemy squad is supposed to get better at beating one particular player from match to match. Right now it doesn't do that convincingly. Players win 2–0 again and again at generation 8, and the debrief insights are things like "you hold the south yard 70%". This report reviews published work on learned and adaptive game agents: NVIDIA's ACE and GPU simulation work, DeepMind's Capture the Flag agents, GT Sophy, OpenAI Five, Forza's Drivatars, learned bots at Ubisoft and EA, Microsoft's WHAM, neuroevolution and quality diversity, player modelling, dynamic difficulty, shipped tactical FPS AI, and bot believability. The main conclusion is that **none of the systems that reached human or superhuman level did it with a handful of games of data.** They used hundreds of thousands of games (FTW: 450K [8]), days of console time (GT Sophy: 10–21 PS4s for 7–12 days [10]), or months of distributed self-play (OpenAI Five: 10 months [11]). Shroud gets roughly 2–3 rounds of real data per match. The project's own measurement shows where the current loop breaks. Against the default scripted ghost, the squad's simulated win rate climbs from about 4% to 90–100% by generation 8, yet the real player still wins every generation 2–0. Simulation progress does not transfer. So the architecture should not try to learn a policy from the player's matches. It should **learn a model of the player** from those matches, then spend cheap, unlimited simulation **planning and evolving against that model**, and pick among a diverse archive of ready-made squad styles using a sample-efficient online bandit. The central recommendation is a **high-fidelity player clone for training**. It is behaviour-cloned from the player's recorded trajectories and duels, calibrated so that clone-versus-squad outcomes match real outcomes, and validated each generation by the gap between simulated and real win rate. Around it we propose: a situation-conditioned Bayesian player model; a real squad layer (shared belief, roles, bounding overwatch, crossfires, and Killzone-style position evaluation whose weights evolve); a lower-noise training loop built on a MAP-Elites archive and an opponent pool; optional small-scale RL; explicit fairness limits; and a CPU-first compute plan for a 24 GB Apple M5 laptop. We also give an evaluation protocol that separates "smarter" from "stronger", a method for producing statistically sound counterfactual debrief insights, and a prioritised roadmap mapped onto the existing modules.
 
 ---
 
@@ -25,14 +25,14 @@ Reading `evolve.rs`, `sim.rs`, `mind.rs`, `utility.rs` and `player_model.rs` tur
 
 | # | Cause | Where | Consequence |
 |---|---|---|---|
-| D1 | **The ghost is not the player.** The ghost hits by drawing a Bernoulli per shot at its modelled accuracy, faces the way it walks, never pre-aims an angle, never deliberately uses cover or peeks, and chooses destinations by sampling the *marginal* heatmap. `ghost_skill` calibration adjusts a single scalar. | `sim.rs: Ghost`, `run_round` | The squads are optimised against an opponent that doesn't exist. Sim win rate overstates real win rate, and the tactics that beat the ghost (e.g. walking into its slow cone) fail against a human with a mouse. |
+| D1 | **The ghost is not the player.** The ghost hits by drawing a Bernoulli per shot at its modelled accuracy, faces the way it walks, never pre-aims an angle, never deliberately uses cover or peeks, and chooses destinations by sampling the *marginal* heatmap. `ghost_skill` calibration adjusts a single scalar. | `sim.rs: Ghost`, `run_round` | The squads are optimised against an opponent that doesn't exist. **Measured:** `cargo run -p brain --example sim_bench -- 8 2` shows the squad's win rate against the default ghost rising from about 4% to 90–100% by generation 8, while the real player wins every generation 2–0. The sim-to-real gap is about 0.9 in win rate. Once squads beat the ghost nearly every time, fitness also saturates and selection loses its gradient. |
 | D2 | **The model is marginal, not conditional.** Heat, routes and per-range accuracy are averaged over all situations. A player's behaviour is conditional: what they do when shot from the side, when two enemies are visible, right after a kill. | `player_model.rs` | Prediction stays crude, and insights can only describe where the player stands, not what they do or why they lose. |
 | D3 | **Evaluation is too noisy for selection.** 40 NEAT genomes each play about 3 stochastic 60-second rounds per generation, paired with randomly sampled trait genomes. The trait GA steps once per real match, so generation 8 means 8 GA steps. | `evolve.rs: evaluate`, `EvolveConfig` | Fitness differences fall inside the noise, so selection is close to a random walk. "Generation" counts matches, not compute. |
 | D4 | **The objective rewards the wrong thing.** Individual damage, kills and time alive, plus a flat +30 for a squad win. Nothing rewards setting up a teammate's kill, trading, or exploiting a *player-specific* weakness. | `sim.rs: EnemyStats::fitness` | Evolution drifts toward safe, individualistic play. |
-| D5 | **The behaviour space lacks the behaviours players read as smart.** Evolution tunes 10 scalars and a 14→4 micro net. The tactics themselves are hand-written utility curves. Coordination is "≤ 2 flankers" plus spacing, and the blackboard shares one last-known position. | `utility.rs`, `mind.rs` | Crossfires, bounding overwatch, trading, pinning with suppression, pre-aiming the player's favourite angle, and collapsing on a sound can't be discovered because they can't be expressed. |
+| D5 | **The behaviour space lacks the behaviours players read as smart.** Evolution tunes 10 scalars and a 14→4 micro net. The tactics themselves are hand-written utility curves. Coordination is now a radio blackboard (sightings shared every 0.35 s), reload-punish pushes and crossfire-aware flank selection (recently added in `mind.rs`/`utility.rs`), plus the ≤ 2 flanker cap and spacing. | `utility.rs`, `mind.rs` | Bounding overwatch, trading, pinning with suppression, pre-aiming the player's favourite angle, and collapsing on a sound can't be discovered because they can't be expressed. |
 | D6 | **Adaptation is invisible.** There are no callouts, and the debrief doesn't show what the squad tried. | game UI | Even real adaptation goes unnoticed. Shipped games (Section 3.6) show that perceived intelligence depends heavily on legibility. |
 
-The literature below explains why D1–D3 matter most. Every successful learned-agent system either had a faithful simulator of its opponent (the real game, self-play) or enormous amounts of data. Shroud has neither, so the fidelity of the player model is the bottleneck.
+The literature below explains why D1–D3 matter most, and D1 most of all. Every successful learned-agent system either had a faithful simulator of its opponent (the real game, self-play) or enormous amounts of data. Shroud has neither, so the fidelity of the player model is the bottleneck.
 
 ---
 
@@ -148,9 +148,9 @@ Forza's Drivatar is the closest shipped analogue [13][14]. The original Microsof
  ┌──────────── Player model v2 ─────────────┐
  │ L1 hierarchical Bayesian situation stats │──► insights v2 (debrief)
  │ L2 belief/motion model (where they go)   │──► squad belief grid (in match)
- │ L3 opt. behaviour-cloned clone           │
+ │ L3 calibrated player clone (training opp)│
  └──────────────┬───────────────────────────┘
-                ▼ calibrated opponent pool (clone samples, ghost v2, past selves, archetypes)
+                ▼ calibrated opponent pool (clone posterior samples, past selves, archetypes)
  ┌──────────── Background trainer (CPU) ────┐
  │ MAP-Elites archive over squad styles      │
  │ genome = traits + PEF weights + micro net │
@@ -175,18 +175,63 @@ Forza's Drivatar is the closest shipped analogue [13][14]. The original Microsof
 
 **L2, belief and motion model.** A semi-Markov model over route cells with dwell-time distributions, conditioned on round phase and the last contact zone. It drives a **particle filter** (a few hundred particles) of where the player might be, updated by sightings, heard shots, and *negative* information: if an enemy is looking at a cell and doesn't see the player, the player isn't there. Hladky's Counter-Strike results [35] suggest this kind of learned prediction can reach expert-human accuracy without cheating. It replaces `PlayerModel::predict`, and it feeds the squad blackboard (Section 4.2) and the ghost.
 
-**L3, the player clone (optional, gated).** A small policy π(a | o, z), where o is an **egocentric ray-cast observation** as in [22] (about 32 rays with wall distance and enemy hit, plus visible-enemy relative positions and velocities, own HP and ammo, damage direction), a is a discretised move direction × look delta × fire × crouch, and z is a **per-player embedding** of 8–16 dimensions. Train the base network on a *population* of synthetic players (Ghost v2 with sampled parameters, Section 4.3) plus any recorded human sessions. For each real player, fit only z and possibly the last layer to their trajectories, which is the Maia4All recipe [39]. Ten minutes at 10 Hz is about 6,000 labelled steps per match, enough to fit a 16-dimensional embedding but not a network from scratch. Behaviour cloning compounds errors once off-distribution, and we can't query the human for corrections as DAgger would [49]. So **deploy the clone in training only if its held-out log-likelihood and its duel-outcome calibration beat Ghost v2**. Otherwise Ghost v2, driven by L1 and L2, is the opponent.
+### 4.1.1 L3: a calibrated player clone for training (central recommendation)
 
-**Ghost v2** (needed regardless): give the ghost an aim model with turn-rate limit, flick time, and accuracy that decays with its own movement; have it **pre-aim the angles the player pre-aims** (from L0 pre-aim data); give it cover and peek behaviour with the player's modelled peek side and re-peek rate; and sample its conditional decisions from L1 (e.g. P(push | just got a kill)). Then **calibrate** with a small CMA-ES over about 6 ghost parameters so that simulated *per-situation* duel win rates, time-to-kill and round length match the real L0 statistics. This is the multi-dimensional version of today's `ghost_skill`. The calibration error is a first-class metric (Section 5).
+The measured gap (D1) means every hour of training so far has optimised against the wrong opponent. A squad that wins 90–100% against the ghost and 0 of the real rounds has learned to beat the ghost. **Nothing else in this report pays off until the training opponent behaves, and loses, like the player.** The clone is that opponent. Every successful system in Section 3 had a faithful opponent, either the real game in self-play or a large dataset. For one player, Shroud has to build it from a few matches.
+
+**What the clone is.** A simulated player whose *decisions* are fitted to the player's recorded behaviour (behaviour cloning) and whose *outcomes* are then calibrated so that it wins and loses against squads at the rate the real player does. It is built in two stages.
+
+**Stage C1: structured behaviour cloning (recommended first).** Rather than one network, fit a small supervised model for each decision the ghost makes. Each is trained on the player's own decisions from the engagement log (L0) and 10 Hz trajectories, with hierarchical priors (L1) so sparse situations borrow strength:
+
+| Clone component | Fitted from | Model |
+|---|---|---|
+| Where to go and how long to stay | Route-cell transitions and dwell times by round phase | Semi-Markov chain (L2), Dirichlet priors |
+| Engage, hold, push, retreat | Duel records: odds, HP, ammo, just-got-a-kill, taking-fire-from-flank | Logistic heads with pooled priors |
+| How to peek | Peek side per cover, re-peek within 5 s, crouch, strafe pattern while firing | Categorical/Bernoulli per situation |
+| Where the crosshair rests | Yaw histogram per zone while not engaged; pre-aim error at first sight | Per-zone mixture over angles |
+| Reaction and flick | First-sight → first-shot time; yaw-speed profile of the first 300 ms | Log-normal reaction; turn-rate and settle-time fit |
+| Hit probability | Per-shot log: range, target lateral speed, own speed, time on target, angular error at first sight | Logistic regression (replaces today's per-range Bernoulli) |
+| Awareness | How quickly the player turns to an enemy that shoots from outside the view cone; turning on sounds | Delay distribution |
+
+This needs one telemetry addition beyond L0: **a per-shot record** (range, hit, target angular speed, own speed, time since the player first saw that enemy). It runs at the same tick rate and with the same `Arena`, LOS and damage rules as `sim::run_round`, so it slots in where `Ghost` is. Each head has a handful of parameters, so a few matches are enough, and the Drivatar pooling pattern [13] covers situations the player hasn't been in yet.
+
+**Stage C2: neural clone (optional, gated).** A small policy π(a | o, z):
+- **o** is an egocentric ray-cast observation as in [22]: about 32 rays, plus visible enemies, own HP and ammo, and damage direction.
+- **a** is a discretised move × look × fire × crouch action.
+- **z** is an 8–16-dimensional per-player embedding.
+
+Pre-train the network on a *population* of C1 clones with sampled parameters, plus any recorded human sessions. Then fit only z for each player (the Maia4All recipe [39]). Behaviour cloning drifts once it leaves the data distribution, and DAgger-style corrections [49] aren't possible with a human. So C2 replaces C1 **only if** it wins on the validation metrics below.
+
+**Calibration to outcomes.** Behaviour cloning matches *what* the player does. Calibration makes sure the clone *wins and loses* like the player. It works as follows.
+
+1. **Store every deployed squad.** Save the genomes deployed in each real match (add them to `MatchSummary` in `history`), together with the real result. Each past generation becomes a labelled data point: (squad g, real rounds won and lost).
+2. **Replay those squads against the clone.** For each stored squad, run it against the clone for N ≈ 200 seeded rounds. That gives a predicted player round-win rate p̂_sim(g).
+3. **Fit a few residual parameters to the real results.** Use CMA-ES or coordinate search on 4–6 multipliers: aim scale, reaction scale, awareness delay, aggression bias, and pre-aim sharpness. Minimise
+   L = Σ_g n_g · BCE(p̂_sim(g), real round wins_g / n_g) + λ · Σ_s n_s (duel-win_sim(s) − duel-win_real(s))².
+   Squads from every generation spread across a range of strengths, so this fits the whole curve, not one point. It is the multi-dimensional successor to today's scalar `ghost_skill`. A scalar can't close the gap when the ghost lacks capabilities the player has, such as pre-aim, peeking and fast flicks.
+4. **Train against the calibrated clone's posterior.** Use posterior samples of the clone (Section 4.3), biased slightly toward the stronger end, because humans also improve between matches.
+
+**Validation: the sim-to-real dashboard, logged every generation.**
+
+| Metric | Definition | Today (default ghost) | Target |
+|---|---|---|---|
+| **Per-generation outcome gap Δ_g** | p̂_sim(g) − p_real(g). p̂_sim is the clone's round-win rate against squad g; p_real is the player's real round-win rate in match g, as a Beta posterior because only 2–3 rounds are played. | ≈ 0.0–0.1 vs 1.0, so Δ ≈ −0.9 | mean \|Δ\| < 0.15 over the last 3 generations |
+| **Predictive coverage** | Share of real matches whose round outcomes fall inside the clone's 90% predictive interval | — | ≥ 80% |
+| **Rank agreement** | Spearman correlation between clone-predicted and real squad strength across generations (≥ 6 generations) | — | ρ > 0.5. Training only needs the ranking to be right. |
+| **Duel calibration** | Brier score of per-situation duel win rate, sim vs real | — | < 0.2 |
+| **Behavioural fidelity** | Held-out-match log-likelihood per decision head (route, peek side, reaction) vs the default ghost | baseline | better on every head |
+| **Indistinguishability** | AUC of a trajectory classifier, clone vs player (ANTT-style [23]) | — | → 0.5 |
+
+**Gate.** Sim fitness drives selection only while mean |Δ| < 0.15. When the gate fails, the trainer marks sim results as *untrusted*. Deployment then leans on the real-outcome bandit (Section 4.3), and the debrief's developer overlay shows the gap. That turns the current silent failure ("gen 8 sim says 100%, the player says 2–0") into a visible, measurable number that every later change has to improve.
 
 ### 4.2 Squad coordination
 
-Shipped games show that legible squad structure does more for perceived intelligence than better individual micro [41][42][44]. Proposed new module `squad.rs`:
+Shipped games show that legible squad structure does more for perceived intelligence than better individual micro [41][42][44]. **Already done** (in `mind.rs`/`utility.rs`): a squad blackboard that radios sightings every 0.35 s, pushes that punish the player's reload, and flank selection that picks the bearing which forms a crossfire with the engaged allies. The remaining items extend these in a new module `squad.rs`:
 
-1. **Blackboard v2:** the particle-filter belief over the player's position (L2); *claims*, i.e. which cover points and angles are held by whom; the current squad *play*; and a short event log for callouts. Radio latency stays (`RADIO_PERIOD_S`), so knowledge is shared fairly.
+1. **Blackboard v2** (extends the radio blackboard): the particle-filter belief over the player's position (L2); *claims*, i.e. which cover points and angles are held by whom; the current squad *play*; and a short event log for callouts. Radio latency stays (`RADIO_PERIOD_S`), so knowledge is shared fairly.
 2. **Plays with slots** (the F.E.A.R. pattern [41]). A squad coordinator picks at most one play per sub-squad and fills its roles; individuals keep their utility AI and treat orders as high-priority goals.
    - *Bounding overwatch:* A holds the angle the belief says the player will appear from, B moves to the next cover, then they swap.
-   - *Crossfire:* two members take positions whose lines to the predicted player spot differ by more than 60°.
+   - *Crossfire:* flank selection already prefers crossfire bearings. Promote it to a play with two claimed positions whose lines to the predicted player spot differ by more than 60°.
    - *Trade:* a second member follows the entry at 4–8 m so that a player kill is immediately traded.
    - *Pin and flank:* suppression on the player's best attack positions (computed from the player's perspective, as in Killzone [42]) while one member flanks the *least-watched sector*.
    - *Collapse:* converge on a heard shot along different routes.
@@ -220,10 +265,10 @@ Shipped games show that legible squad structure does more for perceived intellig
 **Archive (QD).** MAP-Elites [26] (or CMA-ME [28] once the genome is mostly continuous) over a 2–3-dimensional squad *style* descriptor: median engagement range (close / mid / long), flank share (share of damage dealt from outside the player's facing cone), and tempo (time to first contact). Each cell keeps its best squad against the current pool. This gives about 30–50 qualitatively different squads, all decent and each with its own character.
 
 **Opponent pool** (the AlphaStar and Five pattern [11][12]):
-- 4–8 **posterior samples** of the player model (sample L1 parameters from their posteriors), so squads beat the *range* of plausible versions of this player rather than one point estimate. This guards against overfitting to a clone artefact.
+- 4–8 **posterior samples** of the player clone (sample L1 parameters from their posteriors), so squads beat the *range* of plausible versions of this player rather than one point estimate. This guards against overfitting to a clone artefact.
 - **Past snapshots** of the player model (last 3–5 matches), since the player also adapts.
 - 3 fixed **archetypes** (rusher, anchor, roamer) as regularisers.
-- The clone (L3) when gated in.
+- These samples come from the calibrated clone (C1, or C2 once gated in). The uncalibrated default ghost is kept only as one archetype.
 
 Weight the pool 60% current-player samples, 25% past selves, 15% archetypes. Optionally add a Minimax-Exploiter-style [19] bonus for reaching states where the clone's estimated duel win rate is low.
 
@@ -265,7 +310,7 @@ Memory is not a constraint: archive plus models are under 50 MB. **The binding c
 
 Most of the evaluation can run **offline against held-out player models**, so it doesn't need many human matches. The headline claims still need real-match confirmation. Use common random numbers and report bootstrap 95% CIs throughout.
 
-1. **Sim-to-real fidelity (gate for everything else).** For each situation key, compare the predicted duel win rate in sim with the observed real rate. Report the Brier score and a calibration plot, and also the round-length and time-to-kill distributions (Kolmogorov–Smirnov). If fidelity is poor, gains in sim mean nothing.
+1. **Sim-to-real fidelity (gate for everything else).** Use the per-generation dashboard from Section 4.1.1: the outcome gap Δ_g between the clone's win rate and the real win rate for each deployed squad, predictive coverage, and rank agreement. In addition, for each situation key, compare the predicted duel win rate in sim with the observed real rate. Report the Brier score and a calibration plot, and also the round-length and time-to-kill distributions (Kolmogorov–Smirnov). If fidelity is poor, gains in sim mean nothing.
 2. **Strength.** Elo or Bradley–Terry ratings of squads across training checkpoints against a fixed held-out pool (archetypes plus models of other players).
 3. **Specificity (the main "learned *you*" metric).** Build a cross-play matrix: squads specialised for players A, B, C… against models of A, B, C…. Specificity = mean diagonal win rate − mean off-diagonal win rate. A smarter squad is strong *on its own diagonal*, and a generically stronger squad raises whole rows.
 4. **Weakness exploitation.** The share of duels initiated in the player's bottom-quartile situations (by L1 posterior), against the share under a non-adaptive baseline squad. This should rise, and the squad's duel win rate in those situations should exceed the baseline's.
@@ -274,9 +319,9 @@ Most of the evaluation can run **offline against held-out player models**, so it
 7. **Diversity.** QD-score and archive coverage; entropy of deployed plays across matches; the share of matches in which a returning player meets a *visibly different* plan.
 8. **Human-likeness.** An ANTT-style classifier [23] trained to tell human trajectories from bot trajectories: report its AUC (closer to 0.5 is better). Also check reaction-time and spread distributions against human ranges, and run a small blind BotPrize-style rating [47][48] with playtesters.
 9. **Player experience.** Real round-win rate within the 40–60% band. Post-match single-item ratings ("they felt smarter than last time", "I understood why I lost"). Halo's playtests show such ratings are measurable and sensitive [44].
-10. **Ablations.** Remove each of: clone vs Ghost v2, the PEF genes, plays, the bandit, and the pool. A component that doesn't move metrics 3–5 gets removed.
+10. **Ablations.** Remove each of: calibration (clone vs default ghost), C2 vs C1, the PEF genes, plays, the bandit, and the pool. A component that doesn't move metrics 3–5 gets removed.
 
-Success criterion to replace the one in `EVOLUTION.md`: **specificity > 0 with CI excluding 0, weakness-exploitation share up by at least 10 percentage points, calibration Brier score under 0.2, and the real win rate moving toward the band within 6 matches.**
+Success criterion to replace the one in `EVOLUTION.md`: **mean |Δ_g| < 0.15 (simulated and real win rates agree), specificity > 0 with CI excluding 0, weakness-exploitation share up by at least 10 percentage points, calibration Brier score under 0.2, and the real win rate moving toward the band within 6 matches.**
 
 ---
 
@@ -294,7 +339,7 @@ Today's insights describe *where* the player is ("south yard 41%"). Useful insig
 
 **6.5 "What they learned → what they did → did it work."** One card per match that ties the model to the squad's behaviour: "They expected you at **tower left** (you went there in 6 of 8 rounds). They set a **crossfire** from the catwalk and the gate. It won **3 of 4** duels. Counter: take the tower from the right side or use the yard route." This is the single most important item for making adaptation *perceived* (D6), and it is what F.E.A.R.'s after-the-fact dialogue did in-game [41].
 
-**6.6 Accuracy guarantees.** Unit-test the insight generator on **synthetic players with planted weaknesses**, e.g. Ghost v2 configured to lose 75% of left peeks. Measure precision and recall of the generated insights over many seeds. Require precision ≥ 0.9, since a false insight costs more trust than a missing one. Optionally phrase the final text with a small local LLM, passing it only the computed facts, and reject any output that contains a number not in the facts.
+**6.6 Accuracy guarantees.** Unit-test the insight generator on **synthetic players with planted weaknesses**, e.g. a C1 clone configured to lose 75% of left peeks. Measure precision and recall of the generated insights over many seeds. Require precision ≥ 0.9, since a false insight costs more trust than a missing one. Optionally phrase the final text with a small local LLM, passing it only the computed facts, and reject any output that contains a number not in the facts.
 
 ---
 
@@ -304,33 +349,34 @@ Modules refer to the current tree. Costs assume one engineer. Impact is relative
 
 | P | Item | Modules | Cost | Expected impact |
 |---|---|---|---|---|
+| ✅ done | Radio squad blackboard (sightings every 0.35 s), reload-punish pushes, crossfire flank selection | `mind.rs`, `utility.rs` | — | First real coordination. Its value can't be measured until P0-3 and P1-1 land. |
 | **P0-1** | **Engagement log (L0)** plus situation keys | `game/telemetry.rs`, `brain/player_model.rs: MatchTelemetry` | 1–2 d | Foundation for insights, calibration and the bandit. Nothing below works without it. |
 | **P0-2** | **Insights v2**: Beta posteriors with shrinkage, credibility gate, rounds-at-stake ranking, trends, "what they learned" card | `player_model.rs: insights`, `game/ui/debrief.rs`, history in `evolve.rs` | 2–3 d | Fixes the "shallow insights" complaint directly. High user-visible value. |
-| **P0-3** | **Evaluation hygiene**: common random numbers, whole-squad evaluation, more rounds per candidate, log sim-vs-real per situation | `evolve.rs: evaluate`, `sim.rs` | 1–2 d | Turns selection from noise into signal (D3). Exposes the sim-to-real gap (D1) as a number. |
+| **P0-3** | **Sim-to-real dashboard plus evaluation hygiene**: store deployed genomes per generation in `history`; per-shot log; log Δ_g each generation; common random numbers, whole-squad evaluation, more rounds per candidate | `evolve.rs: evaluate, MatchSummary`, `sim.rs`, `game/telemetry.rs`, `examples/sim_bench` | 2 d | Puts the measured ~0.9 gap on a dashboard every generation. Turns selection from noise into signal (D3). |
 | **P0-4** | **Callouts/barks** generated from goals and plays | `game/enemy/*`, `game/audio.rs` | 1–2 d | Large perceived-intelligence gain for little cost (D6) [41][44]. |
-| **P1-1** | **Ghost v2** (aim model, pre-aim, peek/cover, conditional decisions) plus multi-parameter calibration | `sim.rs: Ghost`, `player_model.rs` | 4–6 d | The single biggest lever on real-match improvement (D1). |
-| **P1-2** | **Squad layer**: Blackboard v2 belief grid, plays with slots, PEF scoring with genes, tactical A* costs | new `squad.rs`, `mind.rs`, `nav.rs`, `genome.rs`, `utility.rs` | 6–10 d | Makes the behaviours that read as smart expressible (D5). Evolution gets a meaningful search space. |
+| **P1-1** | **Player clone C1 (central)**: structured behaviour cloning of route, engagement, peek, pre-aim, reaction and hit heads, plus outcome calibration against stored squads, plus the gate | `sim.rs: Ghost` → new `clone.rs`, `player_model.rs`, `evolve.rs` | 6–8 d | The single biggest lever (D1). Until Δ_g closes, sim training cannot improve real results. |
+| **P1-2** | **Squad layer** (builds on the radio blackboard, reload-punish pushes and crossfire flank selection, which are done): belief grid, plays with slots (overwatch, trade, collapse), PEF scoring with genes, tactical A* costs | new `squad.rs`, `mind.rs`, `nav.rs`, `genome.rs`, `utility.rs` | 6–10 d | Makes the behaviours that read as smart expressible (D5). Evolution gets a meaningful search space. |
 | **P1-3** | **Team-spirit objective** plus assist and trade credit; select on win probability | `sim.rs: EnemyStats`, `evolve.rs` | 1 d | Aligns evolution with squad play (D4). |
 | **P1-4** | **Background trainer** with checkpoints; progress in simulated rounds | `game/evolving.rs`, `evolve.rs` | 2–3 d | 10–100× more evaluation per match at no wait time. |
 | **P2-1** | **MAP-Elites archive** over squad style plus **Thompson-sampling deployment** constrained to a difficulty band | `genome.rs: pick_squad`, `evolve.rs` | 4–5 d | Sample-efficient adaptation on real matches. Visible variety. Principled difficulty. |
 | **P2-2** | **Opponent pool** (posterior samples, past selves, archetypes) | `sim.rs`, `evolve.rs` | 2 d | Robustness: stops overfitting to one ghost. |
 | **P2-3** | **Particle-filter prediction** replacing `predict` | `player_model.rs`, `squad.rs` | 3 d | Better ambushes and collapses, while staying fair. |
-| **P3-1** | **Player clone (L3)**: ray-cast observations, population prior plus embedding, held-out gate | new `clone.rs` (hand-rolled MLP or Burn) | 2–3 wk | A higher-fidelity opponent, *if* it beats Ghost v2 on held-out likelihood. Uncertain payoff. |
+| **P2-4** | **Neural clone C2**: ray-cast observations, population prior plus per-player embedding; replaces C1 only if it wins on the dashboard | `clone.rs` (hand-rolled MLP or Burn) | 2–3 wk | Higher fidelity in aim and movement details, *if* the validation metrics improve. |
 | **P3-2** | **PPO micro with KL to a human-like prior** | `mind.rs`, new `rl.rs` | 2–3 wk | Sharper peeks and strafes. Do it only after everything above. |
 | **P3-3** | SLM phrasing of debrief | `game/ui` | 3–5 d | Nicer wording only. Optional. |
 
-**Recommended first milestone (about 2 weeks):** P0-1 through P1-3. That alone should make the debrief specific and credible, make sim training measurably predictive of real outcomes, and give squads behaviours players notice.
+**Recommended first milestone (about 2–3 weeks):** P0-1, P0-3 and **P1-1 (the calibrated clone)** first, then P0-2, P0-4 and P1-2 to P1-3. Exit criterion: mean |Δ_g| < 0.15 on the dashboard. Only then are sim-trained squads expected to win real rounds, and only then is it meaningful to measure the squad features built on top.
 
 ---
 
 ## 8. Risks
 
-1. **Overfitting to the model rather than the player.** Squads may exploit artefacts of Ghost v2 or the clone. *Mitigations:* posterior-sample pool, archetype regularisers, the calibration gate, and real-outcome bandit priors discounted by calibration error.
+1. **Overfitting to the model rather than the player.** Squads may exploit artefacts of the clone. *Mitigations:* posterior-sample pool, archetype regularisers, the calibration gate, and real-outcome bandit priors discounted by calibration error.
 2. **Non-stationarity and cycling.** The player adapts to the squad, and the squad to the player. *Mitigations:* past-self pool [11], bounded change per match, and recency weighting via γ.
 3. **"It's cheating" perception.** Prediction-driven ambushes can feel like wallhacks. *Mitigations:* the pre-fire evidence rule, radio latency, and debrief cards that explain *why* they knew ("you went there in 6 of 8 rounds").
 4. **Unpredictability and frustration.** The concern raised by Guerrilla [43]. *Mitigations:* a discrete archive of recognisable plays, at most one style step per match, and announced adaptations.
 5. **False insights.** Small samples create spurious patterns. *Mitigations:* the credibility gate, shrinkage, the planted-weakness test suite, and conservative wording.
-6. **Sim-to-real gap persists** even with Ghost v2, because human aim and attention are hard to model. *Mitigations:* report calibration openly, lean on the bandit (which learns from real outcomes), and keep the sim's role to *stocking* the archive rather than *choosing*.
+6. **Sim-to-real gap persists** even with the calibrated clone, because human aim and attention are hard to model. *Mitigations:* report calibration openly, lean on the bandit (which learns from real outcomes), and keep the sim's role to *stocking* the archive rather than *choosing*.
 7. **Behaviour-cloning compounding errors** [49] make the clone drift off the player's distribution. *Mitigation:* the gate; the clone is optional.
 8. **Compute and thermals** on a laptop during play. *Mitigations:* low-priority threads, pausing the trainer while a match is running, and caps set from `--sim-bench`.
 9. **Complexity creep.** Six layers is a lot. *Mitigation:* the ablation discipline in Section 5.10. Each layer must move a metric to stay.
