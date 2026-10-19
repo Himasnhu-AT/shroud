@@ -1,6 +1,20 @@
 # Tasks & milestones
 
-## Done
+## Done (2026-10-19)
+- M1–M4: brain (GA, NEAT, player model, utility AI, mind, 2D trainer, evolve, save/bootstrap), game core, evolved enemies,
+  match flow (best of 3), Evolving/Debrief screens, F3 overlay, test control port + MCP, ashlar-trace reporting
+- M5 polish pass: sky/shadows/SSAO/bloom/TAA, ambientCG textures, Kenney rifle viewmodel (sway, bob, recoil, reload, flash,
+  impacts, decals); enemies with rifles in hand, muzzle tracers, hit reactions, flinch, fire telegraph, death + dropped gun;
+  23 sounds (spatial enemy fire, hit/kill/headshot, footsteps, reload, heartbeat, stingers, ambience), damage vignette,
+  direction indicators, camera shake
+- Tooling: `scripts/play.py` (offscreen screenshots, private binary copy), `scripts/test-game.sh`, `sim_bench`
+
+## Next
+- Hit-reaction / glint visibility tuning; enemy flesh-hit sound; volume setting in a menu; longer ambient loop
+- Balance pass: ghost-vs-squad win rates per generation; human playtests
+- Props (crates) for set dressing; second weapon
+
+## Earlier log
 - Workspace, cargo profiles, `.cargo/config.toml`, memgate, `CLAUDE.md`
 - `brain::math`, `brain::arena` (Foundry layout, zones, cover points, LOS, collision), `brain::nav` (grid + A* + smoothing)
 - `brain::neat` API stub (contract in the file header)
