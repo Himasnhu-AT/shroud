@@ -583,7 +583,7 @@ pub fn squad_card(
     card
 }
 
-/// Duels in `t` matching a situation key's coarse buckets (helper for tests/ghost calibration).
+/// Build a situation key from raw values (for the ghost/clone: look up `SituationModel::win_prob`).
 pub fn duel_key(zone: &str, peek: PeekSide, range: f32, visible: u8) -> SitKey {
     SitKey { zone: zone.to_string(), peek, range: range3(range), odds: odds_bin(visible) }
 }
