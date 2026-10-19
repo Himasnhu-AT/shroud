@@ -59,6 +59,13 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Shroud".into(),
+                        // Control-port test runs: stay on top so macOS keeps drawing the
+                        // window (an occluded window renders black screenshots).
+                        window_level: if std::env::args().any(|a| a == "--control") {
+                            bevy::window::WindowLevel::AlwaysOnTop
+                        } else {
+                            bevy::window::WindowLevel::Normal
+                        },
                         ..default()
                     }),
                     ..default()
