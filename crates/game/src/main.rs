@@ -14,6 +14,7 @@ mod evolving;
 mod map;
 mod match_flow;
 mod menu;
+mod ops;
 mod player;
 mod save;
 mod state;
@@ -77,6 +78,8 @@ fn main() {
             player::PlayerPlugin,
             weapon::WeaponPlugin,
             ui::UiPlugin,
+            // Last: its trace panic hook must wrap Bevy's.
+            ops::OpsPlugin,
         ))
         .add_plugins((
             save::SavePlugin,
