@@ -98,7 +98,7 @@ fn spawn_label(mut commands: Commands) {
             (Text::new("The squad is evolving"), TextFont::from_font_size(40.0)),
             (
                 ProgressText,
-                Text::new("Training against your ghost… 0%"),
+                Text::new("Training against your ghost... 0%"),
                 TextFont::from_font_size(20.0),
                 TextColor(Color::srgb(0.6, 0.65, 0.75)),
             ),
@@ -109,7 +109,7 @@ fn spawn_label(mut commands: Commands) {
 fn update_label(job: Res<Job>, mut q: Query<&mut Text, With<ProgressText>>) {
     let pct = job.progress.load(Ordering::Relaxed);
     for mut t in &mut q {
-        let s = format!("Training against your ghost… {pct}%");
+        let s = format!("Training against your ghost... {pct}%");
         if t.0 != s {
             t.0 = s;
         }

@@ -130,7 +130,7 @@ fn check_round_end(
     }
     if visuals.is_some_and(|h| !h.0) {
         let text = format!(
-            "{}\n{} – {}",
+            "{}\n{} : {}",
             if player_won { "ROUND WON" } else { "ROUND LOST" },
             flow.player_rounds,
             flow.enemy_rounds

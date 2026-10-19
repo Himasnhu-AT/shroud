@@ -192,7 +192,7 @@ fn update_hud(
         set(
             &mut t,
             format!(
-                "Enemies {}   Score {} – {}",
+                "Enemies {}   Score {} : {}",
                 info.enemies_left, info.round_score.0, info.round_score.1
             ),
         );

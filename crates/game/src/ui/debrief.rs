@@ -1,5 +1,5 @@
 //! `GameState::Debrief`: match result, what the squad learned about you, how it changed.
-//! Enter/click: next match · R: reset the AI · Esc: quit.
+//! Enter/click: next match | R: reset the AI | Esc: quit.
 
 use bevy::prelude::*;
 
@@ -22,7 +22,7 @@ struct HeadlessAdvance(Timer);
 fn section(title: &str, lines: Vec<String>) -> impl Bundle {
     let mut text = format!("{title}\n");
     for l in lines {
-        text.push_str(&format!("  • {l}\n"));
+        text.push_str(&format!("  - {l}\n"));
     }
     (Text::new(text), TextFont::from_font_size(19.0), TextColor(Color::srgb(0.85, 0.88, 0.95)))
 }
@@ -46,7 +46,7 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                 })
                 .collect::<Vec<_>>(),
             format!(
-                "Generation {} is ready · trained {} generations vs your ghost in {:.1}s · sim win rate {:.0}%",
+                "Generation {} is ready | trained {} generations vs your ghost in {:.1}s | sim win rate {:.0}%",
                 s.generation + 1,
                 s.neat_generations,
                 s.elapsed_ms as f32 / 1000.0,
@@ -63,7 +63,7 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
         .take(6)
         .map(|h| {
             format!(
-                "Gen {}: you {} {}–{} · sim win {:.0}%",
+                "Gen {}: you {} {}-{} | sim win {:.0}%",
                 h.generation,
                 if h.player_won { "won" } else { "lost" },
                 h.player_rounds,
@@ -87,7 +87,7 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
         BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.94)),
         children![
             (
-                Text::new(format!("{title}  {pr}–{er}")),
+                Text::new(format!("{title}  {pr}-{er}")),
                 TextFont::from_font_size(52.0),
                 TextColor(if won { Color::srgb(0.5, 1.0, 0.6) } else { Color::srgb(1.0, 0.4, 0.35) }),
             ),

@@ -46,7 +46,7 @@ impl Plugin for PlayerPlugin {
             .add_systems(Startup, spawn_player)
             .add_systems(
                 OnEnter(GameState::Playing),
-                (reset_player, lock_cursor.run_if(has_visuals)),
+                (reset_player, lock_cursor.run_if(has_visuals).run_if(not_test_driven)),
             )
             .add_systems(OnExit(GameState::Playing), (unlock_cursor.run_if(has_visuals), clear_intent))
             .add_systems(
@@ -212,6 +212,11 @@ fn set_cursor(cursor: &mut CursorOptions, locked: bool) {
     } else {
         CursorGrabMode::None
     };
+}
+
+/// Runs driven by the control port / MCP never grab the user's mouse.
+fn not_test_driven() -> bool {
+    !crate::ops::has_flag("control") && !crate::ops::has_flag("mcp")
 }
 
 fn lock_cursor(mut cursors: Query<&mut CursorOptions>) {

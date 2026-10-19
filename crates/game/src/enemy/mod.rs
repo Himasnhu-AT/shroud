@@ -1,6 +1,7 @@
 //! Enemies: spawn the evolved squad, feed each `brain::mind::EnemyMind` real
 //! perception (raycasts), and apply its actions (movement, aim, hitscan fire).
 
+pub mod animation;
 pub mod debug;
 
 use avian3d::prelude::*;
@@ -37,7 +38,8 @@ impl Plugin for EnemyPlugin {
             .init_resource::<Inbox>()
             .add_systems(Update, (collect_inbox, think_and_act, sync_crouch).chain().in_set(EnemySet))
             .add_systems(Update, enemy_deaths.after(WeaponSet).run_if(in_state(GameState::Playing)))
-            .add_plugins(debug::EnemyDebugPlugin);
+            .add_systems(Update, despawn_corpses)
+            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin));
     }
 }
 
@@ -70,6 +72,8 @@ pub struct EnemyCombat {
     pub crouched: bool,
     pub vel: V2,
     pub dead: bool,
+    /// Seconds since this enemy last fired.
+    pub last_shot: f32,
     pub report: EnemyReport,
 }
 
@@ -144,6 +148,7 @@ pub fn spawn_squad(
                     crouched: false,
                     vel: V2::ZERO,
                     dead: false,
+                    last_shot: 99.0,
                     report,
                 },
                 Health::new(ENEMY_HP),
@@ -331,6 +336,7 @@ fn think_and_act(
 
         // --- Weapon.
         c.cooldown -= dt;
+        c.last_shot += dt;
         if c.reload > 0.0 {
             c.reload -= dt;
             if c.reload <= 0.0 {
@@ -346,6 +352,7 @@ fn think_and_act(
             continue;
         }
         c.cooldown = FIRE_INTERVAL;
+        c.last_shot = 0.0;
         c.ammo -= 1;
         if c.ammo == 0 {
             c.reload = RELOAD_S;
@@ -389,22 +396,46 @@ fn sync_crouch(enemies: Query<(&EnemyCombat, &Children)>, mut parts: Query<(&Bod
     }
 }
 
+/// A dead enemy left lying for its death animation, then removed.
+#[derive(Component)]
+pub struct Corpse(f32);
+
+fn despawn_corpses(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Corpse)>) {
+    for (e, mut c) in &mut q {
+        c.0 -= time.delta_secs();
+        if c.0 <= 0.0 {
+            commands.entity(e).despawn();
+        }
+    }
+}
+
 fn enemy_deaths(
     mut commands: Commands,
-    mut enemies: Query<(Entity, &Transform, &Health, &mut EnemyCombat), With<Enemy>>,
+    headless: Res<Headless>,
+    parts: Query<(), With<BodyPart>>,
+    mut enemies: Query<(Entity, &Transform, &Health, &mut EnemyCombat, &Children), With<Enemy>>,
     players: Query<&Transform, With<Player>>,
     mut squad: ResMut<Squad>,
     mut telemetry: ResMut<crate::telemetry::Telemetry>,
 ) {
     let p = players.single().map(|t| to_ground(t.translation)).ok();
-    for (e, tf, hp, mut c) in &mut enemies {
+    for (e, tf, hp, mut c, children) in &mut enemies {
         if hp.is_dead() && !c.dead {
             c.dead = true;
+            c.vel = V2::ZERO;
             squad.dead_reports.push(c.report.clone());
             if let Some(p) = p {
                 telemetry.0.kill(p, p.dist(to_ground(tf.translation)));
             }
-            commands.entity(e).despawn();
+            if headless.0 {
+                commands.entity(e).despawn();
+            } else {
+                // Keep the body for the death animation; remove its hitboxes now.
+                for child in children.iter().filter(|c| parts.contains(*c)) {
+                    commands.entity(child).despawn();
+                }
+                commands.entity(e).insert(Corpse(3.0));
+            }
         }
     }
 }
