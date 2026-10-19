@@ -11,6 +11,7 @@
 mod assets;
 mod enemy;
 mod evolving;
+mod gfx;
 mod map;
 mod match_flow;
 mod menu;
@@ -83,6 +84,7 @@ fn main() {
             state::StatePlugin,
             menu::MenuPlugin,
             evolving::EvolvingPlugin,
+            gfx::GfxPlugin,
             map::MapPlugin,
             player::PlayerPlugin,
             weapon::WeaponPlugin,

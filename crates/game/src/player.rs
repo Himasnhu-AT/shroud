@@ -168,6 +168,7 @@ fn spawn_player(mut commands: Commands, arena: Res<ArenaRes>, headless: Res<crat
                     near: 0.03,
                     ..default()
                 }),
+                crate::gfx::camera_components(),
                 Transform::from_xyz(0.0, eye_offset(false), 0.0),
             ))
             .id()
