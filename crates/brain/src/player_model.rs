@@ -7,7 +7,13 @@ use serde::{Deserialize, Serialize};
 pub const HEAT_W: usize = 32; // 2 m cells over 64 m
 pub const ROUTE_W: usize = 8; // 8 m cells
 pub const RANGE_BINS: [f32; 6] = [5.0, 10.0, 15.0, 20.0, 30.0, f32::INFINITY];
-pub const RANGE_LABELS: [&str; 6] = ["0–5 m", "5–10 m", "10–15 m", "15–20 m", "20–30 m", "30+ m"];
+pub const RANGE_LABELS: [&str; 6] = ["0-5 m", "5-10 m", "10-15 m", "15-20 m", "20-30 m", "30+ m"];
+/// Compass names for 8 look sectors (x = east, z/y = south).
+pub const SECTORS: [&str; 8] = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"];
+
+pub fn sector_of(angle: f32) -> usize {
+    (((angle / std::f32::consts::FRAC_PI_4).round() as i32).rem_euclid(8)) as usize
+}
 
 pub fn range_bin(d: f32) -> usize {
     RANGE_BINS.iter().position(|&b| d < b).unwrap_or(5)
@@ -47,6 +53,9 @@ pub struct MatchTelemetry {
     pub engaged_samples: f32,
     pub samples: f32,
     pub headshots: f32,
+    /// Time share per look direction (8 compass sectors).
+    #[serde(default)]
+    pub facing: [f32; 8],
     last_route: Option<usize>,
 }
 
@@ -69,6 +78,7 @@ impl Default for MatchTelemetry {
             engaged_samples: 0.0,
             samples: 0.0,
             headshots: 0.0,
+            facing: [0.0; 8],
             last_route: None,
         }
     }
@@ -114,6 +124,10 @@ impl MatchTelemetry {
         self.kills[range_bin(dist)] += 1.0;
         self.kill_spots[heat_idx(player_pos)] += 1.0;
     }
+    /// Periodic sample of where the player is looking (ground-plane angle).
+    pub fn look(&mut self, facing: f32) {
+        self.facing[sector_of(facing)] += 1.0;
+    }
     pub fn death(&mut self, pos: V2) {
         self.death_spots[heat_idx(pos)] += 1.0;
     }
@@ -139,6 +153,38 @@ pub struct PlayerModel {
     pub crouch_rate: f32,
     pub overall_accuracy: f32,
     pub matches_observed: u32,
+    /// Look-direction share per compass sector.
+    #[serde(default)]
+    pub facing: [f32; 8],
+    /// EMA of shots per range bin (sample size behind `accuracy`).
+    #[serde(default)]
+    pub shots: [f32; 6],
+}
+
+/// Headline numbers for one match (kept in history for trends).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MatchStats {
+    pub accuracy: f32,
+    pub shots: f32,
+    pub kills: f32,
+    pub deaths: f32,
+    pub reaction_ms: f32,
+    pub camping: f32,
+}
+
+impl MatchStats {
+    pub fn from_telemetry(t: &MatchTelemetry) -> Self {
+        let shots: f32 = t.shots.iter().sum();
+        let hits: f32 = t.hits.iter().sum();
+        MatchStats {
+            accuracy: if shots > 0.0 { hits / shots } else { 0.0 },
+            shots,
+            kills: t.kill_spots.iter().sum(),
+            deaths: t.death_spots.iter().sum(),
+            reaction_ms: if t.reaction_samples > 0.0 { 1000.0 * t.reaction_sum / t.reaction_samples } else { 0.0 },
+            camping: if t.samples > 0.0 { t.still_samples / t.samples } else { 0.0 },
+        }
+    }
 }
 
 impl Default for PlayerModel {
@@ -158,6 +204,8 @@ impl Default for PlayerModel {
             crouch_rate: 0.2,
             overall_accuracy: 0.28,
             matches_observed: 0,
+            facing: [0.125; 8],
+            shots: [0.0; 6],
         }
     }
 }
@@ -201,6 +249,15 @@ impl PlayerModel {
         }
         blend(&mut self.death_spots, &normalize(&t.death_spots), a);
         blend(&mut self.kill_spots, &normalize(&t.kill_spots), a);
+        let looks: f32 = t.facing.iter().sum();
+        if looks > 0.0 {
+            for (m, x) in self.facing.iter_mut().zip(t.facing) {
+                *m += (x / looks - *m) * a;
+            }
+        }
+        for b in 0..6 {
+            self.shots[b] += (t.shots[b] - self.shots[b]) * a;
+        }
         let total_kills: f32 = t.kills.iter().sum();
         for b in 0..6 {
             if t.shots[b] >= 5.0 {
@@ -261,47 +318,129 @@ impl PlayerModel {
         best.1
     }
 
-    /// Plain-language insights for the debrief, most notable first.
-    pub fn insights(&self, arena: &Arena) -> Vec<String> {
-        let mut out: Vec<(f32, String)> = Vec::new();
+    /// Accuracy at a range bin, smoothed toward the overall rate so a handful of shots can't dominate.
+    pub fn smoothed_accuracy(&self, bin: usize) -> f32 {
+        let prior = 8.0;
+        (self.accuracy[bin] * self.shots[bin] + self.overall_accuracy * prior) / (self.shots[bin] + prior)
+    }
+
+    /// Specific, actionable debrief insights, most informative first.
+    /// `this`: the match just played; `prev`: the match before it; `squad_reaction_ms`: next squad's average.
+    pub fn insights(&self, arena: &Arena, this: Option<&MatchTelemetry>, prev: Option<&MatchStats>, squad_reaction_ms: f32) -> Vec<String> {
         if self.matches_observed == 0 {
             return vec!["They haven't seen you play yet.".into()];
         }
-        // Favourite zone.
-        let mut zone_share: Vec<(&str, f32)> = Vec::new();
-        for (i, &h) in self.heat.iter().enumerate() {
-            if let Some(z) = arena.zone_of(heat_center(i)) {
-                match zone_share.iter_mut().find(|(n, _)| *n == z.name) {
-                    Some(e) => e.1 += h,
-                    None => zone_share.push((z.name, h)),
+        let mut out: Vec<(f32, String)> = Vec::new();
+        let zone_counts = |grid: &[f32]| {
+            let mut z: Vec<(&'static str, f32)> = Vec::new();
+            for (i, &v) in grid.iter().enumerate() {
+                if v <= 0.0 {
+                    continue;
+                }
+                if let Some(zone) = arena.zone_of(heat_center(i)) {
+                    match z.iter_mut().find(|(n, _)| *n == zone.name) {
+                        Some(e) => e.1 += v,
+                        None => z.push((zone.name, v)),
+                    }
+                }
+            }
+            z.sort_by(|a, b| b.1.total_cmp(&a.1));
+            z
+        };
+
+        if let Some(t) = this {
+            let stats = MatchStats::from_telemetry(t);
+            // Where you die.
+            if let Some((zone, n)) = zone_counts(&t.death_spots).first()
+                && stats.deaths >= 2.0
+                && *n >= 2.0
+            {
+                out.push((0.9, format!("{n:.0} of your {:.0} deaths were in {zone}. The next squad will hold angles on it.", stats.deaths)));
+            }
+            // Where you win fights.
+            if let Some((zone, n)) = zone_counts(&t.kill_spots).first()
+                && *n >= 2.0
+            {
+                out.push((0.6, format!("You won most fights from {zone} ({n:.0} kills). They'll stop walking into it head-on.")));
+            }
+            // Trends.
+            if let Some(p) = prev {
+                if p.shots >= 10.0 && stats.shots >= 10.0 && (stats.accuracy - p.accuracy).abs() >= 0.05 {
+                    let dir = if stats.accuracy > p.accuracy { "up" } else { "down" };
+                    out.push((
+                        (stats.accuracy - p.accuracy).abs() * 4.0,
+                        format!("Your accuracy went {dir} from {:.0}% to {:.0}% since last match.", p.accuracy * 100.0, stats.accuracy * 100.0),
+                    ));
+                }
+                if p.reaction_ms > 0.0 && stats.reaction_ms > 0.0 && (stats.reaction_ms - p.reaction_ms).abs() >= 40.0 {
+                    let word = if stats.reaction_ms < p.reaction_ms { "faster" } else { "slower" };
+                    out.push((0.5, format!("You reacted {word} this match: {:.0} ms vs {:.0} ms.", stats.reaction_ms, p.reaction_ms)));
                 }
             }
         }
-        if let Some((z, s)) = zone_share.iter().max_by(|a, b| a.1.total_cmp(&b.1)) {
-            out.push((*s * 2.0, format!("They noticed you hold {z} {:.0}% of the time.", s * 100.0)));
+
+        // Blind side.
+        let (max_s, max_v) = self.facing.iter().copied().enumerate().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap_or((0, 0.0));
+        let (min_s, min_v) = self.facing.iter().copied().enumerate().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap_or((0, 0.0));
+        if max_v - min_v > 0.15 {
+            out.push((
+                (max_v - min_v) * 2.0,
+                format!(
+                    "You looked {} {:.0}% of the time and {} only {:.0}%. Their flankers will come from the {}.",
+                    SECTORS[max_s],
+                    max_v * 100.0,
+                    SECTORS[min_s],
+                    min_v * 100.0,
+                    SECTORS[min_s]
+                ),
+            ));
         }
-        let best = (0..6).max_by(|&a, &b| self.accuracy[a].total_cmp(&self.accuracy[b])).unwrap_or(0);
-        out.push((
-            self.accuracy[best],
-            format!(
-                "You're deadliest at {} ({:.0}% accuracy). They'll avoid that range.",
-                RANGE_LABELS[best],
-                self.accuracy[best] * 100.0
-            ),
-        ));
-        if self.strafe_bias.abs() > 0.2 {
+
+        // Range strength vs weakness, only with enough shots behind both.
+        let bins: Vec<usize> = (0..6).filter(|&b| self.shots[b] >= 6.0).collect();
+        if bins.len() >= 2 {
+            let best = *bins.iter().max_by(|&&a, &&b| self.smoothed_accuracy(a).total_cmp(&self.smoothed_accuracy(b))).unwrap();
+            let worst = *bins.iter().min_by(|&&a, &&b| self.smoothed_accuracy(a).total_cmp(&self.smoothed_accuracy(b))).unwrap();
+            let (ab, aw) = (self.smoothed_accuracy(best), self.smoothed_accuracy(worst));
+            if ab - aw > 0.08 {
+                out.push((
+                    (ab - aw) * 3.0,
+                    format!(
+                        "You hit {:.0}% at {} but {:.0}% at {}. They'll try to fight you at {}.",
+                        ab * 100.0,
+                        RANGE_LABELS[best],
+                        aw * 100.0,
+                        RANGE_LABELS[worst],
+                        RANGE_LABELS[worst]
+                    ),
+                ));
+            }
+        }
+
+        if self.strafe_bias.abs() > 0.25 {
             let side = if self.strafe_bias < 0.0 { "left" } else { "right" };
             let pct = 50.0 + self.strafe_bias.abs() * 50.0;
-            out.push((self.strafe_bias.abs(), format!("You strafe {side} {pct:.0}% of the time when shooting.")));
+            out.push((self.strafe_bias.abs(), format!("You strafe {side} {pct:.0}% of the time in fights. They'll lead their aim that way.")));
         }
-        out.push((
-            (0.4 - self.reaction_s).abs(),
-            format!("You react in ~{:.0} ms. Expect them to peek and pull back faster.", self.reaction_s * 1000.0),
-        ));
-        if self.camping > 0.4 {
-            out.push((self.camping, format!("You camp a lot ({:.0}% of the time stationary). Expect more flanks.", self.camping * 100.0)));
+        if self.camping > 0.45 {
+            out.push((
+                self.camping * 0.8,
+                format!("You stayed still {:.0}% of the time. Expect flanks and pre-aimed angles on your spot.", self.camping * 100.0),
+            ));
+        }
+        if squad_reaction_ms > 0.0 && self.reaction_s > 0.0 {
+            let mine = self.reaction_s * 1000.0;
+            let text = if mine + 60.0 < squad_reaction_ms {
+                format!("You react in ~{mine:.0} ms; this squad averages {squad_reaction_ms:.0} ms, so they'll avoid open duels and peek from cover.")
+            } else {
+                format!("You react in ~{mine:.0} ms; this squad averages {squad_reaction_ms:.0} ms. They'll take open duels.")
+            };
+            out.push((0.35, text));
+        }
+        if let Some((zone, share)) = zone_counts(&self.heat).first() {
+            out.push((share * 0.6, format!("You spend {:.0}% of your time in {zone}. They'll set ambushes around it.", share * 100.0)));
         }
         out.sort_by(|a, b| b.0.total_cmp(&a.0));
-        out.into_iter().take(3).map(|(_, s)| s).collect()
+        out.into_iter().take(4).map(|(_, s)| s).collect()
     }
 }

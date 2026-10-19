@@ -106,7 +106,7 @@ fn ai_brain(world: &mut World, _: Value) -> Result<Value, String> {
             "camping": b.player_model.camping,
             "accuracy_by_range": b.player_model.accuracy,
         },
-        "insights": b.player_model.insights(&arena),
+        "insights": b.player_model.insights(&arena, None, b.history.last().map(|h| &h.stats), b.squad_reaction_ms()),
         "history": b.history.iter().map(|h| json!({ "generation": h.generation, "player_won": h.player_won, "sim_win_rate": h.sim_win_rate })).collect::<Vec<_>>(),
     }))
 }

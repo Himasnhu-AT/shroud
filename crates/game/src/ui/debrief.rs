@@ -41,8 +41,8 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                 .iter()
                 .map(|d| {
                     let pct = (d.after - d.before) * 100.0;
-                    let arrow = if pct >= 0.0 { "▲" } else { "▼" };
-                    format!("{} {arrow} {:+.0}%", d.label, pct)
+                    let arrow = if pct >= 0.0 { "up" } else { "down" };
+                    format!("{}: {arrow} {:.0}%", d.label, pct.abs())
                 })
                 .collect::<Vec<_>>(),
             format!(

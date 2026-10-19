@@ -9,7 +9,8 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use brain::evolve::EnemyReport;
 use brain::math::V2;
-use brain::mind::{Action, AllyInfo, EnemyMind, MindCtx, Observation};
+use brain::mind::{Action, AllyInfo, Blackboard, EnemyMind, MindCtx, Observation};
+use brain::utility::Goal;
 use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, HEARING_RANGE, MAG, RELOAD_S, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
 
 use crate::assets::{AssetsDir, ENEMY_MODEL};
@@ -17,7 +18,7 @@ use crate::map::{ArenaRes, to_ground, to_world};
 use crate::player::{Player, PlayerMotor, PlayerSet, collide_and_slide};
 use crate::save::Brain;
 use crate::state::{GameState, Headless};
-use crate::weapon::{Damage, Health, Hitbox, ShotFired, WeaponSet};
+use crate::weapon::{Damage, Health, Hitbox, Rifle, ShotFired, WeaponSet};
 use gun::{EnemyFx, GunLink};
 
 pub const ENEMY_HP: f32 = 100.0;
@@ -101,6 +102,8 @@ pub struct BodyPart {
 #[derive(Resource, Default)]
 pub struct Squad {
     pub dead_reports: Vec<EnemyReport>,
+    /// Shared sightings (radioed with a short delay).
+    pub board: Blackboard,
 }
 
 struct Visuals {
@@ -127,6 +130,7 @@ pub fn spawn_squad(
         commands.entity(e).despawn();
     }
     squad.dead_reports.clear();
+    squad.board = Blackboard::default();
     let model = match (&asset_server, headless.0) {
         (Some(server), false) if assets_dir.has(ENEMY_MODEL) => Some(server.load::<bevy::world_serialization::WorldAsset>(
             bevy::gltf::GltfAssetLabel::Scene(0).from_asset(ENEMY_MODEL),
@@ -252,7 +256,8 @@ fn think_and_act(
     spatial: SpatialQuery,
     arena: Res<ArenaRes>,
     brain: Res<Brain>,
-    players: Query<(Entity, &Transform, &PlayerMotor, &Health), With<Player>>,
+    players: Query<(Entity, &Transform, &PlayerMotor, &Health, Option<&Rifle>), With<Player>>,
+    mut squad: ResMut<Squad>,
     mut enemies: Query<
         (Entity, &mut Transform, &mut Mind, &mut EnemyCombat, &Children, &Health, Option<&GunLink>),
         (With<Enemy>, Without<Player>),
@@ -268,7 +273,8 @@ fn think_and_act(
     if dt <= 0.0 {
         return;
     }
-    let Ok((player, ptf, motor, php)) = players.single() else { return };
+    let Ok((player, ptf, motor, php, rifle)) = players.single() else { return };
+    let player_reloading = rifle.is_some_and(|r| r.reloading.is_some());
     let p_center = ptf.translation;
     let p_ground = to_ground(p_center);
     // Aim inside the capsule (its very top grazes): ~1.45 m standing, ~0.95 m crouched.
@@ -280,11 +286,14 @@ fn think_and_act(
     let player_shots = &inbox.player_shots;
     let hits = &inbox.hits;
 
-    let snapshot: Vec<(Entity, V2, bool)> = enemies
+    let snapshot: Vec<(Entity, V2, bool, bool)> = enemies
         .iter()
         .filter(|e| !e.3.dead)
-        .map(|(e, tf, _, c, _, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY))
+        .map(|(e, tf, m, c, _, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY, m.0.goal() == Goal::Flank))
         .collect();
+    let sightings: Vec<(V2, f32)> = enemies.iter().filter(|e| !e.3.dead).map(|e| (e.3.last_known, e.3.last_seen)).collect();
+    squad.board.tick(dt, sightings.into_iter());
+    let board = squad.board;
     let limits = brain.state.limits();
     let cx = MindCtx { arena: &arena.0, model: &brain.state.player_model, limits };
     let mut player_hp_left = php.hp;
@@ -342,6 +351,7 @@ fn think_and_act(
             c.report.time_engaged += dt;
         }
 
+        let shared = board.merge(c.last_known, c.last_seen);
         let obs = Observation {
             dt,
             pos,
@@ -349,18 +359,19 @@ fn think_and_act(
             ammo_frac: if c.reload > 0.0 { 0.0 } else { c.ammo as f32 / MAG as f32 },
             crouched: c.crouched,
             player_visible: sees,
-            player_pos: c.last_known,
+            player_pos: shared.0,
             player_vel: if sees { p_vel } else { V2::ZERO },
             player_hp: php.hp / php.max,
             player_facing: p_facing,
-            time_since_seen: c.last_seen,
+            time_since_seen: shared.1,
             heard_shot: c.heard,
             allies: snapshot
                 .iter()
                 .filter(|a| a.0 != e)
-                .map(|a| AllyInfo { pos: a.1, engaged: a.2, flanking: false })
+                .map(|a| AllyInfo { pos: a.1, engaged: a.2, flanking: a.3 })
                 .collect(),
             taking_fire: c.hit_t < 0.6,
+            player_reloading,
         };
         let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
         if log_ai {

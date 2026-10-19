@@ -2,6 +2,7 @@
 //! (not crash/perf telemetry: that's `ops::trace`).
 
 use bevy::prelude::*;
+use brain::math::V2;
 use brain::player_model::{MatchTelemetry, range_bin};
 
 use crate::enemy::{Enemy, EnemyCombat, EnemySet};
@@ -88,5 +89,7 @@ fn record(
         let right = ptf.right();
         let lateral = if speed > 0.5 { vel.dot(Vec2::new(right.x, right.z)) / speed } else { 0.0 };
         t.0.sample(pos, speed, motor.crouched, engaged, lateral);
+        let fwd = ptf.forward();
+        t.0.look(V2::new(fwd.x, fwd.z).angle());
     }
 }

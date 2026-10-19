@@ -6,7 +6,7 @@ use crate::limits::Limits;
 use crate::math::{BrainRng, rng_from_seed};
 use crate::mind::{EnemyMind, NEAT_INPUTS, NEAT_OUTPUTS};
 use crate::neat::{self, NeatConfig};
-use crate::player_model::{MatchTelemetry, PlayerModel};
+use crate::player_model::{MatchStats, MatchTelemetry, PlayerModel};
 use crate::sim::{self, RoundResult};
 use rand::Rng;
 use rand::seq::SliceRandom;
@@ -52,6 +52,8 @@ pub struct MatchSummary {
     pub enemy_rounds: u32,
     pub sim_win_rate: f32,
     pub avg_fitness: f32,
+    #[serde(default)]
+    pub stats: MatchStats,
 }
 
 #[derive(Clone, Debug)]
@@ -147,6 +149,13 @@ impl BrainState {
         self.player_model = PlayerModel::default();
     }
 
+    /// Average reaction time of the current squad (ms).
+    pub fn squad_reaction_ms(&self) -> f32 {
+        let l = self.limits();
+        let n = self.squad.len().max(1) as f32;
+        self.squad.iter().map(|s| self.traits.genomes[s.trait_id].decode(&l).reaction_time * 1000.0).sum::<f32>() / n
+    }
+
     pub fn limits(&self) -> Limits {
         Limits::for_generation(self.generation)
     }
@@ -238,11 +247,13 @@ impl BrainState {
             enemy_rounds: report.enemy_rounds,
             sim_win_rate,
             avg_fitness,
+            stats: MatchStats::from_telemetry(&report.telemetry),
         });
+        let prev = self.history.len().checked_sub(2).map(|i| self.history[i].stats.clone());
         progress(1.0);
         EvolveSummary {
             generation: self.generation,
-            insights: self.player_model.insights(arena),
+            insights: self.player_model.insights(arena, Some(&report.telemetry), prev.as_ref(), self.squad_reaction_ms()),
             deltas,
             sim_win_rate,
             neat_generations: gens,

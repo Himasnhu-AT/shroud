@@ -57,7 +57,9 @@ fn player_model_ema_and_confidence() {
     assert!(m.accuracy_at(12.0) > 0.7);
     assert!(m.confidence() > 0.3);
     let a = Arena::foundry();
-    assert!(m.insights(&a).iter().any(|s| s.contains("south yard")), "{:?}", m.insights(&a));
+    let ins = m.insights(&a, Some(&t), None, 500.0);
+    assert!(ins.iter().any(|s| s.contains("south yard")), "{ins:?}");
+    assert!(ins.iter().all(|s| s.is_ascii()), "UI font is ASCII-only: {ins:?}");
 }
 
 #[test]
@@ -116,3 +118,21 @@ fn evolution_makes_squads_stronger() {
     assert!(d1 > d0 * 1.1 || w1 > w0 + 0.1, "evolved squad should be stronger");
 }
 
+
+#[test]
+fn insights_are_specific() {
+    let a = Arena::foundry();
+    let mut m = PlayerModel::default();
+    let mut t = MatchTelemetry::default();
+    for _ in 0..300 {
+        t.sample(V2::new(20.0, 0.0), 0.0, false, false, 0.0);
+        t.look(-std::f32::consts::FRAC_PI_2); // always looking north
+    }
+    for _ in 0..3 {
+        t.death(V2::new(20.0, 0.0)); // east lane
+    }
+    m.ingest(&t);
+    let ins = m.insights(&a, Some(&t), None, 500.0);
+    assert!(ins.iter().any(|s| s.contains("deaths were in the east lane")), "{ins:?}");
+    assert!(ins.iter().any(|s| s.contains("looked north")), "{ins:?}");
+}

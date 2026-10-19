@@ -25,6 +25,47 @@ pub struct AllyInfo {
     pub flanking: bool,
 }
 
+/// How often the squad radios sightings to each other.
+pub const RADIO_PERIOD_S: f32 = 0.35;
+
+/// Squad blackboard: the freshest player sighting any squad member has radioed in.
+/// Updated every `RADIO_PERIOD_S`, so shared info is slightly late (fair, human-like).
+#[derive(Clone, Copy, Debug)]
+pub struct Blackboard {
+    pub pos: V2,
+    /// Seconds since that sighting.
+    pub age: f32,
+    timer: f32,
+}
+
+impl Default for Blackboard {
+    fn default() -> Self {
+        Blackboard { pos: V2::ZERO, age: 999.0, timer: 0.0 }
+    }
+}
+
+impl Blackboard {
+    /// Advance time; on a radio tick take the freshest of the members' (pos, seconds since seen).
+    pub fn tick(&mut self, dt: f32, sightings: impl Iterator<Item = (V2, f32)>) {
+        self.age += dt;
+        self.timer -= dt;
+        if self.timer <= 0.0 {
+            self.timer = RADIO_PERIOD_S;
+            for (pos, age) in sightings {
+                if age < self.age {
+                    self.pos = pos;
+                    self.age = age;
+                }
+            }
+        }
+    }
+
+    /// Merge with one member's own memory: returns (last known pos, seconds since seen).
+    pub fn merge(&self, own_pos: V2, own_age: f32) -> (V2, f32) {
+        if self.age < own_age { (self.pos, self.age) } else { (own_pos, own_age) }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Observation {
     pub dt: f32,
@@ -43,6 +84,8 @@ pub struct Observation {
     pub heard_shot: Option<V2>,
     pub allies: Vec<AllyInfo>,
     pub taking_fire: bool,
+    /// The player is reloading (a window to push).
+    pub player_reloading: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -165,6 +208,7 @@ impl EnemyMind {
                 flankers: o.allies.iter().filter(|a| a.flanking).count(),
                 model_confidence: cx.model.confidence(),
                 player_aiming_at_me: aiming_at_me,
+                player_reloading: o.player_reloading,
             };
             let new_goal = utility::choose(self.goal, &ui, &t);
             let new_dest = self.destination(new_goal, o, cx);
@@ -340,11 +384,33 @@ impl EnemyMind {
                 Some(player + (o.pos - player).norm() * range.min(o.pos.dist(player) - 2.0).max(4.0))
             }
             Goal::Flank => {
-                let facing = o.player_facing;
+                // Crossfire: pick the angle around the player farthest (in bearing) from where
+                // teammates already are, preferring the player's back, not too far to walk.
                 let r = t.preferred_range.max(10.0) * 0.8;
-                let side = self.flank_side;
-                let cand = player + V2::from_angle(facing + side * 1.9) * r;
-                Some(cand)
+                let ally_bearings: Vec<f32> = o.allies.iter().map(|al| (al.pos - player).angle()).collect();
+                let facing = V2::from_angle(o.player_facing);
+                let mut best: Option<(f32, V2)> = None;
+                for k in 0..16 {
+                    let ang = k as f32 * std::f32::consts::TAU / 16.0;
+                    let dir = V2::from_angle(ang);
+                    let p = player + dir * r;
+                    if !a.nav.walkable_at(p) {
+                        continue;
+                    }
+                    let sep = ally_bearings
+                        .iter()
+                        .map(|b| angle_diff(ang, *b).abs())
+                        .fold(std::f32::consts::PI, f32::min)
+                        / std::f32::consts::PI;
+                    let behind = -dir.dot(facing); // +1 directly behind the player
+                    let travel = p.dist(o.pos) / 40.0;
+                    let side = 0.05 * self.flank_side * dir.cross(facing).signum();
+                    let score = sep + 0.4 * behind - 0.6 * travel + side;
+                    if best.is_none_or(|(s, _)| score > s) {
+                        best = Some((score, p));
+                    }
+                }
+                best.map(|b| b.1)
             }
             Goal::TakeCover => self.best_cover(o.pos, player, 15.0, false, cx),
             Goal::Retreat => self.best_cover(o.pos, player, 25.0, true, cx),

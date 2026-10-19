@@ -41,6 +41,7 @@ pub struct UtilityInput {
     pub flankers: usize,
     pub model_confidence: f32,
     pub player_aiming_at_me: f32,
+    pub player_reloading: bool,
 }
 
 pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
@@ -54,7 +55,9 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
         }
         Goal::Push if seen_recently => {
             let far = if i.dist > t.preferred_range + 4.0 { 0.25 } else { 0.0 };
-            0.15 + 0.45 * t.aggression * (1.0 - i.player_hp) + far + 0.15 * i.hp
+            // The player reloading is the classic window to push.
+            let reload = if i.player_reloading { 0.35 } else { 0.0 };
+            0.15 + 0.45 * t.aggression * (1.0 - i.player_hp) + far + 0.15 * i.hp + reload
         }
         Goal::Flank if seen_recently && i.dist > 8.0 => {
             let support = if i.allies_engaged > 0 { 1.0 } else { 0.3 };
@@ -62,7 +65,7 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
             0.1 + 0.6 * t.flank_bias * support - crowd
         }
         Goal::TakeCover => {
-            let pressure = if i.taking_fire { 1.0 } else { 0.4 * i.player_aiming_at_me.max(0.0) * i.visible as u8 as f32 };
+            let pressure = if i.player_reloading { 0.0 } else if i.taking_fire { 1.0 } else { 0.4 * i.player_aiming_at_me.max(0.0) * i.visible as u8 as f32 };
             pressure * (0.25 + 0.55 * t.cover_affinity) + (1.0 - i.hp) * 0.35 * t.cover_affinity
         }
         Goal::Retreat if i.hp < t.retreat_health => 0.95,

@@ -4,7 +4,8 @@
 use crate::arena::Arena;
 use crate::limits::Limits;
 use crate::math::{BrainRng, V2, angle_diff, rng_from_seed};
-use crate::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
+use crate::mind::{AllyInfo, Blackboard, EnemyMind, MindCtx, Observation};
+use crate::utility::Goal;
 use crate::player_model::{HEAT_W, PlayerModel, ROUTE_W, heat_center, range_bin, route_idx};
 use rand::Rng;
 
@@ -195,12 +196,15 @@ pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: 
     let cx = MindCtx { arena, model, limits };
     let mut t = 0.0;
     let mut ghost_shot = false;
+    let mut board = Blackboard::default();
 
     while t < ROUND_TIME && ghost.body.alive() && enemies.iter().any(Body::alive) {
         t += DT;
         // --- Enemies think and act.
-        let snapshot: Vec<(V2, bool, bool)> =
-            (0..n).map(|i| (enemies[i].pos, enemies[i].alive(), last_seen[i] < 1.5)).collect();
+        let snapshot: Vec<(V2, bool, bool, bool)> = (0..n)
+            .map(|i| (enemies[i].pos, enemies[i].alive(), last_seen[i] < 1.5, minds[i].goal() == Goal::Flank))
+            .collect();
+        board.tick(DT, (0..n).filter(|&i| enemies[i].alive()).map(|i| (last_known[i], last_seen[i])));
         for i in 0..n {
             if !enemies[i].alive() {
                 continue;
@@ -221,8 +225,9 @@ pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: 
             }
             let allies = (0..n)
                 .filter(|&j| j != i && snapshot[j].1)
-                .map(|j| AllyInfo { pos: snapshot[j].0, engaged: snapshot[j].2, flanking: false })
+                .map(|j| AllyInfo { pos: snapshot[j].0, engaged: snapshot[j].2, flanking: snapshot[j].3 })
                 .collect();
+            let shared = board.merge(last_known[i], last_seen[i]);
             let obs = Observation {
                 dt: DT,
                 pos: enemies[i].pos,
@@ -230,14 +235,15 @@ pub fn run_round(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: 
                 ammo_frac: if enemies[i].reload_t > 0.0 { 0.0 } else { enemies[i].ammo as f32 / MAG as f32 },
                 crouched: enemies[i].crouched,
                 player_visible: sees,
-                player_pos: last_known[i],
+                player_pos: shared.0,
                 player_vel: if sees { ghost.body.vel } else { V2::ZERO },
                 player_hp: ghost.body.hp / HP,
                 player_facing: ghost.facing,
-                time_since_seen: last_seen[i],
+                time_since_seen: shared.1,
                 heard_shot: heard[i],
                 allies,
                 taking_fire: enemies[i].hit_t < 0.6,
+                player_reloading: ghost.body.reload_t > 0.0,
             };
             let act = minds[i].think(&obs, &cx);
             let e = &mut enemies[i];
