@@ -1,0 +1,9 @@
+[
+  {"cmd": "perf.overlay", "params": {"on": true}},
+  {"cmd": "player.god", "params": {"on": true}},
+  {"cmd": "player.teleport", "params": {"x": 0, "z": 20}},
+  {"cmd": "player.look", "params": {"at": [0, 1.2, 0]}},
+  {"sleep": 6},
+  {"shot": "perf_overlay"},
+  {"cmd": "perf.stats"}
+]
