@@ -390,8 +390,11 @@ impl EnemyMind {
             Goal::Attack => micro[3] > 0.3 && !fire,
             _ => false,
         };
-        let far = self.dest.is_some_and(|d| d.dist(o.pos) > 2.0);
-        let sprint = (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far) && !o.player_visible;
+        // Sticky orders (the trader keeping up with the entry) sprint to close any gap.
+        let gap = if self.following().is_some_and(|od| od.sticky) { 1.0 } else { 2.0 };
+        let far = self.dest.is_some_and(|d| d.dist(o.pos) > gap);
+        let sticky = self.following().is_some_and(|od| od.sticky);
+        let sprint = (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far) && (!o.player_visible || sticky && far);
         let reload = o.ammo_frac <= 0.0 || (!engaged && o.ammo_frac < 0.4);
         if reload && !self.was_reloading {
             self.bark = Some("Reloading");

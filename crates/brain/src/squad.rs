@@ -113,12 +113,12 @@ fn candidates(arena: &Arena, target: V2, ring: f32) -> Vec<V2> {
 
 /// Best-scoring position, with a hard bearing separation (radians, around `target`) from
 /// `mates` when possible. Falls back to the unconstrained best.
-pub fn best_position(c: &PefCtx, w: &[f32; PEF_TERMS], min_sep: f32, exclude_near: Option<V2>) -> Option<V2> {
+pub fn best_position(c: &PefCtx, w: &[f32; PEF_TERMS], min_sep: f32) -> Option<V2> {
     let mut best: Option<(f32, V2)> = None;
     let mut best_sep: Option<(f32, V2)> = None;
     let mut best_any: Option<(f32, V2)> = None;
     for p in candidates(c.arena, c.target, c.pref_range) {
-        if exclude_near.is_some_and(|x| x.dist(p) < 5.0) || c.mates.iter().any(|m| m.dist(p) < 2.5) {
+        if c.mates.iter().any(|m| m.dist(p) < 2.5) {
             continue;
         }
         let s = pef_score(p, c, w);
@@ -402,6 +402,23 @@ pub struct MemberView {
     pub bark: Option<&'static str>,
 }
 
+impl MemberView {
+    /// A slot whose enemy is gone (dead and despawned).
+    pub fn gone() -> Self {
+        MemberView {
+            pos: V2::ZERO,
+            alive: false,
+            hp: 0.0,
+            last_known: V2::ZERO,
+            last_seen: 99.0,
+            heard: None,
+            look: V2::ZERO,
+            traits: Traits::default(),
+            bark: None,
+        }
+    }
+}
+
 const REPLAN_S: f32 = 1.0;
 const SWEEP_DIST: f32 = 18.0;
 const MIN_PLAY_S: f32 = 3.0;
@@ -566,7 +583,7 @@ impl SquadCoordinator {
         }
         if !sighted {
             // Negative information is only cheap enough every other radio tick.
-            if self.radio_ticks % 2 == 0 {
+            if self.radio_ticks.is_multiple_of(2) {
                 for m in members.iter().filter(|m| m.alive) {
                     self.belief.clear_seen(arena, m.pos, m.look, BELIEF_RANGE, BELIEF_HALF_ANGLE);
                 }
@@ -814,7 +831,7 @@ impl SquadCoordinator {
             let c = PefCtx { arena, model, target, me: m.pos, pref_range: m.traits.preferred_range, mates: &mates };
             // The first pair must cross (> 60 deg); later members just spread out.
             let min_sep = if mates.len() < 2 && k < 2 { PI / 3.0 + 0.1 } else { 0.6 };
-            let p = best_position(&c, &m.traits.pef, min_sep, None);
+            let p = best_position(&c, &m.traits.pef, min_sep);
             self.claims[i] = p;
             if let Some(p) = p {
                 mates.push(p);
@@ -878,7 +895,7 @@ fn bound_point(arena: &Arena, model: &PlayerModel, m: &MemberView, target: V2, m
     for cp in &arena.cover {
         let p = cp.pos;
         let step = p.dist(m.pos);
-        if step > 14.0 || step < 3.0 || p.dist(target) > here - 4.0 || mates.iter().any(|q| q.dist(p) < 3.0) {
+        if !(3.0..=14.0).contains(&step) || p.dist(target) > here - 4.0 || mates.iter().any(|q| q.dist(p) < 3.0) {
             continue;
         }
         let s = pef_score(p, &c, &m.traits.pef);

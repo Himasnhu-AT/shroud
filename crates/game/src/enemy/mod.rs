@@ -9,7 +9,8 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use brain::evolve::EnemyReport;
 use brain::math::V2;
-use brain::mind::{Action, AllyInfo, Blackboard, EnemyMind, MindCtx, Observation};
+use brain::mind::{Action, AllyInfo, EnemyMind, MindCtx, Observation};
+use brain::squad::{MemberView, SquadCoordinator, callsign};
 use brain::utility::Goal;
 use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, HEARING_RANGE, MAG, RELOAD_S, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
 
@@ -39,6 +40,7 @@ pub struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Squad>()
+            .add_message::<Callout>()
             .init_resource::<EnemyFreeze>()
             .configure_sets(
                 Update,
@@ -50,6 +52,13 @@ impl Plugin for EnemyPlugin {
             .add_systems(Update, despawn_corpses)
             .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin, gun::EnemyGunPlugin));
     }
+}
+
+/// A squad callout (bark) for the subtitles and the radio click. ASCII only.
+#[derive(Message, Clone, Debug)]
+pub struct Callout {
+    pub speaker: &'static str,
+    pub text: String,
 }
 
 /// Enemy AI runs here: after player movement, before weapons apply damage.
@@ -102,8 +111,10 @@ pub struct BodyPart {
 #[derive(Resource, Default)]
 pub struct Squad {
     pub dead_reports: Vec<EnemyReport>,
-    /// Shared sightings (radioed with a short delay).
-    pub board: Blackboard,
+    /// Squad layer: radio-delayed blackboard, belief grid, plays and callouts (`brain::squad`).
+    pub coord: Option<SquadCoordinator>,
+    /// Number of enemies spawned this round (coordinator slots).
+    pub size: usize,
 }
 
 struct Visuals {
@@ -130,7 +141,7 @@ pub fn spawn_squad(
         commands.entity(e).despawn();
     }
     squad.dead_reports.clear();
-    squad.board = Blackboard::default();
+    squad.coord = None;
     let model = match (&asset_server, headless.0) {
         (Some(server), false) if assets_dir.has(ENEMY_MODEL) => Some(server.load::<bevy::world_serialization::WorldAsset>(
             bevy::gltf::GltfAssetLabel::Scene(0).from_asset(ENEMY_MODEL),
@@ -148,6 +159,8 @@ pub fn spawn_squad(
 
     let seed = flow.seed();
     let minds = brain.state.squad_minds(seed);
+    squad.size = minds.len().min(arena.0.enemy_spawns.len());
+    squad.coord = Some(SquadCoordinator::new(&arena.0, squad.size));
     for (slot, (mind, spawn)) in minds.into_iter().zip(arena.0.enemy_spawns.iter()).enumerate() {
         let report = EnemyReport { trait_id: mind.trait_id, neat_id: mind.neat_id, ..default() };
         let root = commands
@@ -268,6 +281,8 @@ fn think_and_act(
     mut damage_out: MessageWriter<Damage>,
     mut shots_out: MessageWriter<ShotFired>,
     mut fx: MessageWriter<EnemyFx>,
+    slots: Query<&Enemy>,
+    mut callouts: MessageWriter<Callout>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
@@ -291,9 +306,34 @@ fn think_and_act(
         .filter(|e| !e.3.dead)
         .map(|(e, tf, m, c, _, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY, m.0.goal() == Goal::Flank))
         .collect();
-    let sightings: Vec<(V2, f32)> = enemies.iter().filter(|e| !e.3.dead).map(|e| (e.3.last_known, e.3.last_seen)).collect();
-    squad.board.tick(dt, sightings.into_iter());
-    let board = squad.board;
+    // --- Squad layer: one coordinator tick before the minds think (perception from last frame).
+    let n = squad.size;
+    let mut views: Vec<Option<MemberView>> = vec![None; n];
+    for (e, tf, mut mind, c, _, hp, _) in &mut enemies {
+        let Ok(slot) = slots.get(e).map(|s| s.slot) else { continue };
+        if slot < n {
+            views[slot] = Some(MemberView {
+                pos: to_ground(tf.translation),
+                alive: !c.dead,
+                hp: hp.hp / hp.max,
+                last_known: c.last_known,
+                last_seen: c.last_seen,
+                heard: c.heard,
+                look: V2::new(tf.forward().x, tf.forward().z),
+                traits: mind.0.traits,
+                bark: if c.dead { None } else { mind.0.take_bark() },
+            });
+        }
+    }
+    let Some(coord) = squad.coord.as_mut() else { return };
+    let views: Vec<MemberView> = views.into_iter().map(|v| v.unwrap_or_else(MemberView::gone)).collect();
+    let orders = coord.tick(dt, &views, &arena.0, &brain.state.player_model).to_vec();
+    if !freeze.0 {
+        for c in coord.drain_callouts() {
+            callouts.write(Callout { speaker: callsign(c.speaker), text: c.text });
+        }
+    }
+    let board = coord.board;
     let limits = brain.state.limits();
     let cx = MindCtx { arena: &arena.0, model: &brain.state.player_model, limits };
     let mut player_hp_left = php.hp;
@@ -374,6 +414,9 @@ fn think_and_act(
             taking_fire: c.hit_t < 0.6,
             player_reloading,
         };
+        if let Ok(en) = slots.get(e) {
+            mind.0.set_order(orders.get(en.slot).copied().flatten());
+        }
         let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
         if log_ai {
             info!(

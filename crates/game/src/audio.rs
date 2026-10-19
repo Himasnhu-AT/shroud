@@ -51,6 +51,8 @@ const SOUNDS: &[(&str, usize)] = &[
     ("round_won", 1),
     ("round_lost", 1),
     ("ambient", 1),
+    // Optional: plays on squad callouts if `audio/radio_click.ogg` exists.
+    ("radio_click", 1),
 ];
 
 #[derive(Component)]
@@ -89,6 +91,7 @@ impl Plugin for AudioPlugin {
                     enemy_footsteps,
                     heartbeat,
                     round_stingers,
+                    radio_clicks,
                 )
                     .after(WeaponSet)
                     .run_if(in_state(GameState::Playing)),
@@ -367,4 +370,11 @@ fn round_stingers(
         play(&mut commands, &sfx, &master, if won { "round_won" } else { "round_lost" }, 0.9, None);
     }
     *prev = over.is_some();
+}
+
+/// A soft radio click under each squad callout (silent if the sound file is missing).
+fn radio_clicks(mut commands: Commands, sfx: Res<Sfx>, master: Res<MasterVolume>, mut msgs: MessageReader<crate::enemy::Callout>) {
+    if msgs.read().count() > 0 {
+        play(&mut commands, &sfx, &master, "radio_click", 0.35, None);
+    }
 }

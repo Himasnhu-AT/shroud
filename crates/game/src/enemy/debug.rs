@@ -34,6 +34,7 @@ pub fn goal_color(g: Goal) -> Color {
         Goal::Retreat => Color::srgb(0.5, 0.5, 0.5),
         Goal::Ambush => Color::srgb(0.2, 1.0, 0.4),
         Goal::Hunt => Color::srgb(1.0, 1.0, 0.3),
+        Goal::Hold => Color::srgb(0.3, 0.9, 0.9),
     }
 }
 

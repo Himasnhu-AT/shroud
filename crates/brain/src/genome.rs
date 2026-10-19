@@ -64,7 +64,7 @@ pub struct TraitGenome {
 }
 
 /// Decoded traits in real units, with fairness limits applied.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Traits {
     pub aggression: f32,
     pub preferred_range: f32,

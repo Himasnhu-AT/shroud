@@ -106,9 +106,10 @@ fn crossfire_positions_are_separated() {
 fn trade_follower_stays_behind_entry() {
     let player = V2::new(0.0, 14.0);
     for seed in [1, 2] {
-        let (frames, _) = run_play(Play::Trade, player, 10.0, seed);
+        let (frames, _) = run_play(Play::Trade, player, 12.0, seed);
         let mut ds = Vec::new();
-        for f in frames.iter().skip((3.0 / DT) as usize) {
+        // After the follower has caught up from spawn (~5 s).
+        for f in frames.iter().skip((5.0 / DT) as usize) {
             let (Some(e), Some(tr)) = (role_idx(f, Role::Entry), role_idx(f, Role::Trader)) else { continue };
             let d = f.pos[e].dist(f.pos[tr]);
             let behind = f.pos[tr].dist(player) > f.pos[e].dist(player);
