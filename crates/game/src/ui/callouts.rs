@@ -48,9 +48,14 @@ fn add_lines(
     mut msgs: MessageReader<Callout>,
     root: Query<Entity, With<CalloutRoot>>,
     lines: Query<(Entity, &CalloutLine)>,
+    log: Option<Res<crate::ops::session_log::SessionLog>>,
 ) {
     let Ok(root) = root.single() else {
-        msgs.clear();
+        for m in msgs.read() {
+            if let Some(log) = &log {
+                log.event("callout", serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": false }));
+            }
+        }
         return;
     };
     let mut count = lines.iter().count();
@@ -64,27 +69,41 @@ fn add_lines(
             oldest.remove(0);
             count -= 1;
         }
+        if let Some(log) = &log {
+            log.event("callout", serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": true }));
+        }
         // The UI font is ASCII-only.
         let text: String = format!("{}: {}", m.speaker, m.text).chars().filter(|c| c.is_ascii()).collect();
         commands.spawn((
             CalloutLine(0.0),
             Text::new(text),
-            TextFont::from_font_size(18.0),
-            TextColor(Color::srgb(0.85, 0.95, 0.8)),
+            TextFont::from_font_size(22.0),
+            TextColor(Color::srgb(0.9, 1.0, 0.85)),
             TextShadow::default(),
+            // Dark backing so lines stay readable over the red damage vignette.
+            Node { padding: UiRect::axes(px(8), px(3)), ..default() },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, BG_ALPHA)),
             ChildOf(root),
         ));
         count += 1;
     }
 }
 
-fn fade_lines(mut commands: Commands, time: Res<Time>, mut lines: Query<(Entity, &mut CalloutLine, &mut TextColor)>) {
-    for (e, mut l, mut color) in &mut lines {
+const BG_ALPHA: f32 = 0.6;
+
+fn fade_lines(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut lines: Query<(Entity, &mut CalloutLine, &mut TextColor, &mut BackgroundColor)>,
+) {
+    for (e, mut l, mut color, mut bg) in &mut lines {
         l.0 += time.delta_secs();
         if l.0 >= LIFE_S {
             commands.entity(e).despawn();
         } else {
-            color.0.set_alpha(((LIFE_S - l.0) / FADE_S).min(1.0));
+            let a = ((LIFE_S - l.0) / FADE_S).min(1.0);
+            color.0.set_alpha(a);
+            bg.0.set_alpha(a * BG_ALPHA);
         }
     }
 }

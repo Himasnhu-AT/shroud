@@ -1,0 +1,10 @@
+[
+  {"cmd": "player.god", "params": {"on": true}},
+  {"cmd": "player.teleport", "params": {"x": -20, "z": 8}},
+  {"cmd": "player.look", "params": {"at": [-20, 1.2, -20]}},
+  {"sleep": 7},
+  {"shot": "callouts"},
+  {"sleep": 4},
+  {"shot": "callouts2"},
+  {"cmd": "enemy.list"}
+]
