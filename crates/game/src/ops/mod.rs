@@ -9,6 +9,8 @@ pub mod ai_commands;
 pub mod commands;
 #[cfg(feature = "control")]
 pub mod control;
+#[cfg(feature = "control")]
+pub mod offscreen;
 pub mod trace;
 
 use std::path::PathBuf;
@@ -29,7 +31,7 @@ impl Plugin for OpsPlugin {
             .add_plugins(trace::TracePlugin);
         #[cfg(feature = "control")]
         {
-            app.add_plugins(control::ControlPlugin);
+            app.add_plugins((control::ControlPlugin, offscreen::OffscreenPlugin));
             ai_commands::register(app);
         }
     }

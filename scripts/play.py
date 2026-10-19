@@ -2,7 +2,10 @@
 """Launch Shroud (windowed by default) under memgate with the control port, run a script of
 commands, save screenshots, quit. For tests and visual checks; never grabs the mouse.
 
-  python3 -I scripts/play.py steps.json [--headless] [--out DIR] [--seed N]
+  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N]
+
+Default is --offscreen: hidden window, camera renders to an image, so screenshots work even
+when another app is fullscreen. --onscreen shows the window instead.
 
 steps.json: a list of steps, each one of
   {"sleep": 2.5}
@@ -23,6 +26,8 @@ def main():
     exe = os.path.join("/Users/himanshu/codes/game/shroud/target/debug/shroud")
     log = open(os.path.join(out, "game.log"), "w")
     cmd = ["memgate", "--", exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
+    if not headless and "--onscreen" not in args:
+        cmd.append("--offscreen")
     env = dict(os.environ, SHROUD_DATA_DIR=os.environ.get("SHROUD_DATA_DIR", os.path.join(out, "data")))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log, text=True, cwd=root, env=env)
     port = key = None

@@ -62,6 +62,8 @@ fn main() {
                         title: "Shroud".into(),
                         // Control-port test runs: stay on top so macOS keeps drawing the
                         // window (an occluded window renders black screenshots).
+                        // `--offscreen` (tests): hidden window, camera renders to an image.
+                        visible: !std::env::args().any(|a| a == "--offscreen"),
                         window_level: if std::env::args().any(|a| a == "--control") {
                             bevy::window::WindowLevel::AlwaysOnTop
                         } else {
