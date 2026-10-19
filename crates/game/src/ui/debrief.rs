@@ -19,13 +19,6 @@ impl Plugin for DebriefPlugin {
 #[derive(Resource)]
 struct HeadlessAdvance(Timer);
 
-fn section(title: &str, lines: Vec<String>) -> impl Bundle {
-    let mut text = format!("{title}\n");
-    for l in lines {
-        text.push_str(&format!("  - {l}\n"));
-    }
-    (Text::new(text), TextFont::from_font_size(19.0), TextColor(Color::srgb(0.85, 0.88, 0.95)))
-}
 
 fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<MatchFlow>, last: Res<LastEvolve>, brain: Res<Brain>) {
     if headless.0 {
@@ -81,35 +74,99 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
         })
         .collect();
 
-    commands.spawn((
-        DespawnOnExit(GameState::Debrief),
+    let card = last.0.as_ref().and_then(|s| s.card.clone());
+    let deltas = if deltas.is_empty() { vec!["-".into()] } else { deltas };
+    let history = if history.is_empty() { vec!["-".into()] } else { history };
+
+    commands
+        .spawn((
+            DespawnOnExit(GameState::Debrief),
+            Node {
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                row_gap: px(12),
+                padding: UiRect::all(px(24)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.94)),
+        ))
+        .with_children(|root| {
+            root.spawn((
+                Text::new(format!("{title}  {pr}-{er}")),
+                TextFont::from_font_size(48.0),
+                TextColor(if won { Color::srgb(0.5, 1.0, 0.6) } else { Color::srgb(1.0, 0.4, 0.35) }),
+            ));
+            root.spawn((
+                Text::new(gen_line),
+                TextFont::from_font_size(15.0),
+                TextLayout::justify(Justify::Center),
+                TextColor(MUTED),
+            ));
+            if let Some(card) = card {
+                root.spawn(panel()).with_children(|p| {
+                    p.spawn(heading("THEIR PLAN THIS MATCH", ACCENT));
+                    for (label, text) in
+                        [("They learned", card.learned), ("They did", card.did), ("Did it work", card.worked), ("Next time", card.counter)]
+                    {
+                        // One text per row (the font is monospace, so a padded label lines up);
+                        // side-by-side text nodes get mis-measured by the flex layout.
+                        p.spawn((Text::default(), TextFont::from_font_size(17.0), TextColor(BODY))).with_children(|t| {
+                            t.spawn((TextSpan::new(format!("{label:<13}")), TextFont::from_font_size(17.0), TextColor(ACCENT)));
+                            t.spawn((TextSpan::new(text), TextFont::from_font_size(17.0), TextColor(BODY)));
+                        });
+                    }
+                });
+            }
+            root.spawn(panel()).with_children(|p| {
+                p.spawn(heading("WHAT TO WORK ON", INSIGHT));
+                for (i, line) in insights.iter().take(4).enumerate() {
+                    p.spawn((Text::new(format!("{}. {line}", i + 1)), TextFont::from_font_size(17.0), TextColor(BODY)));
+                }
+            });
+            root.spawn(Node { width: px(PANEL_W), max_width: percent(96), flex_direction: FlexDirection::Row, column_gap: px(16), ..default() })
+                .with_children(|row| {
+                    for (title, lines) in [("HOW THEY CHANGED", deltas), ("HISTORY", history)] {
+                        row.spawn(Node { flex_grow: 1.0, flex_basis: px(0), flex_direction: FlexDirection::Column, row_gap: px(3), ..default() })
+                            .with_children(|col| {
+                                col.spawn(heading(title, MUTED));
+                                for l in lines {
+                                    col.spawn((Text::new(l), TextFont::from_font_size(15.0), TextColor(BODY)));
+                                }
+                            });
+                    }
+                });
+            root.spawn((Text::new("Enter / click: next match    R: reset AI    Esc: quit"), TextFont::from_font_size(16.0), TextColor(MUTED)));
+        });
+}
+
+const PANEL_W: f32 = 980.0;
+const BODY: Color = Color::srgb(0.86, 0.89, 0.95);
+const MUTED: Color = Color::srgb(0.6, 0.65, 0.75);
+const ACCENT: Color = Color::srgb(1.0, 0.75, 0.35);
+const INSIGHT: Color = Color::srgb(0.55, 0.85, 1.0);
+
+fn panel() -> impl Bundle {
+    (
         Node {
-            width: percent(100),
-            height: percent(100),
+            width: px(PANEL_W),
+            max_width: percent(96),
             flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            row_gap: px(14),
+            row_gap: px(6),
+            padding: UiRect::axes(px(18), px(12)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(6)),
             ..default()
         },
-        BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.94)),
-        children![
-            (
-                Text::new(format!("{title}  {pr}-{er}")),
-                TextFont::from_font_size(52.0),
-                TextColor(if won { Color::srgb(0.5, 1.0, 0.6) } else { Color::srgb(1.0, 0.4, 0.35) }),
-            ),
-            (Text::new(gen_line), TextFont::from_font_size(16.0), TextColor(Color::srgb(0.6, 0.65, 0.75))),
-            section("What they learned", insights),
-            section("How they changed", if deltas.is_empty() { vec!["—".into()] } else { deltas }),
-            section("History", if history.is_empty() { vec!["—".into()] } else { history }),
-            (
-                Text::new("Enter / click: next match    R: reset AI    Esc: quit"),
-                TextFont::from_font_size(18.0),
-                TextColor(Color::srgb(0.6, 0.65, 0.75)),
-            ),
-        ],
-    ));
+        BackgroundColor(Color::srgba(0.08, 0.1, 0.14, 0.9)),
+        BorderColor::all(Color::srgba(0.4, 0.45, 0.55, 0.5)),
+    )
+}
+
+fn heading(text: &str, color: Color) -> impl Bundle {
+    (Text::new(text), TextFont::from_font_size(14.0), TextColor(color))
 }
 
 fn input(

@@ -1,6 +1,8 @@
 //! Between-match evolution and the persisted brain (docs/EVOLUTION.md).
 
 use crate::arena::Arena;
+use crate::insights::{self, MatchPosterior, SquadCard};
+use crate::utility::Goal;
 use crate::genome::{GENE_COUNT, GaConfig, Gene, TraitGenome, TraitPopulation};
 use crate::ghost::{self, CalibConfig, GhostParams, Outcome, RealStats};
 use crate::limits::Limits;
@@ -35,6 +37,31 @@ pub struct EnemyReport {
     pub kills: u32,
     pub time_alive: f32,
     pub time_engaged: f32,
+    /// Seconds spent in each goal, indexed like `Goal::ALL`.
+    #[serde(default)]
+    pub goal_time: [f32; 7],
+    /// Kills on the player by the goal the enemy was in, indexed like `Goal::ALL`.
+    #[serde(default)]
+    pub kills_by_goal: [u32; 7],
+}
+
+/// Index of a goal in `Goal::ALL` (for `EnemyReport::goal_time` / `kills_by_goal`).
+pub fn goal_index(g: Goal) -> usize {
+    Goal::ALL.iter().position(|&x| x == g).unwrap_or(0)
+}
+
+impl EnemyReport {
+    /// Add another report's counters (same genomes across rounds).
+    pub fn absorb(&mut self, r: &EnemyReport) {
+        self.damage_dealt += r.damage_dealt;
+        self.kills += r.kills;
+        self.time_alive += r.time_alive;
+        self.time_engaged += r.time_engaged;
+        for k in 0..7 {
+            self.goal_time[k] += r.goal_time[k];
+            self.kills_by_goal[k] += r.kills_by_goal[k];
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -56,6 +83,9 @@ pub struct MatchSummary {
     pub avg_fitness: f32,
     #[serde(default)]
     pub stats: MatchStats,
+    /// Per-match sufficient statistics for gated trends (insights v2).
+    #[serde(default)]
+    pub posterior: MatchPosterior,
     /// The squad deployed in this match.
     #[serde(default)]
     pub squad: Vec<SquadSlot>,
@@ -93,6 +123,8 @@ pub struct TraitDelta {
 pub struct EvolveSummary {
     pub generation: u32,
     pub insights: Vec<String>,
+    /// "What they learned -> what they did -> did it work" (None before any real match).
+    pub card: Option<SquadCard>,
     pub deltas: Vec<TraitDelta>,
     /// Share of sim rounds the squad won against the ghost in the last trained generation.
     pub sim_win_rate: f32,
@@ -227,7 +259,8 @@ impl BrainState {
         let mut rng = rng_from_seed(self.seed ^ (self.generation as u64).wrapping_mul(0x2545_F491_4F6C_DD1D));
         let before = squad_avg(&self.traits, &self.squad);
 
-        // 1. Learn the player.
+        // 1. Learn the player (keeping the model the squad was trained against, for the card).
+        let model_before = self.player_model.clone();
         self.player_model.ingest(&report.telemetry);
 
         // 1b. Calibrate the ghost (paper §4.1.1): replay recently deployed squads against it and fit
@@ -341,6 +374,7 @@ impl BrainState {
             sim_win_rate,
             avg_fitness,
             stats: MatchStats::from_telemetry(&report.telemetry),
+            posterior: MatchPosterior::from_telemetry(&report.telemetry),
             squad: deployed,
             outcome_gap,
             calibration_error,
@@ -348,10 +382,16 @@ impl BrainState {
         let gaps: Vec<f32> = self.history.iter().rev().take(3).filter_map(|h| h.outcome_gap).collect();
         let outcome_gap_mean3 = (!gaps.is_empty()).then(|| gaps.iter().map(|g| g.abs()).sum::<f32>() / gaps.len() as f32);
         let prev = self.history.len().checked_sub(2).map(|i| self.history[i].stats.clone());
+        let posts: Vec<MatchPosterior> = self.history.iter().map(|h| h.posterior.clone()).collect();
+        let top = insights::insights_v2(&self.player_model, arena, &posts).into_iter().next();
+        let card = (rounds > 0).then(|| {
+            insights::squad_card(&model_before, arena, &report.telemetry, &report.enemies, report.player_rounds, report.enemy_rounds, top.as_ref())
+        });
         progress(1.0);
         EvolveSummary {
             generation: self.generation,
-            insights: self.player_model.insights(arena, Some(&report.telemetry), prev.as_ref(), self.squad_reaction_ms()),
+            insights: self.player_model.insights_with_history(arena, Some(&report.telemetry), prev.as_ref(), &posts, self.squad_reaction_ms()),
+            card,
             deltas,
             sim_win_rate,
             real_player_win,

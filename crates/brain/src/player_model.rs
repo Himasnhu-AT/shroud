@@ -1,6 +1,6 @@
 //! The player model: a decayed profile of how the human plays (docs/PLAYER_MODEL.md).
 
-use crate::arena::{ARENA_HALF, Arena};
+use crate::arena::{ARENA_HALF, Arena, Block, BlockKind};
 use crate::math::V2;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,197 @@ pub fn route_idx(p: V2) -> usize {
     c(p.y) * ROUTE_W + c(p.x)
 }
 
+// ---------------------------------------------------------------------------
+// L0: the engagement log (docs/research/adaptive-squad-ai.md, section 4.1).
+
+/// Max duel records, trajectory samples, shot records and reaction samples kept per match.
+pub const DUEL_CAP: usize = 600;
+pub const TRAJ_CAP: usize = 9000; // 15 min at 10 Hz
+pub const SHOT_CAP: usize = 3000;
+pub const REACTION_CAP: usize = 500;
+/// Prior strength (pseudo-duels) for hierarchical shrinkage.
+pub const KAPPA: f32 = 6.0;
+/// Forgetting: pseudo-counts are multiplied by this after each match.
+pub const FORGET: f32 = 0.7;
+/// Coarse range bins used for situation keys.
+pub const RANGE3_LABELS: [&str; 3] = ["under 10 m", "10 to 20 m", "over 20 m"];
+
+pub fn range3(d: f32) -> u8 {
+    if d < 10.0 {
+        0
+    } else if d < 20.0 {
+        1
+    } else {
+        2
+    }
+}
+
+/// Enemies in sight, clamped to 1..=3 (3 means 3 or more).
+pub fn odds_bin(visible: u8) -> u8 {
+    visible.clamp(1, 3)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CoverState {
+    #[default]
+    Exposed,
+    LowCover,
+    /// Within 1.5 m of a tall block (peeking from its edge).
+    TallEdge,
+}
+
+/// Which side of the nearest tall block the player peeks from, as the player sees it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PeekSide {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
+impl PeekSide {
+    pub fn word(self) -> &'static str {
+        match self {
+            PeekSide::None => "",
+            PeekSide::Left => "left",
+            PeekSide::Right => "right",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DuelOutcome {
+    Win,
+    Loss,
+    #[default]
+    Disengage,
+}
+
+fn block_dist(b: &Block, p: V2) -> f32 {
+    let dx = ((p.x - b.center.x).abs() - b.half.x).max(0.0);
+    let dy = ((p.y - b.center.y).abs() - b.half.y).max(0.0);
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Cover state, peek side (relative to the nearest tall block within 4 m) and that block's index.
+pub fn classify_cover(arena: &Arena, player: V2, enemy: V2) -> (CoverState, PeekSide, Option<u16>) {
+    let nearest = |kind: BlockKind| {
+        arena
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.kind == kind)
+            .map(|(i, b)| (i, block_dist(b, player)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+    };
+    let tall = nearest(BlockKind::Tall);
+    let low = nearest(BlockKind::Low);
+    let cover = match (tall, low) {
+        (Some((_, d)), _) if d <= 1.5 => CoverState::TallEdge,
+        (_, Some((_, d))) if d <= 1.5 => CoverState::LowCover,
+        _ => CoverState::Exposed,
+    };
+    match tall {
+        Some((i, d)) if d <= 4.0 => {
+            let to_block = arena.blocks[i].center - player;
+            let right = V2::new(-to_block.y, to_block.x);
+            let side = if (enemy - player).dot(right) > 0.0 { PeekSide::Right } else { PeekSide::Left };
+            (cover, side, Some(i as u16))
+        }
+        _ => (cover, PeekSide::None, None),
+    }
+}
+
+/// One duel: a contiguous period in which the player and at least one enemy had line of sight.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DuelRecord {
+    /// Seconds since the match started, and how long the duel lasted.
+    pub t: f32,
+    pub duration: f32,
+    /// 1-based round number.
+    pub round: u32,
+    /// The player had an enemy in view before any enemy saw the player.
+    pub player_saw_first: bool,
+    /// Zone name at duel start ("" if none).
+    pub zone: String,
+    pub pos: [f32; 2],
+    pub cover: CoverState,
+    pub peek: PeekSide,
+    /// Index into `Arena::blocks` of the tall block `peek` refers to.
+    pub cover_block: Option<u16>,
+    /// Distance to the nearest enemy in contact at duel start (m).
+    pub range: f32,
+    /// Enemies with line of sight (either way) at duel start.
+    pub enemies_visible: u8,
+    /// Player HP fraction and magazine ammo at duel start.
+    pub hp: f32,
+    pub ammo: u32,
+    pub moving: bool,
+    pub crouched: bool,
+    /// Aim-down-sights (the game has none yet; always false).
+    pub ads: bool,
+    /// Angle (rad) between the crosshair and the first enemy when contact began.
+    pub preaim_err: f32,
+    /// Seconds from duel start to the player's first shot.
+    pub first_shot_s: Option<f32>,
+    pub dmg_dealt: f32,
+    pub dmg_taken: f32,
+    pub kills: u8,
+    pub outcome: DuelOutcome,
+    /// Started within 5 s of the previous duel's end from the same angle (same cover side, or within 2.5 m).
+    pub repeek: bool,
+    /// Started within 8 s of the previous duel's end.
+    pub follow_up: bool,
+    /// Follow-up after a won duel.
+    pub after_kill: bool,
+}
+
+impl DuelRecord {
+    pub fn key(&self) -> SitKey {
+        SitKey { zone: self.zone.clone(), peek: self.peek, range: range3(self.range), odds: odds_bin(self.enemies_visible) }
+    }
+    pub fn won(&self) -> bool {
+        self.outcome == DuelOutcome::Win
+    }
+    /// Disengages don't count toward win rates.
+    pub fn decided(&self) -> bool {
+        self.outcome != DuelOutcome::Disengage
+    }
+}
+
+/// 10 Hz trajectory sample.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct TrajSample {
+    pub t: f32,
+    pub x: f32,
+    pub z: f32,
+    pub vx: f32,
+    pub vz: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub hp: f32,
+    pub fire: bool,
+    pub crouch: bool,
+}
+
+/// One player shot, for a per-shot hit model.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ShotRecord {
+    pub t: f32,
+    /// Distance to the targeted enemy (m).
+    pub range: f32,
+    /// Target's angular velocity relative to the player (rad/s, ground plane).
+    pub ang_vel: f32,
+    pub moving: bool,
+    pub crouched: bool,
+    /// Angle (rad) between the shot and the target's chest at fire time.
+    pub aim_err: f32,
+    pub hit: bool,
+    pub headshot: bool,
+}
+
 /// Raw counts for one match, filled by the game (or the sim) at ~10 Hz.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MatchTelemetry {
@@ -56,6 +247,22 @@ pub struct MatchTelemetry {
     /// Time share per look direction (8 compass sectors).
     #[serde(default)]
     pub facing: [f32; 8],
+    /// L0 engagement log: one record per duel (capped at `DUEL_CAP`).
+    #[serde(default)]
+    pub duels: Vec<DuelRecord>,
+    /// L0 10 Hz trajectory (capped at `TRAJ_CAP`).
+    #[serde(default)]
+    pub trajectory: Vec<TrajSample>,
+    /// L0 per-shot records (capped at `SHOT_CAP`).
+    #[serde(default)]
+    pub shot_log: Vec<ShotRecord>,
+    /// Individual reaction times (s), for the log-normal reaction model.
+    #[serde(default)]
+    pub reactions: Vec<f32>,
+    /// Rounds played this match.
+    #[serde(default)]
+    pub rounds: u32,
+    #[serde(default)]
     last_route: Option<usize>,
 }
 
@@ -79,6 +286,11 @@ impl Default for MatchTelemetry {
             samples: 0.0,
             headshots: 0.0,
             facing: [0.0; 8],
+            duels: Vec::new(),
+            trajectory: Vec::new(),
+            shot_log: Vec::new(),
+            reactions: Vec::new(),
+            rounds: 0,
             last_route: None,
         }
     }
@@ -134,8 +346,209 @@ impl MatchTelemetry {
     pub fn reaction(&mut self, seconds: f32) {
         self.reaction_sum += seconds;
         self.reaction_samples += 1.0;
+        if self.reactions.len() < REACTION_CAP {
+            self.reactions.push(seconds);
+        }
+    }
+    pub fn push_duel(&mut self, d: DuelRecord) {
+        if self.duels.len() < DUEL_CAP {
+            self.duels.push(d);
+        }
+    }
+    pub fn push_traj(&mut self, s: TrajSample) {
+        if self.trajectory.len() < TRAJ_CAP {
+            self.trajectory.push(s);
+        }
+    }
+    pub fn push_shot(&mut self, s: ShotRecord) {
+        if self.shot_log.len() < SHOT_CAP {
+            self.shot_log.push(s);
+        }
     }
 }
+
+// ---------------------------------------------------------------------------
+// L1: situation posteriors with hierarchical shrinkage and forgetting.
+
+/// Situation key: zone, peek side, coarse range bin (`range3`), odds (`odds_bin`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SitKey {
+    pub zone: String,
+    pub peek: PeekSide,
+    pub range: u8,
+    pub odds: u8,
+}
+
+/// Decayed duel-win pseudo-counts for one situation.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SitCell {
+    pub key: SitKey,
+    pub wins: f32,
+    pub n: f32,
+}
+
+/// A controllable choice compared within matched strata (section 6.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Contrast {
+    /// arm a = re-peeked the same angle within 5 s, b = repositioned first.
+    Repeek,
+    /// arm a = peeked left of this tall block, b = right.
+    Side(u16),
+    /// arm a = crouched at duel start, b = standing.
+    Crouch,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContrastCell {
+    pub contrast: Contrast,
+    pub arm_a: bool,
+    /// `stratum()`: range3 * 3 + odds - 1.
+    pub stratum: u8,
+    pub wins: f32,
+    pub n: f32,
+}
+
+/// Log-normal reaction time: Normal-Gamma posterior on ln(seconds) from decayed sufficient stats.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct ReactionPost {
+    pub n: f32,
+    pub sum: f32,
+    pub sum_sq: f32,
+}
+
+impl ReactionPost {
+    /// Pooled prior: median 330 ms, log-sd about 0.35, worth 4 observations.
+    const MU0: f32 = -1.109; // ln 0.33
+    const K0: f32 = 4.0;
+    const A0: f32 = 3.0;
+    const B0: f32 = 3.0 * 0.35 * 0.35;
+
+    pub fn add(&mut self, seconds: f32) {
+        if seconds > 0.05 {
+            let x = seconds.ln();
+            self.n += 1.0;
+            self.sum += x;
+            self.sum_sq += x * x;
+        }
+    }
+
+    /// Posterior mean of ln(rt) and the variance of that mean.
+    pub fn posterior(&self) -> (f32, f32) {
+        let kn = Self::K0 + self.n;
+        let mu = (Self::K0 * Self::MU0 + self.sum) / kn;
+        let an = Self::A0 + self.n / 2.0;
+        let (ss, xbar) = if self.n > 0.0 {
+            ((self.sum_sq - self.sum * self.sum / self.n).max(0.0), self.sum / self.n)
+        } else {
+            (0.0, Self::MU0)
+        };
+        let bn = Self::B0 + 0.5 * ss + Self::K0 * self.n * (xbar - Self::MU0).powi(2) / (2.0 * kn);
+        (mu, bn / (an * kn))
+    }
+
+    /// Posterior median reaction time in ms, with an 80% interval.
+    pub fn median_ms(&self) -> (f32, f32, f32) {
+        let (mu, var) = self.posterior();
+        let sd = var.sqrt();
+        (1000.0 * mu.exp(), 1000.0 * (mu - 1.2816 * sd).exp(), 1000.0 * (mu + 1.2816 * sd).exp())
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SituationModel {
+    pub cells: Vec<SitCell>,
+    pub contrasts: Vec<ContrastCell>,
+    /// Decayed number of rounds behind the counts.
+    pub rounds: f32,
+    pub reaction: ReactionPost,
+}
+
+pub fn stratum(d: &DuelRecord) -> u8 {
+    range3(d.range) * 3 + odds_bin(d.enemies_visible) - 1
+}
+
+impl SituationModel {
+    /// Forget (pseudo-counts times `FORGET`), then add one match.
+    pub fn ingest(&mut self, t: &MatchTelemetry) {
+        for c in &mut self.cells {
+            c.wins *= FORGET;
+            c.n *= FORGET;
+        }
+        for c in &mut self.contrasts {
+            c.wins *= FORGET;
+            c.n *= FORGET;
+        }
+        self.cells.retain(|c| c.n >= 0.02);
+        self.contrasts.retain(|c| c.n >= 0.02);
+        self.rounds = self.rounds * FORGET + t.rounds as f32;
+        let r = &mut self.reaction;
+        r.n *= FORGET;
+        r.sum *= FORGET;
+        r.sum_sq *= FORGET;
+        for &rt in &t.reactions {
+            r.add(rt);
+        }
+        for d in t.duels.iter().filter(|d| d.decided()) {
+            let w = if d.won() { 1.0 } else { 0.0 };
+            let key = d.key();
+            match self.cells.iter_mut().find(|c| c.key == key) {
+                Some(c) => {
+                    c.wins += w;
+                    c.n += 1.0;
+                }
+                None => self.cells.push(SitCell { key, wins: w, n: 1.0 }),
+            }
+            let st = stratum(d);
+            let mut add = |contrast: Contrast, arm_a: bool| match self
+                .contrasts
+                .iter_mut()
+                .find(|c| c.contrast == contrast && c.arm_a == arm_a && c.stratum == st)
+            {
+                Some(c) => {
+                    c.wins += w;
+                    c.n += 1.0;
+                }
+                None => self.contrasts.push(ContrastCell { contrast, arm_a, stratum: st, wins: w, n: 1.0 }),
+            };
+            if d.follow_up {
+                add(Contrast::Repeek, d.repeek);
+            }
+            if let (Some(b), PeekSide::Left | PeekSide::Right, CoverState::TallEdge) = (d.cover_block, d.peek, d.cover) {
+                add(Contrast::Side(b), d.peek == PeekSide::Left);
+            }
+            add(Contrast::Crouch, d.crouched);
+        }
+    }
+
+    /// (wins, n) summed over cells matching `f`.
+    pub fn counts(&self, f: impl Fn(&SitKey) -> bool) -> (f32, f32) {
+        self.cells.iter().filter(|c| f(&c.key)).fold((0.0, 0.0), |a, c| (a.0 + c.wins, a.1 + c.n))
+    }
+
+    /// Overall duel win rate (raw; 0.5 with no data) and its pseudo-count.
+    pub fn overall(&self) -> (f32, f32) {
+        let (w, n) = self.counts(|_| true);
+        (if n > 0.0 { w / n } else { 0.5 }, n)
+    }
+
+    /// Beta posterior (alpha, beta) of the duel win rate in situation `key`, shrunk
+    /// situation -> zone-agnostic situation -> global with strength `KAPPA` at each level.
+    pub fn posterior(&self, key: &SitKey) -> (f32, f32) {
+        let (wg, ng) = self.counts(|_| true);
+        let p_global = (wg + 1.0) / (ng + 2.0);
+        let (wp, np) = self.counts(|k| k.peek == key.peek && k.range == key.range && k.odds == key.odds);
+        let p_parent = (wp + KAPPA * p_global) / (np + KAPPA);
+        let (w, n) = self.counts(|k| k == key);
+        (w + KAPPA * p_parent, (n - w) + KAPPA * (1.0 - p_parent))
+    }
+
+    /// Posterior mean duel win probability in a situation (for the ghost and the squad).
+    pub fn win_prob(&self, key: &SitKey) -> f32 {
+        let (a, b) = self.posterior(key);
+        a / (a + b)
+    }
+}
+
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlayerModel {
@@ -163,6 +576,9 @@ pub struct PlayerModel {
     /// match real ones (1.0 = the raw model).
     #[serde(default = "one")]
     pub ghost_skill: f32,
+    /// L1 situation posteriors (duel wins per situation, contrasts, reaction time).
+    #[serde(default)]
+    pub situations: SituationModel,
     /// Ghost v2 behaviour parameters, calibrated to real outcomes after each match.
     #[serde(default)]
     pub ghost: crate::ghost::GhostParams,
@@ -218,6 +634,7 @@ impl Default for PlayerModel {
             facing: [0.125; 8],
             shots: [0.0; 6],
             ghost_skill: 1.0,
+            situations: SituationModel::default(),
             ghost: crate::ghost::GhostParams::default(),
         }
     }
@@ -245,6 +662,7 @@ impl PlayerModel {
         if t.samples < 10.0 {
             return;
         }
+        self.situations.ingest(t);
         let a = if self.matches_observed < 3 { 0.4 } else { 0.3 };
         // First real match replaces the generic prior more strongly.
         let a = if self.matches_observed == 0 { 0.7 } else { a };
@@ -337,9 +755,36 @@ impl PlayerModel {
         (self.accuracy[bin] * self.shots[bin] + self.overall_accuracy * prior) / (self.shots[bin] + prior)
     }
 
-    /// Specific, actionable debrief insights, most informative first.
-    /// `this`: the match just played; `prev`: the match before it; `squad_reaction_ms`: next squad's average.
+    /// Debrief insights (at most 4): credible v2 insights first (no trends without history),
+    /// then descriptive habits. `this`: the match just played; `prev`: the match before it.
     pub fn insights(&self, arena: &Arena, this: Option<&MatchTelemetry>, prev: Option<&MatchStats>, squad_reaction_ms: f32) -> Vec<String> {
+        self.insights_with_history(arena, this, prev, &[], squad_reaction_ms)
+    }
+
+    /// As `insights`, plus significance-gated trends over per-match `history` (oldest first).
+    pub fn insights_with_history(
+        &self,
+        arena: &Arena,
+        this: Option<&MatchTelemetry>,
+        prev: Option<&MatchStats>,
+        history: &[crate::insights::MatchPosterior],
+        squad_reaction_ms: f32,
+    ) -> Vec<String> {
+        if self.matches_observed == 0 {
+            return vec!["They haven't seen you play yet.".into()];
+        }
+        let mut out: Vec<String> = crate::insights::insights_v2(self, arena, history).into_iter().take(4).map(|i| i.text).collect();
+        for s in self.legacy_insights(arena, this, if history.is_empty() { prev } else { None }, squad_reaction_ms) {
+            if out.len() >= 4 {
+                break;
+            }
+            out.push(s);
+        }
+        out
+    }
+
+    /// v1 descriptive insights (where you are, look, strafe), most informative first.
+    fn legacy_insights(&self, arena: &Arena, this: Option<&MatchTelemetry>, prev: Option<&MatchStats>, squad_reaction_ms: f32) -> Vec<String> {
         if self.matches_observed == 0 {
             return vec!["They haven't seen you play yet.".into()];
         }

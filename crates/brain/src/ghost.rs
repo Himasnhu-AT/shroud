@@ -755,10 +755,11 @@ pub struct RealStats {
 /// Telemetry sample period (the game samples at 10 Hz).
 pub const SAMPLE_S: f32 = 0.1;
 
-/// HOOK: duel win rate from the engagement log once `MatchTelemetry` carries duel records
-/// (paper §4.1 L0). Until then there's no duel term.
-pub fn duel_win_rate(_t: &MatchTelemetry) -> Option<f32> {
-    None
+/// Real duel win rate from the engagement log (paper §4.1 L0): wins over decided duels
+/// (disengages excluded); None with fewer than 3 decided duels.
+pub fn duel_win_rate(t: &MatchTelemetry) -> Option<f32> {
+    let decided = t.duels.iter().filter(|d| d.decided()).count();
+    (decided >= 3).then(|| t.duels.iter().filter(|d| d.won()).count() as f32 / decided as f32)
 }
 
 impl RealStats {

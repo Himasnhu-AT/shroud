@@ -347,6 +347,7 @@ fn think_and_act(
             c.heard = Some(to_ground(*o));
         }
         c.report.time_alive += dt;
+        c.report.goal_time[brain::evolve::goal_index(mind.0.goal())] += dt;
         if c.last_seen < ENGAGE_MEMORY {
             c.report.time_engaged += dt;
         }
@@ -440,6 +441,7 @@ fn think_and_act(
             player_hp_left -= amount;
             if player_hp_left <= 0.0 {
                 c.report.kills += 1;
+                c.report.kills_by_goal[brain::evolve::goal_index(mind.0.goal())] += 1;
             }
         }
     }
