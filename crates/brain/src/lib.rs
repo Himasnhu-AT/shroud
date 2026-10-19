@@ -2,6 +2,13 @@
 //! enemies in the Bevy game and in the fast offline trainer.
 
 pub mod arena;
+pub mod evolve;
+pub mod genome;
+pub mod limits;
 pub mod math;
+pub mod mind;
 pub mod nav;
 pub mod neat;
+pub mod player_model;
+pub mod sim;
+pub mod utility;
