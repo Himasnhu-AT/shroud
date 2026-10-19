@@ -372,6 +372,8 @@ pub struct Order {
     pub watch: Option<V2>,
     /// Path with tactical A* costs around this threat.
     pub threat: Option<V2>,
+    /// Keep following the order while in contact (flanker, trader); others fight first.
+    pub sticky: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -661,7 +663,7 @@ impl SquadCoordinator {
         // Members closest to the target first.
         let mut by_dist = alive.clone();
         by_dist.sort_by(|&a, &b| members[a].pos.dist(target).total_cmp(&members[b].pos.dist(target)).then(a.cmp(&b)));
-        let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target) };
+        let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false };
 
         match play {
             Play::Free => {}
@@ -685,20 +687,20 @@ impl SquadCoordinator {
                 let second = self.second;
                 let ep = members[entry].pos;
                 let away = (ep - target).norm();
-                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None });
+                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: false });
                 if let Some(tr) = second {
                     if self.trail.last().is_none_or(|l| l.dist(ep) > 0.5) {
                         self.trail.push(ep);
                     }
-                    // ~5 m back along the entry's own trail; before it has one, 5 m behind it.
-                    let follow = trail_point(&self.trail, 5.0).unwrap_or_else(|| {
+                    // ~4 m back along the entry (the follower lags ~2 m)'s own trail; before it has one, 5 m behind it.
+                    let follow = trail_point(&self.trail, 4.0).unwrap_or_else(|| {
                         [0.0f32, 0.5, -0.5, 1.0, -1.0]
                             .iter()
                             .map(|&da| ep + V2::from_angle(away.angle() + da) * 5.0)
                             .find(|p| arena.nav.walkable_at(*p) && arena.nav.clear_line(ep, *p))
                             .unwrap_or_else(|| arena.nav.nearest_walkable(ep + away * 5.0))
                     });
-                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Push, dest: Some(follow), watch: Some(target), threat: None });
+                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(follow), watch: Some(target), threat: None, sticky: true });
                 }
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != entry && Some(i) != second).collect();
                 if full || changed {
@@ -726,7 +728,7 @@ impl SquadCoordinator {
                     }
                 }
                 self.orders[flanker] =
-                    Some(Order { role: Role::Flanker, goal: Goal::Flank, dest: self.claims[flanker], watch: Some(target), threat: Some(target) });
+                    Some(Order { role: Role::Flanker, goal: Goal::Flank, dest: self.claims[flanker], watch: Some(target), threat: Some(target), sticky: true });
                 let pins: Vec<usize> = by_dist.iter().copied().filter(|&i| i != flanker).collect();
                 if full || changed {
                     self.assign_positions(&pins, members, arena, model, target, None);
@@ -746,7 +748,7 @@ impl SquadCoordinator {
                 for (r, &i) in by_bearing.iter().enumerate() {
                     let ang = (members[i].pos - target).angle() + (r as f32 - (k - 1.0) * 0.5) * 0.35;
                     let dest = arena.nav.nearest_walkable(target + V2::from_angle(ang) * 5.0);
-                    self.orders[i] = Some(Order { role: Role::Collapser, goal: Goal::Hunt, dest: Some(dest), watch: Some(target), threat: Some(target) });
+                    self.orders[i] = Some(Order { role: Role::Collapser, goal: Goal::Hunt, dest: Some(dest), watch: Some(target), threat: Some(target), sticky: false });
                 }
                 if changed {
                     let z = arena.zone_of(target).map_or("there", |z| z.name);
@@ -760,7 +762,7 @@ impl SquadCoordinator {
                     .get_or_insert_with(|| *alive.iter().max_by(|&&a, &&b| members[a].hp.total_cmp(&members[b].hp).then(b.cmp(&a))).unwrap_or(&alive[0]));
                 let r = model.weakest_range().clamp(6.0, 28.0);
                 let dest = arena.nav.nearest_walkable(target + (members[bait].pos - target).norm() * r);
-                self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None });
+                self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None, sticky: true });
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != bait).collect();
                 if full || changed {
                     self.assign_positions(&rest, members, arena, model, target, Some(dest));
@@ -794,7 +796,7 @@ impl SquadCoordinator {
                         if let Some(c) = self.claims[i] {
                             mates.push(c);
                         }
-                        self.orders[i] = Some(Order { role: Role::Bound, goal: Goal::Hold, dest: self.claims[i], watch: Some(target), threat: Some(target) });
+                        self.orders[i] = Some(Order { role: Role::Bound, goal: Goal::Hold, dest: self.claims[i], watch: Some(target), threat: Some(target), sticky: false });
                     } else {
                         self.claims[i] = None;
                         self.orders[i] = Some(hold(None, Role::Overwatch));

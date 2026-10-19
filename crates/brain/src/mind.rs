@@ -243,7 +243,7 @@ impl EnemyMind {
                 player_aiming_at_me: aiming_at_me,
                 player_reloading: o.player_reloading,
             };
-            let new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal));
+            let new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal), self.order.is_some_and(|o| o.sticky));
             if new_goal != self.goal {
                 match new_goal {
                     Goal::Retreat => self.bark = Some("Falling back"),

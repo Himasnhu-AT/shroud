@@ -87,14 +87,15 @@ pub const ORDER_PRIORITY: f32 = 1.1;
 /// Seconds without contact after which a retreated member follows squad orders again.
 pub const REGROUP_S: f32 = 6.0;
 
-/// Pick the best goal, with hysteresis toward the current one. `ordered`: the squad's order.
-pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>) -> Goal {
+/// Pick the best goal, with hysteresis toward the current one. `ordered`: the squad's order;
+/// `sticky`: it holds even while this enemy is in contact.
+pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>, sticky: bool) -> Goal {
     let mut best = (f32::MIN, current);
     for g in Goal::ALL {
         let raw = score(g, i, t);
-        // Orders lapse while under fire and while in contact (fight first), except movement
-        // orders (flank, push/follow), which keep going and shoot on the move.
-        let lapse = i.taking_fire || (i.in_contact && !matches!(g, Goal::Flank | Goal::Push));
+        // Orders lapse while under fire and while in contact (fight first), except sticky ones
+        // (flanking, following the entry), which keep going and shoot on the move.
+        let lapse = i.taking_fire || (i.in_contact && !sticky);
         let base = match ordered {
             Some(o) if o == g && !lapse => raw.max(ORDER_PRIORITY),
             // Hurt members fall back while the fight is hot; once it has gone quiet the
