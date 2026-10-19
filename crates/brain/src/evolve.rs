@@ -99,8 +99,8 @@ impl Default for EvolveConfig {
     fn default() -> Self {
         EvolveConfig {
             budget: Duration::from_secs(8),
-            max_neat_generations: 12,
-            rounds_per_genome: 2,
+            max_neat_generations: 40,
+            rounds_per_genome: 3,
             threads: std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 6),
         }
     }

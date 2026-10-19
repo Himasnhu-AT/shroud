@@ -476,7 +476,7 @@ impl Population {
                     self.species.push(Species {
                         id: self.next_species_id,
                         representative: g.clone(),
-                        best_fitness: f32::NEG_INFINITY,
+                        best_fitness: f32::MIN, // finite: JSON has no infinity
                         stale: 0,
                     });
                     self.next_species_id += 1;
