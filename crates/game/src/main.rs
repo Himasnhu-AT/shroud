@@ -12,6 +12,7 @@ mod assets;
 mod evolving;
 mod map;
 mod menu;
+mod ops;
 mod player;
 mod state;
 mod ui;
@@ -73,6 +74,8 @@ fn main() {
             player::PlayerPlugin,
             weapon::WeaponPlugin,
             ui::UiPlugin,
+            // Last: its trace panic hook must wrap Bevy's.
+            ops::OpsPlugin,
         ))
         .run();
 }
