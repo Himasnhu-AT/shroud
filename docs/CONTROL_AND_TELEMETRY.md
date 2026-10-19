@@ -4,7 +4,7 @@ We use **Bevy as-is** and add only two things, both reused from `~/codes/synthai
 
 | Addition | ashlar crates | Why |
 |---|---|---|
-| **Control port** — agents and tests drive the game | `ashlar-control` (TCP JSON-lines server, key file, hardening), `ashlar-command` (`Dispatch` trait, command list), `ashlar-mcp` (MCP over stdio for free) | automated playtests, AI regression tests, Claude can play/inspect the game |
+| **Control port** — **for testing only**: tests and agents drive the game | `ashlar-control` (TCP JSON-lines server, key file, hardening), `ashlar-command` (`Dispatch` trait, command list), `ashlar-mcp` (MCP over stdio) | automated playtests, AI regression tests, perf soaks; Claude tests the game over MCP |
 | **Crash & performance reporting** | `ashlar-trace` (+ `ashlar-trace-server` self-hosted) | panics, hangs, frame-time histograms, custom gauges, match events |
 
 Neither crate depends on egui or ashlar's app layer (control: `serde`, `serde_json`, `thiserror`, `log`, `ashlar-command`; trace: `ashlar-trace-proto`, `flate2`, `ureq`, `sysinfo`), so they sit next to Bevy cleanly.
@@ -22,7 +22,13 @@ ashlar-trace   = { git = "<ashlar repo>", rev = "<sha>", features = ["sysinfo"] 
 
 ---
 
-## 1. Control port
+## 1. Control port (testing only)
+
+**Purpose:** let automated tests and agents (including Claude via MCP) drive and inspect the game. It is **not** a player feature.
+
+- Behind a cargo feature: `game/control` (pulls in the ashlar control crates). **Off in release/shipping builds**, so the shipped binary has no port, no flags, and no extra deps.
+- On by default in dev builds and in `cargo test`.
+- `scripts/test-game.sh` builds with the feature and runs the scenarios below.
 
 ### Transport (inherited from ashlar, see its `docs/control-protocol.md`)
 - JSON lines over TCP `127.0.0.1:<port>`, one reply per request, in order.
@@ -35,8 +41,8 @@ ashlar-trace   = { git = "<ashlar repo>", rev = "<sha>", features = ["sysinfo"] 
 ### Enabling
 | Flag | Effect |
 |---|---|
-| `--control <port>` | start the TCP control server (off by default in release builds) |
-| `--mcp` | serve MCP on stdio |
+| `--control <port>` | start the TCP control server (`control` feature only) |
+| `--mcp` | serve MCP on stdio so Claude can run test sessions (`control` feature only) |
 | `--headless` | no window/renderer: `MinimalPlugins` + `ScheduleRunnerPlugin`, physics and AI still run (CI, fast AI tests) |
 | `--seed <n>` | deterministic RNG for repeatable tests |
 
@@ -77,10 +83,19 @@ PreUpdate, exclusive system `drain_control(world)`: try_recv() all ─▶ GameDi
 | `debug.overlay` | `{on}` | `{}` |
 | `perf.stats` | — | `{fps, frame_ms:{p50,p95,p99}, entities, enemies, draw_calls?}` |
 
-### What it enables
-- **Agent playtests:** an agent (or Claude via MCP) runs `game.start`, steers with `player.*`, reads `game.state`, takes screenshots.
-- **AI regression tests:** `--headless --seed 1 --control 0` + script: play scripted matches, `ai.evolve`, assert squads get harder.
-- **Perf soak:** god mode + time scale 4 for 30 minutes, then read `perf.stats` and the trace dashboard.
+### Test scenarios (`crates/game/tests/`, run headless with `--seed`)
+| Test | Steps | Asserts |
+|---|---|---|
+| `smoke` | `app.ping`, `game.start`, step 300 frames | state is `Playing`, no panic, 5 enemies alive |
+| `movement` | teleport behind low cover, `player.crouch`, `enemy.list` | crouched player not visible to enemies; standing is |
+| `shooting` | look at frozen enemy, `player.fire {shots:5}` | hits > 0, enemy hp dropped by hits × 25 |
+| `enemies_fight_back` | god mode, unfreeze, step 20 s | player took damage; enemy goals include Attack/Flank/TakeCover |
+| `match_flow` | `enemy.kill` ×3 rounds | state goes Playing → Evolving → Debrief; generation +1 |
+| `evolution_gets_harder` | play N scripted matches with a fixed scripted player, `ai.evolve` each | squad damage dealt / time-to-kill improves across generations (seed-averaged) |
+| `persistence` | evolve, quit, relaunch | `ai.brain.generation` survives restart |
+| `perf_soak` (manual/nightly) | god mode, `time.scale 4`, 30 min | no hangs; p99 frame time under budget (`perf.stats` + trace dashboard) |
+
+**Claude as tester:** `shroud --mcp` exposes the same commands as MCP tools, so Claude can run exploratory test sessions: play a round, take screenshots, check enemy goals, and report bugs.
 
 ---
 
@@ -133,5 +148,5 @@ Run `ashlar-trace-server` locally; point `TRACE_ENDPOINT` at it via env (see `/U
 ## Tasks
 | Stream | Scope | Done when |
 |---|---|---|
-| **H1 Control** | `ops/control.rs`, `ops/commands.rs`, `--control/--mcp/--headless/--seed`, the command table above | `tests/control.rs`: starts headless game on port 0, reads key file, `app.ping`, `game.start`, `player.move`, `game.state` round-trip |
+| **H1 Control (test tooling)** | `control` cargo feature, `ops/control.rs`, `ops/commands.rs`, `--control/--mcp/--headless/--seed`, command table, `scripts/test-game.sh`, the test scenarios above | all scenario tests green headless; release build contains no control code |
 | **H2 Trace** | `ops/trace.rs` `TracePlugin`, events, gauges, panic hook, first-run notice | local server shows a session, frame histogram, and a deliberate test panic (`--crash-test`) |

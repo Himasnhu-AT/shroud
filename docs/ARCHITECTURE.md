@@ -9,7 +9,7 @@
 | NEAT | in-house (~600 lines) | Rust NEAT crates are alpha or stale |
 | RNG | rand 0.9 + rand_chacha (seeded) | deterministic sims and tests |
 | Save | serde + serde_json | human-readable `brain.json` |
-| Control port | `ashlar-control` + `ashlar-command` + `ashlar-mcp` | agents/tests drive the game |
+| Test control port | `ashlar-control` + `ashlar-command` + `ashlar-mcp` (cargo feature `control`, dev/test only) | tests and agents drive the game |
 | Crash/perf reporting | `ashlar-trace` (self-hosted server) | panics, hangs, frame times, match events |
 
 Upgrade path: once Avian releases support for Bevy 0.20, bump both crates together.

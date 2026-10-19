@@ -1,12 +1,12 @@
 {
-  "lastQuery": "great, then we'll make only this:    \n\n- a control port so agents and tests can drive the game;\n- crash and performance reporting reusing ashlar's telemetry;\n\n\nlets use bevy itself",
+  "lastQuery": "this is for testing game:  Control port (ashlar-control + ashlar-command, plus ashlar-mcp so Claude can play the game as MCP tools)",
   "perAgentQuery": {},
   "graftReads": 0,
   "sourceReads": 0,
   "savedTokens": 0,
   "injectedPointers": [],
   "nudges": 2,
-  "inputCostMicros": 792512,
-  "inputTokensBilled": 1219359,
-  "lastBillingUuid": "1a787732-4c0f-432e-b43c-fd01a00a6067"
+  "inputCostMicros": 1181870,
+  "inputTokensBilled": 1920382,
+  "lastBillingUuid": "974d4254-a4f1-4ade-806d-f8e04b592de8"
 }
