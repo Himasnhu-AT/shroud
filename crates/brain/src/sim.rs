@@ -7,6 +7,7 @@ use crate::math::{V2, angle_diff, rng_from_seed};
 use crate::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
 use crate::squad::{MemberView, SquadCoordinator};
 use crate::utility::Goal;
+use crate::perception::{self, Sound, GUNSHOT_RANGE, RELOAD_RANGE};
 use crate::ghost::{EnemyView, Ghost, GhostMode, GhostStats, GhostView};
 use crate::player_model::PlayerModel;
 use rand::Rng;
@@ -24,6 +25,7 @@ pub const CROUCH_SPEED: f32 = 2.0;
 pub const BODY_RADIUS: f32 = 0.4;
 pub const VISION_RANGE: f32 = 55.0;
 pub const VISION_HALF_ANGLE: f32 = 1.05; // ~120° cone
+/// Legacy single hearing radius (gunshots now use `perception::GUNSHOT_RANGE` with occlusion).
 pub const HEARING_RANGE: f32 = 30.0;
 /// Window for assist and trade credit (s).
 pub const CREDIT_WINDOW: f32 = 3.0;
@@ -153,7 +155,6 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
     let mut rng = rng_from_seed(seed);
     let cx = MindCtx { arena, model, limits };
     let mut t = 0.0;
-    let mut ghost_shot = false;
     // --- squad layer (squad.rs) ---
     let mut squad = SquadCoordinator::new(arena, n);
     squad.enabled = coordinated;
@@ -202,9 +203,6 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
             } else {
                 last_seen[i] += DT;
             }
-            if ghost_shot && enemies[i].pos.dist(ghost.body.pos) < HEARING_RANGE {
-                heard[i] = Some(ghost.body.pos);
-            }
             if last_seen[i] < 1.5 {
                 stats[i].time_engaged += DT;
             }
@@ -229,6 +227,9 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                 allies,
                 taking_fire: enemies[i].hit_t < 0.6,
                 player_reloading: ghost.body.reload_t > 0.0,
+                player_hurt: ghost.body.hit_t < 0.8,
+                squad_alert: board.alert,
+                token_denied: !squad.tokens.get(i).copied().unwrap_or(true),
             };
             let act = minds[i].think(&obs, &cx);
             let e = &mut enemies[i];
@@ -284,7 +285,27 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
         let view = GhostView { arena, model, enemies: &views };
         let act = ghost.act(&view);
         ghost.body.vel = act.vel;
-        ghost_shot = act.shot.is_some();
+        // --- Stimuli the ghost makes this tick: gunshot, footsteps, reload (perception.rs).
+        let gp = ghost.body.pos;
+        let mut sounds = Vec::with_capacity(3);
+        if act.shot.is_some() {
+            sounds.push((Sound::Gunshot, gp, GUNSHOT_RANGE));
+        }
+        let steps = perception::footstep_range(act.vel.len(), ghost.body.crouched);
+        if steps > 0.0 {
+            sounds.push((Sound::Footstep, gp, steps));
+        }
+        if ghost.body.reload_t > 0.0 {
+            sounds.push((Sound::Reload, gp, RELOAD_RANGE));
+        }
+        for i in (0..n).filter(|&i| enemies[i].alive()) {
+            let near_miss = act.shot.as_ref().is_some_and(|s| perception::near_miss(arena, gp, s.dir, enemies[i].pos));
+            let h = if near_miss { Some(perception::Heard { sound: Sound::Gunshot, pos: gp, loud: 1.0 }) } else { perception::listen(arena, &sounds, enemies[i].pos) };
+            if let Some(h) = h {
+                heard[i] = Some(h.pos);
+                squad.hear(i, &h, arena);
+            }
+        }
         if let Some(shot) = act.shot {
             let from = ghost.body.pos;
             let hit = match shot.scripted_hit {
@@ -305,6 +326,8 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                 e.hp -= dmg;
                 e.hit_t = 0.0;
                 stats[j].damage_taken += dmg;
+                // Damage is a sense: everyone learns where the shot came from, now.
+                squad.reveal(j, from, arena);
                 killed = !e.alive();
                 if killed {
                     last_ally_death = t;

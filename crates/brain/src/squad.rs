@@ -14,6 +14,7 @@ use crate::arena::{ARENA_HALF, Arena};
 use crate::genome::Traits;
 use crate::math::{V2, angle_diff};
 use crate::mind::{Blackboard, RADIO_PERIOD_S};
+use crate::perception::{Alert, Heard, Sound, heard_sigma};
 use crate::player_model::{HEAT_W, PlayerModel, SECTORS, heat_idx, sector_of};
 use crate::utility::Goal;
 use std::cell::RefCell;
@@ -275,6 +276,11 @@ impl Belief {
         self.gaussian(at, 3.0, 0.8);
     }
 
+    /// A heard sound with its own uncertainty (quiet sounds are hard to place).
+    pub fn heard_with(&mut self, at: V2, sigma: f32) {
+        self.gaussian(at, sigma, 0.8);
+    }
+
     /// Negative information: a member looking from `eye` along `look` saw nobody.
     pub fn clear_seen(&mut self, arena: &Arena, eye: V2, look: V2, range: f32, half_angle: f32) {
         for i in 0..self.p.len() {
@@ -423,6 +429,8 @@ const REPLAN_S: f32 = 1.0;
 const SWEEP_DIST: f32 = 18.0;
 const MIN_PLAY_S: f32 = 3.0;
 const KNOWN_S: f32 = 3.0;
+/// A member's own sighting this fresh counts as "contact" for the callout.
+const FRESH_CONTACT_S: f32 = 0.2;
 const BELIEF_RANGE: f32 = 40.0;
 const BELIEF_HALF_ANGLE: f32 = 1.05;
 const BARK_GAP_S: f32 = 0.5;
@@ -461,6 +469,21 @@ pub struct SquadCoordinator {
     bark_gap: f32,
     recent: Vec<(String, f32)>,
     time: f32,
+    /// Attack tokens (DOOM / Amalur style): who may actively shoot and push right now.
+    pub tokens: Vec<bool>,
+    token_t: Vec<f32>,
+}
+
+/// At most this many members hold attack tokens at once (fewer in small squads).
+pub const MAX_TOKENS: usize = 3;
+
+/// Token budget for `alive` members: everyone up to 2, then 2 of 3, then 3.
+pub fn token_budget(alive: usize) -> usize {
+    match alive {
+        0..=2 => alive,
+        3 => 2,
+        _ => MAX_TOKENS,
+    }
 }
 
 impl SquadCoordinator {
@@ -491,7 +514,70 @@ impl SquadCoordinator {
             bark_gap: 0.0,
             recent: Vec::new(),
             time: 0.0,
+            tokens: vec![true; n],
+            token_t: vec![0.0; n],
         }
+    }
+
+    /// Damage is a sense: member `victim` was hit, so the shooter's position (the player's
+    /// position at shot time) goes on the board for everyone at once, and the squad fights.
+    pub fn reveal(&mut self, victim: usize, shooter: V2, arena: &Arena) {
+        let fresh = self.board.alert == Alert::Combat && self.board.age < 1.0;
+        self.board.reveal(shooter);
+        self.belief.sighting(shooter);
+        if !fresh {
+            self.bark(victim, format!("Taking fire - {}", where_text(arena, shooter)), true);
+        }
+    }
+
+    /// Member `who` heard `h`: relay it (board + belief with the sound's uncertainty).
+    pub fn hear(&mut self, who: usize, h: &Heard, arena: &Arena) {
+        let before = self.board.alert;
+        self.board.hear(h);
+        self.belief.heard_with(h.pos, heard_sigma(h.loud));
+        self.heard_at = Some(h.pos);
+        self.heard_t = 0.0;
+        if before != Alert::Combat {
+            let text = match h.sound {
+                Sound::Gunshot => format!("Shots - {}", where_text(arena, h.pos)),
+                Sound::Footstep => "Footsteps - checking it".to_string(),
+                Sound::Reload => "Heard a reload".to_string(),
+            };
+            self.bark(who, text, h.sound == Sound::Gunshot);
+        }
+    }
+
+    /// Re-deal attack tokens: prefer members in contact, current holders (hysteresis), close
+    /// to the player and healthy. Out of combat everyone may shoot (tokens only ration a fight).
+    fn assign_tokens(&mut self, dt: f32, members: &[MemberView]) {
+        let n = members.len();
+        self.tokens.resize(n, true);
+        self.token_t.resize(n, 0.0);
+        let alive: Vec<usize> = (0..n).filter(|&i| members[i].alive).collect();
+        // Tokens are a fairness budget, so they apply with or without plays (`enabled`).
+        if self.board.alert != Alert::Combat {
+            self.tokens.iter_mut().for_each(|t| *t = true);
+            return;
+        }
+        let target = self.board.pos;
+        let score = |i: usize| {
+            let m = &members[i];
+            let contact = if m.last_seen < 1.0 { 2.0 } else { 0.0 };
+            // Holders keep it for a while, then it rotates.
+            let hold = if self.tokens[i] && self.token_t[i] < 6.0 { 1.0 } else { 0.0 };
+            contact + hold + 1.0 / (1.0 + m.pos.dist(target) / 10.0) + 0.5 * m.hp
+        };
+        let mut ranked = alive.clone();
+        ranked.sort_by(|&a, &b| score(b).total_cmp(&score(a)).then(a.cmp(&b)));
+        let k = token_budget(alive.len());
+        let mut next = vec![false; n];
+        for &i in ranked.iter().take(k) {
+            next[i] = true;
+        }
+        for i in 0..n {
+            self.token_t[i] = if next[i] && self.tokens[i] { self.token_t[i] + dt } else { 0.0 };
+        }
+        self.tokens = next;
     }
 
     /// Callouts produced since the last call.
@@ -533,6 +619,21 @@ impl SquadCoordinator {
         self.heard_t += dt;
         self.bark_gap -= dt;
         self.board.tick(dt, members.iter().filter(|m| m.alive).map(|m| (m.last_known, m.last_seen)));
+        self.assign_tokens(dt, members);
+
+        // Contact / lost callouts every tick, from the freshest *real* sighting (never the
+        // belief peak or a stale prior), so the zone named is where he actually is.
+        let spotter = (0..n).filter(|&i| members[i].alive).min_by(|&a, &b| members[a].last_seen.total_cmp(&members[b].last_seen));
+        let known = self.board.age < KNOWN_S;
+        if let Some(s) = spotter {
+            let m = &members[s];
+            if m.last_seen < FRESH_CONTACT_S && !self.was_known {
+                self.bark(s, contact_text(arena, m.pos, m.last_known), true);
+            } else if !known && self.was_known {
+                self.bark(s, format!("Lost him - last seen {}", where_text(arena, self.board.pos)), false);
+            }
+        }
+        self.was_known = known || spotter.is_some_and(|s| members[s].last_seen < FRESH_CONTACT_S);
 
         // Barks every tick: man down, the minds' own.
         for i in 0..n {
@@ -590,16 +691,6 @@ impl SquadCoordinator {
             }
         }
 
-        // Contact callout on a fresh sighting after the player was lost.
-        let known = self.board.age < KNOWN_S;
-        if known && !self.was_known && self.board.age < 0.5 {
-            let target = self.board.pos;
-            if let Some(s) = (0..n).filter(|&i| members[i].alive).min_by(|&a, &b| members[a].last_seen.total_cmp(&members[b].last_seen)) {
-                self.bark(s, contact_text(arena, members[s].pos, target), true);
-            }
-        }
-        self.was_known = known;
-
         self.replan_t -= RADIO_PERIOD_S;
         let full = self.replan_t <= 0.0;
         if full {
@@ -622,7 +713,12 @@ impl SquadCoordinator {
         if let Some(p) = self.force_play {
             return p;
         }
-        if !known && self.heard_t < 2.0 {
+        // Unaware with nothing to go on: everyone hunts on their own (faster than a sweep).
+        if !known && self.board.alert == Alert::Unaware && self.heard_t >= 2.0 {
+            return Play::Free;
+        }
+        // In a fight, a lost player is hunted down fast (collapse), not bounded toward.
+        if !known && (self.heard_t < 2.0 || self.board.alert == Alert::Combat) {
             return Play::Collapse;
         }
         if !known {
@@ -674,7 +770,8 @@ impl SquadCoordinator {
         }
         let target = match play {
             Play::Overwatch | Play::Sweep => arena.nav.nearest_walkable(self.belief.peak()),
-            Play::Collapse => self.heard_at.unwrap_or(self.board.pos),
+            // The freshest of the last sound and the last sighting.
+            Play::Collapse => self.heard_at.filter(|_| self.heard_t < self.board.age).unwrap_or(self.board.pos),
             _ => self.predicted(arena),
         };
         // Members closest to the target first.
@@ -709,8 +806,8 @@ impl SquadCoordinator {
                     if self.trail.last().is_none_or(|l| l.dist(ep) > 0.5) {
                         self.trail.push(ep);
                     }
-                    // ~4 m back along the entry (the follower lags ~2 m)'s own trail; before it has one, 5 m behind it.
-                    let follow = trail_point(&self.trail, 4.0).unwrap_or_else(|| {
+                    // ~3 m back along the entry's own trail (the follower lags ~2-3 m while strafing); before it has one, 5 m behind it.
+                    let follow = trail_point(&self.trail, 3.0).unwrap_or_else(|| {
                         [0.0f32, 0.5, -0.5, 1.0, -1.0]
                             .iter()
                             .map(|&da| ep + V2::from_angle(away.angle() + da) * 5.0)
@@ -855,6 +952,14 @@ fn trail_point(trail: &[V2], back: f32) -> Option<V2> {
 
 fn nearest_alive(members: &[MemberView], to: V2) -> Option<usize> {
     (0..members.len()).filter(|&i| members[i].alive).min_by(|&a, &b| members[a].pos.dist(to).total_cmp(&members[b].pos.dist(to)))
+}
+
+/// "at the west lane" / "close" for a spot outside any zone.
+fn where_text(arena: &Arena, p: V2) -> String {
+    match arena.zone_of(p) {
+        Some(z) => format!("at {}", z.name),
+        None => "close".into(),
+    }
 }
 
 /// "He's at the center tower, left side" (left/right as seen by the speaker).

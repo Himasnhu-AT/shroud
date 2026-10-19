@@ -98,19 +98,22 @@ fn evolution_makes_squads_stronger() {
     let mut s = BrainState::new(11);
     let gen0 = s.clone();
     let cfg = EvolveConfig { budget: Duration::from_secs(60), max_neat_generations: 4, ..Default::default() };
-    for _ in 0..3 {
+    // Six generations, 48 rounds: since the perception/aggression pass (addendum) the gen-0
+    // squad already wins ~half its rounds, so three generations on 24 rounds left too little
+    // headroom to measure the gain reliably.
+    for _ in 0..6 {
         s.evolve(&MatchReport::default(), &a, &cfg, |_| {});
     }
     let score = |b: &BrainState| -> (f32, f32) {
         let (mut wins, mut dmg) = (0.0, 0.0);
-        for seed in 0..24 {
+        for seed in 0..48 {
             let r = sim::run_round(&a, &model, limits, b.squad_minds(seed), 1000 + seed);
             if !r.player_won {
                 wins += 1.0;
             }
             dmg += r.enemies.iter().map(|e| e.damage_dealt).sum::<f32>();
         }
-        (wins / 24.0, dmg / 24.0)
+        (wins / 48.0, dmg / 48.0)
     };
     let (w0, d0) = score(&gen0);
     let (w1, d1) = score(&s);
