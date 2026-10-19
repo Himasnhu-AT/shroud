@@ -34,6 +34,7 @@ def main():
     shutil.copy2("/Users/himanshu/codes/game/shroud/target/debug/shroud", exe)
     log = open(os.path.join(out, "game.log"), "w")
     cmd = ["memgate", "--", exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
+    cmd.append("--mute")  # never make noise (the user may be in a meeting)
     if not headless and "--onscreen" not in args:
         cmd.append("--offscreen")
     env = dict(os.environ, SHROUD_DATA_DIR=os.environ.get("SHROUD_DATA_DIR", os.path.join(out, "data")))
