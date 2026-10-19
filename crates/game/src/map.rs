@@ -80,8 +80,8 @@ fn spawn_arena(
             mk("wall", Color::srgb(0.42, 0.45, 0.50), flat(Color::srgb(0.22, 0.23, 0.26), 0.9)),
             // Tall: teal painted steel with rust.
             mk("tall", Color::srgb(0.62, 0.72, 0.72), flat(Color::srgb(0.48, 0.30, 0.20), 0.6)),
-            // Low: red painted cover, reads as "crouch here".
-            mk("low", Color::srgb(0.72, 0.62, 0.6), flat(Color::srgb(0.70, 0.58, 0.25), 0.8)),
+            // Low: warm sand-coloured concrete barriers (amber trim says "crouch here").
+            mk("wall", Color::srgb(0.95, 0.80, 0.55), flat(Color::srgb(0.70, 0.58, 0.25), 0.8)),
         ]
     });
     // Glowing trims: amber edge on low cover, cyan base strip on walls.
