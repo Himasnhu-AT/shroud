@@ -2,7 +2,9 @@
 """Launch Shroud (windowed by default) under memgate with the control port, run a script of
 commands, save screenshots, quit. For tests and visual checks; never grabs the mouse.
 
-  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N]
+  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N] [--no-build]
+
+Builds this checkout first (via memgate) and runs a private copy of the binary.
 
 Default is --offscreen: hidden window, camera renders to an image, so screenshots work even
 when another app is fullscreen. --onscreen shows the window instead.
@@ -23,7 +25,13 @@ def main():
     seed = args[args.index("--seed") + 1] if "--seed" in args else "1"
     os.makedirs(out, exist_ok=True)
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    exe = os.path.join("/Users/himanshu/codes/game/shroud/target/debug/shroud")
+    # Build *this* checkout and snapshot the binary right away: the shared target dir means
+    # another worktree's build can overwrite target/debug/shroud at any moment.
+    if "--no-build" not in args:
+        subprocess.run(["memgate", "--", "cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
+    exe = os.path.join(out, "shroud")
+    import shutil
+    shutil.copy2("/Users/himanshu/codes/game/shroud/target/debug/shroud", exe)
     log = open(os.path.join(out, "game.log"), "w")
     cmd = ["memgate", "--", exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
     if not headless and "--onscreen" not in args:
