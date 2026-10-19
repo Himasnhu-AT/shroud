@@ -149,6 +149,8 @@ pub struct EnemyMind {
     /// A callout the mind wants to make (taken by the coordinator).
     bark: Option<&'static str>,
     was_reloading: bool,
+    /// Seconds since this enemy itself last saw the player.
+    own_unseen: f32,
     pub debug: MindDebug,
 }
 
@@ -178,6 +180,7 @@ impl EnemyMind {
             order: None,
             bark: None,
             was_reloading: false,
+            own_unseen: 99.0,
             debug: MindDebug::default(),
         }
     }
@@ -212,6 +215,7 @@ impl EnemyMind {
         let dir_p = to_player.norm();
 
         // Perception timers.
+        self.own_unseen = if o.player_visible { 0.0 } else { self.own_unseen + o.dt };
         if o.player_visible {
             self.seen_time += o.dt;
         } else {
@@ -226,6 +230,7 @@ impl EnemyMind {
         if self.think_timer <= 0.0 || o.taking_fire && self.goal != Goal::TakeCover && self.goal != Goal::Retreat {
             self.think_timer = 0.25;
             let ui = UtilityInput {
+                in_contact: self.own_unseen < ENGAGE_MEMORY_S,
                 visible: o.player_visible,
                 dist,
                 hp: o.hp,

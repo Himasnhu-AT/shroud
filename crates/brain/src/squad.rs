@@ -454,7 +454,7 @@ impl SquadCoordinator {
             claims: vec![None; n],
             orders: vec![None; n],
             enabled: true,
-            force_play: match std::env::var("SQ_FORCE").ok().as_deref() { Some("cf") => Some(Play::Crossfire), Some("tr") => Some(Play::Trade), Some("pf") => Some(Play::PinFlank), Some("ba") => Some(Play::Bait), Some("ow") => Some(Play::Overwatch), _ => None }, // DBGHACK
+            force_play: None,
             radio_t: 0.0,
             replan_t: 0.0,
             radio_ticks: 0,
@@ -610,7 +610,7 @@ impl SquadCoordinator {
             // Bound with overwatch near where he probably is; sweep there quickly when far.
             let peak = self.belief.peak();
             let near = members.iter().filter(|m| m.alive).any(|m| m.pos.dist(peak) < SWEEP_DIST);
-            return if near && std::env::var_os("SQ_NOOW").is_none() { Play::Overwatch } else { Play::Sweep };
+            return if near { Play::Overwatch } else { Play::Sweep };
         }
         if self.play_t < MIN_PLAY_S && matches!(self.play, Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait) {
             return self.play;
@@ -632,10 +632,6 @@ impl SquadCoordinator {
     fn plan(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
         let play = self.choose_play(members, model);
         let changed = play != self.play;
-        if changed && std::env::var_os("SQ_TRACE").is_some() { // DBGHACK
-            let ps: Vec<String> = members.iter().map(|m| format!("({:.0},{:.0}{})", m.pos.x, m.pos.y, if m.alive {""} else {"x"})).collect();
-            eprintln!("t {:.1} {:?} -> {:?} board ({:.0},{:.0}) age {:.1} peak {:?} {}", self.time, self.play, play, self.board.pos.x, self.board.pos.y, self.board.age, self.belief.peak(), ps.join(" "));
-        }
         if changed {
             self.play = play;
             self.play_t = 0.0;

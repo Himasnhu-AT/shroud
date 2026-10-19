@@ -469,6 +469,7 @@ pub fn goal_doing(g: Goal) -> &'static str {
         Goal::Retreat => "falling back",
         Goal::Ambush => "holding ambushes",
         Goal::Hunt => "hunting for you",
+        Goal::Hold => "holding squad positions",
     }
 }
 
@@ -526,16 +527,16 @@ pub fn squad_card(
         expected_zone = Some(zone.to_string());
     }
 
-    let mut time = [0.0f32; 7];
-    let mut kills = [0u32; 7];
+    let mut time = [0.0f32; Goal::COUNT];
+    let mut kills = [0u32; Goal::COUNT];
     for e in enemies {
-        for k in 0..7 {
+        for k in 0..Goal::COUNT {
             time[k] += e.goal_time[k];
             kills[k] += e.kills_by_goal[k];
         }
     }
     let total: f32 = time.iter().sum();
-    let mut order: Vec<usize> = (0..7).collect();
+    let mut order: Vec<usize> = (0..Goal::COUNT).collect();
     order.sort_by(|&a, &b| time[b].total_cmp(&time[a]));
     let flank = Goal::ALL.iter().position(|&g| g == Goal::Flank).unwrap_or(2);
     if total > 1.0 {
@@ -556,7 +557,7 @@ pub fn squad_card(
     let rounds = player_rounds + enemy_rounds;
     card.worked = format!("They won {enemy_rounds} of {rounds} rounds.");
     let k_total: u32 = kills.iter().sum();
-    if let Some(best) = (0..7).filter(|&k| kills[k] > 0).max_by_key(|&k| kills[k]) {
+    if let Some(best) = (0..Goal::COUNT).filter(|&k| kills[k] > 0).max_by_key(|&k| kills[k]) {
         card.worked += &format!(" {} of their {k_total} kills came while {}.", kills[best], goal_doing(Goal::ALL[best]));
     }
 

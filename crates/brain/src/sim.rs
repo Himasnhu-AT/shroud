@@ -176,7 +176,6 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
             m.set_order(o);
         }
         let board = squad.board;
-        if std::env::var_os("SQ_TRACE").is_some() && t > ROUND_TIME - DT * 1.5 { eprint!("END coord={coordinated} "); } if std::env::var_os("SQ_TRACE").is_some() && t > ROUND_TIME - DT * 1.5 { let ps: Vec<String> = (0..n).filter(|&i| enemies[i].alive()).map(|i| format!("({:.0},{:.0} {:?} {:?})", enemies[i].pos.x, enemies[i].pos.y, minds[i].goal(), minds[i].order().and_then(|o| o.dest).map(|d| (d.x as i32, d.y as i32)))).collect(); eprintln!("  t {t:.0} ghost ({:.0},{:.0}) hp {:.0} peak {:?} play {:?} age {:.1} {}", ghost.body.pos.x, ghost.body.pos.y, ghost.body.hp, squad.belief.peak(), squad.play, squad.board.age, ps.join(" ")); } // DBGHACK
         // --- end squad layer ---
         for i in 0..n {
             if !enemies[i].alive() {

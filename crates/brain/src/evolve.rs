@@ -39,10 +39,10 @@ pub struct EnemyReport {
     pub time_engaged: f32,
     /// Seconds spent in each goal, indexed like `Goal::ALL`.
     #[serde(default)]
-    pub goal_time: [f32; 7],
+    pub goal_time: [f32; Goal::COUNT],
     /// Kills on the player by the goal the enemy was in, indexed like `Goal::ALL`.
     #[serde(default)]
-    pub kills_by_goal: [u32; 7],
+    pub kills_by_goal: [u32; Goal::COUNT],
 }
 
 /// Index of a goal in `Goal::ALL` (for `EnemyReport::goal_time` / `kills_by_goal`).
@@ -57,7 +57,7 @@ impl EnemyReport {
         self.kills += r.kills;
         self.time_alive += r.time_alive;
         self.time_engaged += r.time_engaged;
-        for k in 0..7 {
+        for k in 0..Goal::COUNT {
             self.goal_time[k] += r.goal_time[k];
             self.kills_by_goal[k] += r.kills_by_goal[k];
         }

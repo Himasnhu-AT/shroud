@@ -17,7 +17,8 @@ pub enum Goal {
 }
 
 impl Goal {
-    pub const ALL: [Goal; 8] = [Goal::Attack, Goal::Push, Goal::Flank, Goal::TakeCover, Goal::Retreat, Goal::Ambush, Goal::Hunt, Goal::Hold];
+    pub const COUNT: usize = 8;
+    pub const ALL: [Goal; Goal::COUNT] = [Goal::Attack, Goal::Push, Goal::Flank, Goal::TakeCover, Goal::Retreat, Goal::Ambush, Goal::Hunt, Goal::Hold];
     pub fn label(self) -> &'static str {
         match self {
             Goal::Attack => "attack",
@@ -34,6 +35,8 @@ impl Goal {
 
 /// Everything the scorer needs, already reduced to scalars.
 pub struct UtilityInput {
+    /// This enemy itself saw the player within the last ~1.5 s (not just the radio).
+    pub in_contact: bool,
     pub visible: bool,
     pub dist: f32,
     pub hp: f32,
@@ -89,9 +92,9 @@ pub fn choose(current: Goal, i: &UtilityInput, t: &Traits, ordered: Option<Goal>
     let mut best = (f32::MIN, current);
     for g in Goal::ALL {
         let raw = score(g, i, t);
-        // Orders lapse while under fire, and while the player is in sight (fight first),
-        // except for a flanker on the way.
-        let lapse = i.taking_fire || (i.visible && g != Goal::Flank);
+        // Orders lapse while under fire and while in contact (fight first), except for a
+        // flanker on the way.
+        let lapse = i.taking_fire || (i.in_contact && g != Goal::Flank);
         let base = match ordered {
             Some(o) if o == g && !lapse => raw.max(ORDER_PRIORITY),
             // Hurt members fall back while the fight is hot; once it has gone quiet the

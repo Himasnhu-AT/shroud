@@ -90,9 +90,13 @@ impl TraitGenome {
         for g in &mut genes {
             *g = rng.random();
         }
+        // PEF weights come from their own stream seeded by the trait genes, so adding them
+        // didn't change which trait genomes a given seed produces.
+        let seed = genes.iter().fold(0x5EED_u64, |h, g| h.rotate_left(13) ^ f32::to_bits(*g) as u64);
+        let mut prng = crate::math::rng_from_seed(seed);
         let mut pef = [0.0; PEF_TERMS];
         for g in &mut pef {
-            *g = rng.random();
+            *g = prng.random();
         }
         TraitGenome { genes, pef, fitness: 0.0, evals: 0 }
     }
