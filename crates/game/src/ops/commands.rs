@@ -579,8 +579,12 @@ fn capture_screenshot(world: &mut World, p: Value, reply: ReplyId) -> Result<(),
         let _ = std::fs::create_dir_all(dir);
     }
     let shown = path.display().to_string();
+    let shot = match world.get_resource::<super::offscreen::OffscreenTarget>() {
+        Some(t) => Screenshot::image(t.0.clone()),
+        None => Screenshot::primary_window(),
+    };
     world
-        .spawn(Screenshot::primary_window())
+        .spawn(shot)
         .observe(save_to_disk(path))
         .observe(move |_: On<ScreenshotCaptured>, mut pending: ResMut<PendingReplies>| {
             pending.reply(reply, Ok(json!({"path": shown})));
