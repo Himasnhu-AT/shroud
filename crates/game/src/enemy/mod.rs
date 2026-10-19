@@ -3,6 +3,7 @@
 
 pub mod animation;
 pub mod debug;
+pub mod gun;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -16,7 +17,8 @@ use crate::map::{ArenaRes, to_ground, to_world};
 use crate::player::{Player, PlayerMotor, PlayerSet, collide_and_slide};
 use crate::save::Brain;
 use crate::state::{GameState, Headless};
-use crate::weapon::{Damage, Health, Hitbox, ShotFired, Tracer, WeaponSet};
+use crate::weapon::{Damage, Health, Hitbox, ShotFired, WeaponSet};
+use gun::{EnemyFx, GunLink};
 
 pub const ENEMY_HP: f32 = 100.0;
 const EYE: f32 = 1.6;
@@ -24,6 +26,10 @@ const CROUCH_EYE: f32 = 1.0;
 const HEAD_Y: f32 = 1.62;
 const CROUCH_HEAD_Y: f32 = 1.0;
 const ENGAGE_MEMORY: f32 = 1.5;
+/// After first spotting the player, an enemy glints and holds fire this long (fairness telegraph).
+const TELEGRAPH_S: f32 = 0.25;
+/// Enemy tracers that hit the player stop this far short, so nothing draws at the camera.
+const TRACER_CLEARANCE: f32 = 1.5;
 
 pub struct EnemyPlugin;
 
@@ -39,7 +45,7 @@ impl Plugin for EnemyPlugin {
             .add_systems(Update, (collect_inbox, think_and_act, sync_crouch).chain().in_set(EnemySet))
             .add_systems(Update, enemy_deaths.after(WeaponSet).run_if(in_state(GameState::Playing)))
             .add_systems(Update, despawn_corpses)
-            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin));
+            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin, gun::EnemyGunPlugin));
     }
 }
 
@@ -74,6 +80,13 @@ pub struct EnemyCombat {
     pub dead: bool,
     /// Seconds since this enemy last fired.
     pub last_shot: f32,
+    /// Hits taken so far, and whether the latest was a headshot (drives hit reactions).
+    pub hits: u32,
+    pub hit_head: bool,
+    /// Seconds since the current engagement began (the player was spotted after being lost).
+    pub engage_t: f32,
+    /// World point the gun should point at while engaged.
+    pub aim_at: Option<Vec3>,
     pub report: EnemyReport,
 }
 
@@ -149,6 +162,10 @@ pub fn spawn_squad(
                     vel: V2::ZERO,
                     dead: false,
                     last_shot: 99.0,
+                    hits: 0,
+                    hit_head: false,
+                    engage_t: 99.0,
+                    aim_at: None,
                     report,
                 },
                 Health::new(ENEMY_HP),
@@ -191,7 +208,7 @@ pub fn spawn_squad(
 #[derive(Resource, Default)]
 struct Inbox {
     player_shots: Vec<Vec3>,
-    hits: Vec<Entity>,
+    hits: Vec<(Entity, bool)>,
 }
 
 fn collect_inbox(
@@ -202,7 +219,7 @@ fn collect_inbox(
 ) {
     let player = players.single().ok();
     inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| s.origin).collect();
-    inbox.hits = damage.read().filter(|d| Some(d.source) == player).map(|d| d.target).collect();
+    inbox.hits = damage.read().filter(|d| Some(d.source) == player).map(|d| (d.target, d.headshot)).collect();
 }
 
 fn v2_dir3(d: V2) -> Vec3 {
@@ -216,18 +233,34 @@ fn ray_reaches(spatial: &SpatialQuery, filter: &SpatialQueryFilter, eye: Vec3, t
     spatial.cast_ray(eye, dir, d.length() + 0.5, true, filter).is_some_and(|h| h.entity == player)
 }
 
+/// Distance along a unit ray at which it enters a sphere, if it does (in front of the origin).
+fn ray_sphere_enter(origin: Vec3, dir: Vec3, center: Vec3, r: f32) -> Option<f32> {
+    let oc = origin - center;
+    let b = oc.dot(dir);
+    let disc = b * b - (oc.length_squared() - r * r);
+    if disc < 0.0 {
+        return None;
+    }
+    let t = -b - disc.sqrt();
+    (t > 0.0).then_some(t)
+}
+
 fn think_and_act(
     time: Res<Time>,
     spatial: SpatialQuery,
     arena: Res<ArenaRes>,
     brain: Res<Brain>,
     players: Query<(Entity, &Transform, &PlayerMotor, &Health), With<Player>>,
-    mut enemies: Query<(Entity, &mut Transform, &mut Mind, &mut EnemyCombat, &Children, &Health), (With<Enemy>, Without<Player>)>,
+    mut enemies: Query<
+        (Entity, &mut Transform, &mut Mind, &mut EnemyCombat, &Children, &Health, Option<&GunLink>),
+        (With<Enemy>, Without<Player>),
+    >,
+    globals: Query<&GlobalTransform>,
     inbox: Res<Inbox>,
     freeze: Res<EnemyFreeze>,
     mut damage_out: MessageWriter<Damage>,
     mut shots_out: MessageWriter<ShotFired>,
-    mut tracers: MessageWriter<Tracer>,
+    mut fx: MessageWriter<EnemyFx>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
@@ -248,7 +281,7 @@ fn think_and_act(
     let snapshot: Vec<(Entity, V2, bool)> = enemies
         .iter()
         .filter(|e| !e.3.dead)
-        .map(|(e, tf, _, c, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY))
+        .map(|(e, tf, _, c, _, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY))
         .collect();
     let limits = brain.state.limits();
     let cx = MindCtx { arena: &arena.0, model: &brain.state.player_model, limits };
@@ -256,7 +289,7 @@ fn think_and_act(
     // SHROUD_LOG_AI=1: log every enemy's decision about once per second.
     let log_ai = std::env::var_os("SHROUD_LOG_AI").is_some() && (time.elapsed_secs() % 1.0) < dt;
 
-    for (e, mut tf, mut mind, mut c, children, hp) in &mut enemies {
+    for (e, mut tf, mut mind, mut c, children, hp, gun_link) in &mut enemies {
         if c.dead {
             continue;
         }
@@ -268,8 +301,10 @@ fn think_and_act(
 
         // --- Perception.
         c.hit_t += dt;
-        if hits.contains(&e) {
+        if let Some(&(_, head)) = hits.iter().rev().find(|h| h.0 == e) {
             c.hit_t = 0.0;
+            c.hits += hits.iter().filter(|h| h.0 == e).count() as u32;
+            c.hit_head = head;
         }
         let look = V2::new(tf.forward().x, tf.forward().z);
         let to_p = p_ground - pos;
@@ -279,6 +314,18 @@ fn think_and_act(
             && in_cone
             && (ray_reaches(&spatial, &filter, eye, p_head, player) || ray_reaches(&spatial, &filter, eye, p_center, player));
         c.sees_player = sees;
+        c.engage_t += dt;
+        if sees && c.last_seen >= ENGAGE_MEMORY {
+            // New engagement: telegraph before the first shot.
+            c.engage_t = 0.0;
+            if !freeze.0 {
+                fx.write(EnemyFx::Glint { shooter: e, at: gun::muzzle_point(&tf, c.crouched, gun_link, &globals) });
+            }
+        }
+        c.aim_at = (c.last_seen < ENGAGE_MEMORY || sees).then(|| {
+            let target = if sees { p_ground } else { c.last_known };
+            Vec3::new(target.x, p_center.y + 0.2, target.y)
+        });
         if sees {
             c.last_seen = 0.0;
             c.last_known = p_ground;
@@ -348,7 +395,7 @@ fn think_and_act(
             c.reload = RELOAD_S;
             continue;
         }
-        if !(act.fire && c.cooldown <= 0.0 && c.ammo > 0) {
+        if !(act.fire && c.cooldown <= 0.0 && c.ammo > 0 && c.engage_t >= TELEGRAPH_S) {
             continue;
         }
         c.cooldown = FIRE_INTERVAL;
@@ -357,14 +404,21 @@ fn think_and_act(
         if c.ammo == 0 {
             c.reload = RELOAD_S;
         }
-        let horiz = (p_center - eye).xz().length().max(0.1);
-        let pitch = (p_center.y - eye.y).atan2(horiz) + act.shot_pitch_err;
+        let muzzle = gun::muzzle_point(&tf, c.crouched, gun_link, &globals);
+        let horiz = (p_center - muzzle).xz().length().max(0.1);
+        let pitch = (p_center.y - muzzle.y).atan2(horiz) + act.shot_pitch_err;
         let dir = Vec3::new(act.shot_dir.x * pitch.cos(), pitch.sin(), act.shot_dir.y * pitch.cos());
         let Ok(dir3) = Dir3::new(dir) else { continue };
-        shots_out.write(ShotFired { origin: eye, dir, by: e });
-        let hit = spatial.cast_ray(eye, dir3, brain::sim::VISION_RANGE, true, &filter);
-        let end = hit.map_or(eye + dir * 60.0, |h| eye + dir * h.distance);
-        tracers.write(Tracer { from: eye + dir * 0.6, to: end });
+        shots_out.write(ShotFired { origin: muzzle, dir, by: e });
+        let hit = spatial.cast_ray(muzzle, dir3, brain::sim::VISION_RANGE, true, &filter);
+        // Tracer: stop where the bullet stops, but never within TRACER_CLEARANCE of the player's eye.
+        let mut len = hit.map_or(60.0, |h| h.distance);
+        let cam = p_center + Vec3::Y * 0.6;
+        if let Some(t) = ray_sphere_enter(muzzle, dir, cam, TRACER_CLEARANCE) {
+            len = len.min(t);
+        }
+        let to = (muzzle.distance(cam) > TRACER_CLEARANCE).then_some(muzzle + dir * len);
+        fx.write(EnemyFx::Shot { shooter: e, from: muzzle, to });
         if hit.is_some_and(|h| h.entity == player) && player_hp_left > 0.0 {
             let amount = limits.damage_per_hit;
             damage_out.write(Damage { target: player, amount, source: e, headshot: false });

@@ -14,6 +14,9 @@ pub const NEAT_OUTPUTS: usize = 4;
 /// How fast enemies can turn their aim (rad/s): a quick flick by the player breaks their aim.
 pub const MAX_TURN_RATE: f32 = std::f32::consts::TAU;
 pub const ENGAGE_MEMORY_S: f32 = 1.5;
+/// After a hit, aim spread is up to `1 + FLINCH_SPREAD` times wider, easing back over `FLINCH_S`.
+pub const FLINCH_S: f32 = 0.25;
+pub const FLINCH_SPREAD: f32 = 1.5;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AllyInfo {
@@ -93,6 +96,9 @@ pub struct EnemyMind {
     burst_timer: f32,
     burst_pause: f32,
     flank_side: f32,
+    /// Flinch: aim is disturbed briefly after being hit (set on the rising edge of `taking_fire`).
+    was_hit: bool,
+    flinch_t: f32,
     inputs: [f32; NEAT_INPUTS],
     pub debug: MindDebug,
 }
@@ -117,6 +123,8 @@ impl EnemyMind {
             burst_timer: 0.0,
             burst_pause: 0.0,
             flank_side,
+            was_hit: false,
+            flinch_t: 0.0,
             inputs: [0.0; NEAT_INPUTS],
             debug: MindDebug::default(),
         }
@@ -270,7 +278,13 @@ impl EnemyMind {
         // Spread: base error, worse while moving, better once settled on target.
         let settle = 1.0 + 0.6 * (1.0 - (self.on_target_time / 0.6).min(1.0));
         let moving = 1.0 + move_dir.len() * 0.35;
-        let sigma = t.aim_error_deg.to_radians() * settle * moving;
+        if o.taking_fire && !self.was_hit {
+            self.flinch_t = FLINCH_S;
+        }
+        self.was_hit = o.taking_fire;
+        self.flinch_t = (self.flinch_t - o.dt).max(0.0);
+        let flinch = 1.0 + FLINCH_SPREAD * self.flinch_t / FLINCH_S;
+        let sigma = t.aim_error_deg.to_radians() * settle * moving * flinch;
         let shot_dir = V2::from_angle(self.aim_yaw + gauss(&mut self.rng) * sigma);
         let shot_pitch_err = gauss(&mut self.rng) * sigma * 0.6;
 
