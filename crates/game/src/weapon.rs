@@ -40,7 +40,7 @@ impl Plugin for WeaponPlugin {
                 Update,
                 WeaponSet.after(PlayerSet::Move).run_if(in_state(GameState::Playing)),
             )
-            .add_systems(Startup, spawn_dummies)
+            .add_systems(Startup, spawn_dummies.run_if(|| std::env::args().any(|a| a == "--dummies")))
             .add_systems(PostStartup, (attach_rifle, spawn_viewmodel.run_if(has_visuals)))
             .add_systems(OnEnter(GameState::Playing), reset_rifle)
             .add_systems(

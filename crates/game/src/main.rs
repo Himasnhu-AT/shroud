@@ -9,11 +9,15 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod assets;
+mod enemy;
 mod evolving;
 mod map;
+mod match_flow;
 mod menu;
 mod player;
+mod save;
 mod state;
+mod telemetry;
 mod ui;
 mod weapon;
 
@@ -73,6 +77,12 @@ fn main() {
             player::PlayerPlugin,
             weapon::WeaponPlugin,
             ui::UiPlugin,
+        ))
+        .add_plugins((
+            save::SavePlugin,
+            enemy::EnemyPlugin,
+            match_flow::MatchFlowPlugin,
+            telemetry::TelemetryPlugin,
         ))
         .run();
 }

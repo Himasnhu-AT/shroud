@@ -245,7 +245,8 @@ impl EnemyMind {
         }
 
         // 5. Trigger: reaction delay, aim settled, NEAT fire gate, bursts.
-        let fire_gate = if engaged { micro[2] > -0.2 } else { true };
+        // The net can veto a shot only when it's strongly against it (e.g. to stay hidden).
+        let fire_gate = if engaged { micro[2] > -0.6 } else { true };
         let ready = o.player_visible && self.seen_time >= t.reaction_time && aim_off < 0.07 && fire_gate && o.ammo_frac > 0.0;
         let mut fire = false;
         if self.burst_pause > 0.0 {

@@ -135,6 +135,18 @@ impl BrainState {
         }
     }
 
+    /// First launch: train against the default ghost so generation 1 is already competent.
+    /// Doesn't count as a generation and leaves no history.
+    pub fn bootstrap(&mut self, arena: &Arena, cfg: &EvolveConfig) {
+        if self.evaluated || self.generation > 0 {
+            return;
+        }
+        self.evolve(&MatchReport::default(), arena, cfg, |_| {});
+        self.generation = 0;
+        self.history.clear();
+        self.player_model = PlayerModel::default();
+    }
+
     pub fn limits(&self) -> Limits {
         Limits::for_generation(self.generation)
     }
