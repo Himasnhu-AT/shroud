@@ -10,7 +10,19 @@ use crate::assets::{AssetsDir, ENEMY_MODEL};
 use crate::state::has_visuals;
 
 /// Clip per animation slot, in `Anim` order.
-const CLIPS: [&str; 6] = ["Pistol_Idle_Loop", "Jog_Fwd_Loop", "Crouch_Idle_Loop", "Crouch_Fwd_Loop", "Pistol_Shoot", "Death01"];
+const CLIPS: [&str; 9] = [
+    "Pistol_Idle_Loop",
+    "Jog_Fwd_Loop",
+    "Crouch_Idle_Loop",
+    "Crouch_Fwd_Loop",
+    "Pistol_Shoot",
+    "Death01",
+    "Pistol_Aim_Neutral",
+    "Hit_Chest",
+    "Hit_Head",
+];
+/// How long a hit reaction owns the body before blending back to locomotion.
+const HIT_REACT_S: f32 = 0.4;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Anim {
@@ -20,6 +32,9 @@ enum Anim {
     CrouchMove,
     Shoot,
     Death,
+    Aim,
+    HitChest,
+    HitHead,
 }
 
 #[derive(Resource)]
@@ -33,6 +48,8 @@ struct EnemyAnims {
 pub struct AnimLink {
     player: Entity,
     current: Option<Anim>,
+    hits_seen: u32,
+    hit_timer: f32,
 }
 
 pub struct EnemyAnimationPlugin;
@@ -82,7 +99,7 @@ fn link(
             e = p.parent();
             if enemies.contains(e) {
                 commands.entity(player).insert((AnimationGraphHandle(graph.clone()), AnimationTransitions::new()));
-                commands.entity(e).insert(AnimLink { player, current: None });
+                commands.entity(e).insert(AnimLink { player, current: None, hits_seen: 0, hit_timer: 0.0 });
                 break;
             }
         }
@@ -90,6 +107,7 @@ fn link(
 }
 
 fn drive(
+    time: Res<Time>,
     anims: Res<EnemyAnims>,
     mut enemies: Query<(&EnemyCombat, &mut AnimLink)>,
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
@@ -97,24 +115,40 @@ fn drive(
     let Some((_, nodes)) = &anims.graph else { return };
     for (c, mut link) in &mut enemies {
         let moving = c.vel.len() > 0.5;
+        link.hit_timer -= time.delta_secs();
+        let new_hit = c.hits != link.hits_seen;
+        link.hits_seen = c.hits;
+        if new_hit {
+            link.hit_timer = HIT_REACT_S;
+        }
         let want = if c.dead {
             Anim::Death
+        } else if link.hit_timer > 0.0 {
+            if c.hit_head { Anim::HitHead } else { Anim::HitChest }
         } else if c.crouched {
             if moving { Anim::CrouchMove } else { Anim::CrouchIdle }
         } else if moving {
             Anim::Run
         } else if c.last_shot < 0.3 {
             Anim::Shoot
+        } else if c.aim_at.is_some() {
+            Anim::Aim
         } else {
             Anim::Idle
         };
-        if link.current == Some(want) {
+        let restart = new_hit && !c.dead;
+        if link.current == Some(want) && !restart {
             continue;
         }
         let Some(node) = nodes.get(want as usize).copied().flatten() else { continue };
         let Ok((mut player, mut transitions)) = players.get_mut(link.player) else { continue };
-        let active = transitions.play(&mut player, node, Duration::from_millis(150));
-        if want != Anim::Death {
+        let blend = match (want, link.current) {
+            (Anim::HitChest | Anim::HitHead, _) => 60,
+            (_, Some(Anim::HitChest | Anim::HitHead)) => 220,
+            _ => 150,
+        };
+        let active = transitions.play(&mut player, node, Duration::from_millis(blend));
+        if !matches!(want, Anim::Death | Anim::HitChest | Anim::HitHead) {
             active.repeat();
         }
         link.current = Some(want);

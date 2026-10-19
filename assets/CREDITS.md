@@ -5,6 +5,7 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | File | Pack | Author | URL | License |
 |---|---|---|---|---|
 | `models/rifle.glb` | Blaster Kit 2.1 (model `blaster-e`, with its `scope` and `magazine` meshes) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/enemy_rifle.glb` | Blaster Kit 2.1 (model `blaster-a`, with its `magazine` mesh) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-medium.glb` | Blaster Kit 2.1 (`crate-medium`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-small.glb` | Blaster Kit 2.1 (`crate-small`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/enemy.glb` | Universal Animation Library [Standard] (`Unreal-Godot/UAL1_Standard.glb`, unmodified) | Quaternius (quaternius.com) | https://quaternius.itch.io/universal-animation-library · https://quaternius.com/packs/universalanimationlibrary.html | CC0 1.0 |
