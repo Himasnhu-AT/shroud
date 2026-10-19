@@ -26,12 +26,13 @@ const KICK_PITCH: f32 = 0.018;
 const KICK_YAW: f32 = 0.006;
 const KICK_RECOVERY: f32 = 7.0;
 /// Viewmodel pivot (roughly the grip) relative to the camera.
-const VIEWMODEL_POS: Vec3 = Vec3::new(0.16, -0.19, -0.30);
-/// `rifle.glb` is 1.39 m long, muzzle at its origin, stock toward +Z.
-const RIFLE_MODEL_SCALE: f32 = 0.42;
-const RIFLE_MODEL_OFFSET: Vec3 = Vec3::new(0.045 * RIFLE_MODEL_SCALE, -0.02, -0.46);
+const VIEWMODEL_POS: Vec3 = Vec3::new(0.2, -0.19, -0.3);
+/// `rifle.glb` is 1.39 m long: stock end at its origin, barrel toward +Z
+/// (glTF forward), so it is turned 180° about Y to point down −Z.
+const RIFLE_MODEL_SCALE: f32 = 0.46;
+const RIFLE_MODEL_OFFSET: Vec3 = Vec3::new(-0.045 * RIFLE_MODEL_SCALE, -0.02, 0.2);
 /// Muzzle relative to the viewmodel pivot.
-const MUZZLE_LOCAL: Vec3 = Vec3::new(0.0, -0.002, -0.48);
+const MUZZLE_LOCAL: Vec3 = Vec3::new(0.0, -0.02, 0.2 - 1.40 * RIFLE_MODEL_SCALE);
 /// Muzzle relative to the camera (tracer origin).
 const MUZZLE_POS: Vec3 = Vec3::new(
     VIEWMODEL_POS.x + MUZZLE_LOCAL.x,
@@ -449,6 +450,7 @@ fn spawn_viewmodel(
         commands.spawn((
             bevy::world_serialization::WorldAssetRoot(scene),
             Transform::from_translation(RIFLE_MODEL_OFFSET)
+                .with_rotation(Quat::from_rotation_y(std::f32::consts::PI))
                 .with_scale(Vec3::splat(RIFLE_MODEL_SCALE)),
             ChildOf(vm),
         ));
@@ -735,13 +737,13 @@ fn animate_viewmodel(
         + Vec3::new(vm.sway.x * 0.35, -vm.sway.y * 0.35, 0.0)
         + bob
         + Vec3::new(0.0, 0.012 * k, 0.05 * k)
-        + Vec3::new(-0.03 * r, -0.13 * r + 0.025 * slap, 0.04 * r)
+        + Vec3::new(-0.04 * r, -0.07 * r + 0.02 * slap, 0.03 * r)
         + Vec3::new(0.0, -0.05 * w, w * 0.6);
     tf.rotation = Quat::from_euler(
         EulerRot::YXZ,
         vm.sway.x * 1.2 + vm.jitter * 0.012,
-        -vm.sway.y * 1.0 + 0.07 * k - 0.35 * r + 0.06 * slap - 0.5 * w,
-        vm.sway.x * 1.6 + vm.jitter * 0.03 + 0.55 * r,
+        -vm.sway.y * 1.0 + 0.07 * k + 0.25 * r + 0.06 * slap - 0.5 * w,
+        vm.sway.x * 1.6 + vm.jitter * 0.03 + 0.4 * r,
     );
 
     // Muzzle flash.

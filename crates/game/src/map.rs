@@ -79,10 +79,23 @@ fn spawn_arena(
             // Wall: cool dark concrete framing the arena.
             mk("wall", Color::srgb(0.42, 0.45, 0.50), flat(Color::srgb(0.22, 0.23, 0.26), 0.9)),
             // Tall: teal painted steel with rust.
-            mk("tall", Color::WHITE, flat(Color::srgb(0.48, 0.30, 0.20), 0.6)),
+            mk("tall", Color::srgb(0.62, 0.72, 0.72), flat(Color::srgb(0.48, 0.30, 0.20), 0.6)),
             // Low: red painted cover, reads as "crouch here".
-            mk("low", Color::srgb(0.95, 0.9, 0.85), flat(Color::srgb(0.70, 0.58, 0.25), 0.8)),
+            mk("low", Color::srgb(0.72, 0.62, 0.6), flat(Color::srgb(0.70, 0.58, 0.25), 0.8)),
         ]
+    });
+    // Glowing trims: amber edge on low cover, cyan base strip on walls.
+    let trims = vis.as_mut().map(|(meshes, mats, ..)| {
+        let glow = |c: LinearRgba| StandardMaterial {
+            base_color: Color::BLACK,
+            emissive: c,
+            ..default()
+        };
+        (
+            meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+            mats.add(glow(LinearRgba::new(5.0, 2.2, 0.4, 0.0))),
+            mats.add(glow(LinearRgba::new(0.4, 2.6, 4.0, 0.0))),
+        )
     });
 
     // Floor: a thin static slab whose top is at y = 0.
@@ -124,6 +137,31 @@ fn spawn_arena(
                 Mesh3d(meshes.add(world_uv_cuboid(size, center, TILE[k]))),
                 MeshMaterial3d(mats[k].clone()),
             ));
+            if let Some((cube, amber, cyan)) = trims.as_ref() {
+                let trim = match b.kind {
+                    // Thin lip around the top edge.
+                    BlockKind::Low => Some((
+                        amber,
+                        Vec3::new(size.x + 0.02, 0.035, size.z + 0.02),
+                        size.y * 0.5 - 0.0175,
+                    )),
+                    // Light strip along the base.
+                    BlockKind::Wall => Some((
+                        cyan,
+                        Vec3::new(size.x + 0.02, 0.05, size.z + 0.02),
+                        -size.y * 0.5 + 0.35,
+                    )),
+                    BlockKind::Tall => None,
+                };
+                if let Some((mat, tsize, y)) = trim {
+                    e.with_child((
+                        Mesh3d(cube.clone()),
+                        MeshMaterial3d(mat.clone()),
+                        Transform::from_xyz(0.0, y, 0.0).with_scale(tsize),
+                        bevy::light::NotShadowCaster,
+                    ));
+                }
+            }
         }
     }
 }
