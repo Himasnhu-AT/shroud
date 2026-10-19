@@ -9,6 +9,7 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod assets;
+mod audio;
 mod enemy;
 mod evolving;
 mod gfx;
@@ -97,6 +98,7 @@ fn main() {
             enemy::EnemyPlugin,
             match_flow::MatchFlowPlugin,
             telemetry::TelemetryPlugin,
+            audio::AudioPlugin,
         ))
         .run();
 }
