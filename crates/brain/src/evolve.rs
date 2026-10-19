@@ -1,7 +1,8 @@
 //! Between-match evolution and the persisted brain (docs/EVOLUTION.md).
 
 use crate::arena::Arena;
-use crate::genome::{GENE_COUNT, GaConfig, Gene, TraitPopulation};
+use crate::genome::{GENE_COUNT, GaConfig, Gene, TraitGenome, TraitPopulation};
+use crate::ghost::{self, CalibConfig, GhostParams, Outcome, RealStats};
 use crate::limits::Limits;
 use crate::math::{BrainRng, rng_from_seed};
 use crate::mind::{EnemyMind, NEAT_INPUTS, NEAT_OUTPUTS};
@@ -55,7 +56,31 @@ pub struct MatchSummary {
     pub avg_fitness: f32,
     #[serde(default)]
     pub stats: MatchStats,
+    /// The squad deployed in this match.
+    #[serde(default)]
+    pub squad: Vec<SquadSlot>,
+    /// Outcome gap Δ_g: ghost player-win rate vs the deployed squad minus the real one (before calibrating).
+    #[serde(default)]
+    pub outcome_gap: Option<f32>,
+    /// Ghost calibration error after this match's calibration (see `ghost::calibration_error`).
+    #[serde(default)]
+    pub calibration_error: Option<f32>,
 }
+
+/// A deployed squad's genomes and its real result, kept for ghost calibration (paper §4.1.1).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReplaySquad {
+    pub generation: u32,
+    pub traits: Vec<TraitGenome>,
+    pub neat: Vec<neat::Genome>,
+    pub player_rounds: u32,
+    pub rounds: u32,
+}
+
+/// How many past deployed squads calibration replays.
+pub const REPLAY_SQUADS: usize = 4;
+/// Wall-clock cap for ghost calibration (checked between ES iterations, so ~1.5 s worst case).
+pub const CALIB_BUDGET: Duration = Duration::from_millis(1300);
 
 #[derive(Clone, Debug)]
 pub struct TraitDelta {
@@ -74,7 +99,15 @@ pub struct EvolveSummary {
     /// Ghost calibration: real player round-win rate vs the ghost's against the same squad.
     pub real_player_win: Option<f32>,
     pub ghost_player_win: Option<f32>,
+    /// Legacy scalar (aim-skill relative to the default ghost), kept for compatibility.
     pub ghost_skill: f32,
+    /// Ghost calibration error after calibrating (RMS of normalised residuals; 0 = perfect).
+    pub calibration_error: Option<f32>,
+    /// Calibration error before this match's calibration.
+    pub calibration_error_before: Option<f32>,
+    /// Δ_g for this match, and mean |Δ| over the last 3 matches (milestone: < 0.15).
+    pub outcome_gap: Option<f32>,
+    pub outcome_gap_mean3: Option<f32>,
     pub neat_generations: u32,
     pub elapsed_ms: u128,
 }
@@ -90,6 +123,9 @@ pub struct BrainState {
     pub squad: Vec<SquadSlot>,
     pub evaluated: bool,
     pub history: Vec<MatchSummary>,
+    /// Recent deployed squads with real results (ghost calibration data).
+    #[serde(default)]
+    pub replay: Vec<ReplaySquad>,
 }
 
 #[derive(Clone, Debug)]
@@ -139,6 +175,7 @@ impl BrainState {
             squad,
             evaluated: false,
             history: Vec::new(),
+            replay: Vec::new(),
         }
     }
 
@@ -193,22 +230,55 @@ impl BrainState {
         // 1. Learn the player.
         self.player_model.ingest(&report.telemetry);
 
-        // 1b. Calibrate the ghost: replay the squad the player just fought against the ghost and
-        // nudge ghost skill until the ghost wins as often as the real player did.
+        // 1b. Calibrate the ghost (paper §4.1.1): replay recently deployed squads against it and fit
+        // the Ghost v2 parameters to their real outcomes plus this match's TTK, round length and
+        // accuracy by range.
+        let deployed = self.squad.clone();
         let rounds = report.player_rounds + report.enemy_rounds;
-        let (mut real_player_win, mut ghost_player_win) = (None, None);
+        let (mut real_player_win, mut ghost_player_win, mut outcome_gap) = (None, None, None);
+        let (mut calibration_error, mut calibration_error_before) = (None, None);
         if rounds > 0 && self.evaluated {
+            self.replay.push(ReplaySquad {
+                generation: self.generation,
+                traits: deployed.iter().map(|s| self.traits.genomes[s.trait_id].clone()).collect(),
+                neat: deployed.iter().map(|s| self.neat.genomes[s.neat_id].clone()).collect(),
+                player_rounds: report.player_rounds,
+                rounds,
+            });
+            let drop = self.replay.len().saturating_sub(REPLAY_SQUADS);
+            self.replay.drain(..drop);
+            let outcomes: Vec<Outcome> = self.replay.iter().map(|r| Outcome { player_rounds: r.player_rounds as f32, rounds: r.rounds as f32 }).collect();
+            let real_stats = RealStats::from_telemetry(&report.telemetry, rounds);
+            let replay = &self.replay;
+            let make = |g: usize, seed: u64| {
+                let r = &replay[g];
+                let limits = Limits::for_generation(r.generation);
+                let minds = r
+                    .traits
+                    .iter()
+                    .zip(&r.neat)
+                    .enumerate()
+                    .map(|(k, (tg, ng))| EnemyMind::new(tg, k, ng, k, &limits, seed.wrapping_add(k as u64 * 7919)))
+                    .collect();
+                (minds, limits)
+            };
+            let ccfg = CalibConfig {
+                threads: cfg.threads,
+                seed: self.seed ^ self.generation as u64,
+                deadline: Some(Instant::now() + CALIB_BUDGET),
+                ..CalibConfig::default()
+            };
+            let res = ghost::calibrate(arena, &self.player_model, &outcomes, &real_stats, &ccfg, &make);
             let real = report.player_rounds as f32 / rounds as f32;
-            let limits = self.limits();
-            let n = 16u64;
-            let ghost_wins = (0..n)
-                .filter(|&k| sim::run_round(arena, &self.player_model, limits, self.squad_minds(9000 + k), 7000 + k).player_won)
-                .count();
-            let sim_rate = ghost_wins as f32 / n as f32;
-            let m = &mut self.player_model;
-            m.ghost_skill = (m.ghost_skill * (1.5 * (real - sim_rate)).exp()).clamp(0.5, 3.0);
+            let sim_rate = *res.win_before.last().unwrap_or(&0.0);
             real_player_win = Some(real);
             ghost_player_win = Some(sim_rate);
+            outcome_gap = Some(sim_rate - real);
+            calibration_error = Some(res.error_after);
+            calibration_error_before = Some(res.error_before);
+            let m = &mut self.player_model;
+            m.ghost = res.params;
+            m.ghost_skill = (GhostParams::default().aim_sigma_deg / res.params.aim_sigma_deg.max(0.1)).clamp(0.5, 3.0);
         }
 
         // 2. Real-match fitness bonus for the deployed genomes (blended with their sim fitness).
@@ -271,7 +341,12 @@ impl BrainState {
             sim_win_rate,
             avg_fitness,
             stats: MatchStats::from_telemetry(&report.telemetry),
+            squad: deployed,
+            outcome_gap,
+            calibration_error,
         });
+        let gaps: Vec<f32> = self.history.iter().rev().take(3).filter_map(|h| h.outcome_gap).collect();
+        let outcome_gap_mean3 = (!gaps.is_empty()).then(|| gaps.iter().map(|g| g.abs()).sum::<f32>() / gaps.len() as f32);
         let prev = self.history.len().checked_sub(2).map(|i| self.history[i].stats.clone());
         progress(1.0);
         EvolveSummary {
@@ -282,6 +357,10 @@ impl BrainState {
             real_player_win,
             ghost_player_win,
             ghost_skill: self.player_model.ghost_skill,
+            calibration_error,
+            calibration_error_before,
+            outcome_gap,
+            outcome_gap_mean3,
             neat_generations: gens,
             elapsed_ms: start.elapsed().as_millis(),
         }
@@ -368,7 +447,7 @@ impl BrainState {
 }
 
 /// Run `f` over `items` on up to `threads` scoped threads, keeping order.
-fn run_parallel<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+pub(crate) fn run_parallel<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     let threads = threads.max(1).min(items.len().max(1));
     let chunk = items.len().div_ceil(threads);
     std::thread::scope(|s| {

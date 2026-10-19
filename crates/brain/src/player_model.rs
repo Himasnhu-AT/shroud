@@ -163,6 +163,9 @@ pub struct PlayerModel {
     /// match real ones (1.0 = the raw model).
     #[serde(default = "one")]
     pub ghost_skill: f32,
+    /// Ghost v2 behaviour parameters, calibrated to real outcomes after each match.
+    #[serde(default)]
+    pub ghost: crate::ghost::GhostParams,
 }
 
 fn one() -> f32 {
@@ -215,6 +218,7 @@ impl Default for PlayerModel {
             facing: [0.125; 8],
             shots: [0.0; 6],
             ghost_skill: 1.0,
+            ghost: crate::ghost::GhostParams::default(),
         }
     }
 }

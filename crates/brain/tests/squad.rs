@@ -1,6 +1,7 @@
 //! Squad layer: plays, position evaluation, coordinated vs solo, determinism.
 use brain::arena::Arena;
 use brain::evolve::BrainState;
+use brain::ghost::GhostMode;
 use brain::limits::Limits;
 use brain::math::{V2, angle_diff};
 use brain::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
@@ -156,7 +157,7 @@ fn coordinated_beats_uncoordinated() {
     for k in 0..rounds {
         let b = BrainState::new(100 + k / 8);
         for (coord, acc) in [(true, &mut on), (false, &mut off)] {
-            let r = sim::run_round_with(&a, &model, limits, b.squad_minds(k), 5000 + k, coord);
+            let r = sim::run_round_squad(&a, &model, limits, b.squad_minds(k), 5000 + k, GhostMode::V2, coord);
             acc.0 += (!r.player_won) as u32 as f32;
             acc.1 += r.enemies.iter().map(|e| e.damage_dealt).sum::<f32>();
             acc.2 += (r.duration >= sim::ROUND_TIME - 0.1) as u32 as f32;

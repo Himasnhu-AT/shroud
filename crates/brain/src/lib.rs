@@ -4,6 +4,7 @@
 pub mod arena;
 pub mod evolve;
 pub mod genome;
+pub mod ghost;
 pub mod limits;
 pub mod math;
 pub mod mind;
