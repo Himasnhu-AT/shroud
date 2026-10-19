@@ -603,5 +603,6 @@ fn perf_stats(world: &mut World, _: Value) -> Result<Value, String> {
         "fps": fps,
         "frame_ms": {"p50": p50, "p95": p95, "p99": p99},
         "entities": world.entities().count_spawned(),
+        "perf": super::perf::stats_json(world),
     }))
 }
