@@ -11,7 +11,6 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `textures/floor/*` | Concrete047A (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete047A | CC0 1.0 |
 | `textures/wall/*` | Concrete034 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete034 | CC0 1.0 |
 | `textures/tall/*` | PaintedMetal006 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedMetal006 | CC0 1.0 |
-| `textures/low/*` | PaintedMetal004 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedMetal004 | CC0 1.0 |
 
 Notes:
 - ambientCG maps are renamed to `color.jpg`, `normal.jpg` (OpenGL convention), `rough.jpg` and `ao.jpg` and are otherwise unmodified. Mipmaps are built at load time (`gfx.rs`).
