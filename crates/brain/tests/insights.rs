@@ -178,10 +178,14 @@ fn old_saves_still_load() {
         avg_fitness: 1.0,
         stats: Default::default(),
         posterior: Default::default(),
+        squad: vec![],
+        outcome_gap: None,
+        calibration_error: None,
     });
     let mut v = serde_json::to_value(&s).unwrap();
     // Strip everything this change added: an old save has none of it.
     v["player_model"].as_object_mut().unwrap().remove("situations");
+    v["player_model"].as_object_mut().unwrap().remove("ghost");
     v["history"][0].as_object_mut().unwrap().remove("posterior");
     let back: BrainState = serde_json::from_value(v).expect("old brain.json loads");
     assert_eq!(back.history.len(), 1);

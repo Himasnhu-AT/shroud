@@ -579,6 +579,9 @@ pub struct PlayerModel {
     /// L1 situation posteriors (duel wins per situation, contrasts, reaction time).
     #[serde(default)]
     pub situations: SituationModel,
+    /// Ghost v2 behaviour parameters, calibrated to real outcomes after each match.
+    #[serde(default)]
+    pub ghost: crate::ghost::GhostParams,
 }
 
 fn one() -> f32 {
@@ -632,6 +635,7 @@ impl Default for PlayerModel {
             shots: [0.0; 6],
             ghost_skill: 1.0,
             situations: SituationModel::default(),
+            ghost: crate::ghost::GhostParams::default(),
         }
     }
 }
