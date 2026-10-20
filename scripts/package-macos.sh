@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 ROOT=$PWD
 SIGN_ID="${SIGN_ID:-Developer ID Application: Himanshu . (38QXSRV6AP)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-xcnotarize}"
-BUNDLE_ID="${BUNDLE_ID:-dev.himanshu.shroud}"
+BUNDLE_ID="${BUNDLE_ID:-com.himanshuat.shroud}"
 VERSION="${VERSION:-$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)}"
 BUILD="$(git rev-list --count HEAD)"
 NOTARIZE="${NOTARIZE:-1}"
