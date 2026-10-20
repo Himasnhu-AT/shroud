@@ -27,6 +27,15 @@ pub fn assets_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("SHROUD_ASSETS") {
         return PathBuf::from(dir);
     }
+    // Inside a macOS app bundle: Shroud.app/Contents/MacOS/shroud -> Contents/Resources/assets.
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(contents) = exe.parent().and_then(|p| p.parent())
+    {
+        let p = contents.join("Resources/assets");
+        if p.is_dir() {
+            return p;
+        }
+    }
     if let Ok(cwd) = std::env::current_dir() {
         let p = cwd.join("assets");
         if p.is_dir() {

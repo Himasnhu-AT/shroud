@@ -24,3 +24,9 @@ debug = false
 
 [profile.dev.build-override]
 opt-level = 0
+
+# Shipping builds (scripts/package-macos.sh): optimized, stripped, thin LTO.
+[profile.release]
+lto = "thin"
+strip = true
+debug = false

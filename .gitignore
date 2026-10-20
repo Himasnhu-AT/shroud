@@ -5,3 +5,4 @@
 /graft/
 .claude/worktrees/
 graft/.cache/
+/dist
