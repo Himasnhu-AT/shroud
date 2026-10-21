@@ -2,6 +2,7 @@
 //! enemies in the Bevy game and in the fast offline trainer.
 
 pub mod arena;
+pub mod difficulty;
 pub mod evolve;
 pub mod genome;
 pub mod insights;

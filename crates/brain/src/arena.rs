@@ -85,7 +85,39 @@ pub struct CoverPoint {
     pub block: usize,
 }
 
+/// Which map to play. CONTRACT: variants, `ALL`, `label`, `blurb` and `Arena::build` are
+/// shared by the maps, AI and UI streams. Every map fits inside ±ARENA_HALF (the player-model
+/// heat grids assume it) and has at least 6 enemy spawns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+pub enum MapId {
+    #[default]
+    Foundry,
+    /// Three-lane, medium-range outdoor map (Dust 2-like).
+    Depot,
+    /// Tight indoor close-quarters map (Office / Shoot House-like).
+    Office,
+}
+
+impl MapId {
+    pub const ALL: [MapId; 3] = [MapId::Foundry, MapId::Depot, MapId::Office];
+    pub fn label(self) -> &'static str {
+        match self {
+            MapId::Foundry => "Foundry",
+            MapId::Depot => "Depot",
+            MapId::Office => "Office",
+        }
+    }
+    pub fn blurb(self) -> &'static str {
+        match self {
+            MapId::Foundry => "Open industrial yard around a central tower.",
+            MapId::Depot => "Three lanes, long sightlines, one contested middle.",
+            MapId::Office => "Tight corridors and rooms. Every corner is a fight.",
+        }
+    }
+}
+
 pub struct Arena {
+    pub id: MapId,
     pub blocks: Vec<Block>,
     pub zones: Vec<Zone>,
     pub player_spawn: V2,
@@ -98,6 +130,13 @@ pub struct Arena {
 pub const AGENT_RADIUS: f32 = 0.45;
 
 impl Arena {
+    /// Build the given map. (Maps stream: Depot and Office are placeholders until built.)
+    pub fn build(id: MapId) -> Self {
+        match id {
+            MapId::Foundry | MapId::Depot | MapId::Office => Arena::foundry(),
+        }
+    }
+
     /// The one arena of the prototype: "Foundry".
     pub fn foundry() -> Self {
         use BlockKind::*;
@@ -146,6 +185,7 @@ impl Arena {
         ];
         let nav = NavGrid::bake(&blocks, ARENA_HALF, 1.0, AGENT_RADIUS);
         let mut arena = Arena {
+            id: MapId::Foundry,
             blocks,
             zones,
             player_spawn: V2::new(0.0, 29.0),

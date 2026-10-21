@@ -279,11 +279,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ashlar-docs"
+version = "0.1.0"
+
+[[package]]
 name = "ashlar-mcp"
 version = "0.1.0"
 dependencies = [
  "ashlar-command",
  "ashlar-control",
+ "ashlar-docs",
  "log",
  "serde",
  "serde_json",

@@ -15,6 +15,17 @@ pub enum GameState {
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct Headless(pub bool);
 
+/// In-match pause (Esc menu). CONTRACT: owned by the UI stream; gameplay input and AI should
+/// not advance while `Paused(true)`. Pausing does NOT leave `GameState::Playing` (that would
+/// restart the round), it pauses virtual + physics time instead.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Paused(pub bool);
+
+/// Run condition: the match is not paused.
+pub fn not_paused(p: Res<Paused>) -> bool {
+    !p.0
+}
+
 /// Run condition: rendering/UI/input exist.
 pub fn has_visuals(h: Res<Headless>) -> bool {
     !h.0
@@ -25,6 +36,7 @@ pub struct StatePlugin;
 impl Plugin for StatePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GameState>()
+            .init_resource::<Paused>()
             .add_systems(Startup, skip_menu_when_headless)
             .add_systems(Last, quit_after);
     }

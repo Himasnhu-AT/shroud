@@ -19,6 +19,7 @@ mod menu;
 mod ops;
 mod player;
 mod save;
+mod settings;
 mod state;
 mod telemetry;
 mod trainer_task;
@@ -84,6 +85,7 @@ fn main() {
         .insert_resource(assets::AssetsDir(assets_dir))
         .add_plugins((
             state::StatePlugin,
+            settings::SettingsPlugin,
             menu::MenuPlugin,
             evolving::EvolvingPlugin,
             gfx::GfxPlugin,
