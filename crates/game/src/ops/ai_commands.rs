@@ -94,7 +94,7 @@ fn match_state(world: &mut World, _: Value) -> Result<Value, String> {
 
 fn ai_brain(world: &mut World, _: Value) -> Result<Value, String> {
     let b = &world.resource::<Brain>().state;
-    let arena = Arena::foundry();
+    let arena = &world.resource::<crate::map::ArenaRes>().0;
     Ok(json!({
         "generation": b.generation,
         "squad": b.squad.iter().map(|s| json!({ "trait_id": s.trait_id, "neat_id": s.neat_id, "genes": b.traits.genomes[s.trait_id].genes })).collect::<Vec<_>>(),
@@ -107,7 +107,7 @@ fn ai_brain(world: &mut World, _: Value) -> Result<Value, String> {
             "camping": b.player_model.camping,
             "accuracy_by_range": b.player_model.accuracy,
         },
-        "insights": b.player_model.insights(&arena, None, b.history.last().map(|h| &h.stats), b.squad_reaction_ms()),
+        "insights": b.player_model.insights(arena, None, b.history.last().map(|h| &h.stats), b.squad_reaction_ms()),
         "history": b.history.iter().map(|h| json!({ "generation": h.generation, "player_won": h.player_won, "sim_win_rate": h.sim_win_rate })).collect::<Vec<_>>(),
     }))
 }
@@ -116,8 +116,9 @@ fn ai_evolve(world: &mut World, _: Value) -> Result<Value, String> {
     let telemetry = world.resource::<Telemetry>().0.clone();
     let enemies = world.resource::<MatchFlow>().enemies.clone();
     let report = MatchReport { telemetry, enemies, ..Default::default() };
+    let arena = Arena::build(world.resource::<crate::map::ArenaRes>().0.id);
     let mut brain = world.resource_mut::<Brain>();
-    let s = brain.state.evolve(&report, &Arena::foundry(), &EvolveConfig::default(), |_| {});
+    let s = brain.state.evolve(&report, &arena, &EvolveConfig::default(), |_| {});
     brain.save();
     Ok(json!({
         "generation": s.generation,
@@ -142,8 +143,8 @@ fn sim_run(world: &mut World, p: Value) -> Result<Value, String> {
     let n = p.get("generations").and_then(Value::as_u64).unwrap_or(5).min(50) as usize;
     let seed = p.get("seed").and_then(Value::as_u64).unwrap_or(1);
     let mut state = brain::evolve::BrainState::new(seed);
-    let _ = world; // runs on a fresh brain so the player's brain is untouched
-    let arena = Arena::foundry();
+    // Runs on a fresh brain so the player's brain is untouched, on the current map.
+    let arena = Arena::build(world.resource::<crate::map::ArenaRes>().0.id);
     let curve: Vec<Value> = (0..n)
         .map(|_| {
             let s = state.evolve(&MatchReport::default(), &arena, &EvolveConfig::default(), |_| {});

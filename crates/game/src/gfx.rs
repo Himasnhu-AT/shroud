@@ -73,8 +73,10 @@ fn spawn_sky_and_sun(mut commands: Commands, media: Option<ResMut<Assets<Scatter
         commands.insert_resource(ClearColor(FOG_COLOR));
     }
     // Low afternoon sun: long readable shadows, warm key vs. cool sky fill.
+    // Each map re-aims and re-tints it (`map::look::apply_look`).
     commands.spawn((
         Name::new("Sun"),
+        Sun,
         DirectionalLight {
             illuminance: lux::RAW_SUNLIGHT,
             shadow_maps_enabled: true,
@@ -96,6 +98,10 @@ fn spawn_sky_and_sun(mut commands: Commands, media: Option<ResMut<Assets<Scatter
         ..default()
     });
 }
+
+/// Marker on the one directional light.
+#[derive(Component)]
+pub struct Sun;
 
 // ---------------------------------------------------------------- textures
 
@@ -128,7 +134,8 @@ pub fn load_pbr(
                 s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
                     address_mode_u: ImageAddressMode::Repeat,
                     address_mode_v: ImageAddressMode::Repeat,
-                    anisotropy_clamp: 8,
+                    // 16x anisotropic + trilinear mips: no shimmer on floors at grazing angles.
+                    anisotropy_clamp: 16,
                     ..ImageSamplerDescriptor::linear()
                 });
             })
