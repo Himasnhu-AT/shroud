@@ -45,7 +45,9 @@ fn start(
     mut pending: ResMut<PendingReport>,
     mut bg: ResMut<BackgroundTrainer>,
     log: Option<Res<SessionLog>>,
+    arena: Res<crate::map::ArenaRes>,
 ) {
+    let map = arena.0.id;
     let report = pending.0.take().unwrap_or_default();
     let mut state = brain.state.clone();
     // Between matches: merge what the background trainer learned since the last match.
@@ -67,7 +69,7 @@ fn start(
     let handle = std::thread::Builder::new()
         .name("evolve".into())
         .spawn(move || {
-            let arena = Arena::foundry();
+            let arena = Arena::build(map);
             let summary = state.evolve_merged(&report, trained, &arena, &EvolveConfig::default(), |f| p.store((f * 100.0) as u32, Ordering::Relaxed));
             (state, summary)
         })

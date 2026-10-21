@@ -1,37 +1,83 @@
-//! Builds the "Foundry" arena from `brain::arena::Arena::foundry()`.
+//! Builds the active map (`brain::arena::Arena::build(Settings.map)`) as meshes + colliders,
+//! and swaps it when a new match starts on a different map.
 //!
 //! Ground plane mapping: `V2 { x, y }` ↔ world `(x, h, y)`.
-//! Lighting, sky and post-processing live in [`crate::gfx`].
+//! Sky, sun and post-processing live in [`crate::gfx`]; per-map materials, lighting and set
+//! dressing in [`look`] and [`dressing`].
+
+mod dressing;
+mod look;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use brain::arena::{ARENA_HALF, Arena, BlockKind};
+use brain::arena::{ARENA_HALF, Arena, BlockKind, MapId};
 use brain::math::V2;
 
 use crate::assets::AssetsDir;
-use crate::gfx::{PendingMips, load_pbr, world_uv_cuboid};
-use crate::state::Headless;
+use crate::gfx::PendingMips;
+use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
+use crate::settings::{GraphicsQuality, Settings};
+use crate::state::{GameState, Headless, has_visuals};
+
 
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ArenaRes(Arena::foundry()))
-            .add_systems(Startup, spawn_arena);
+        // SettingsPlugin is added before us, so the saved map is known at startup.
+        let id = app.world().get_resource::<Settings>().map(|s| s.map).unwrap_or_default();
+        app.insert_resource(ArenaRes(Arena::build(id)))
+            .init_resource::<MapRequest>()
+            .add_systems(Startup, spawn_current_map)
+            .add_systems(OnExit(GameState::Menu), |mut r: ResMut<MapRequest>| r.from_menu = true)
+            // Before the round resets anything that reads `ArenaRes` (player, squad).
+            .add_systems(
+                OnEnter(GameState::Playing),
+                sync_map
+                    .in_set(MapSet)
+                    .before(crate::match_flow::begin_round)
+                    .before(crate::enemy::spawn_squad),
+            )
+            .add_systems(Update, (look::apply_look, look::apply_light_budget).run_if(has_visuals));
+        #[cfg(feature = "control")]
+        {
+            use crate::ops::control::{ControlAppExt, params};
+            app.add_control_command(
+                "map.load",
+                "Switch map now (restarts the round)",
+                params(&[("name", "string", "Foundry | Depot | Office")]),
+                map_load_command,
+            )
+            .add_control_command("map.info", "Current map", params(&[]), map_info_command);
+        }
     }
 }
+
+/// Runs on entering `Playing`, before the player and squad are placed.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MapSet;
 
 /// The arena layout shared with the AI (`brain`).
 #[derive(Resource)]
 pub struct ArenaRes(pub Arena);
 
-/// Marker on every arena piece (floor and blocks).
+/// Marker on every entity that belongs to the current map (geometry, props, map lights).
+/// Despawned when the map changes.
 #[derive(Component)]
 pub struct ArenaPiece;
 
 /// Which block of `ArenaRes.0.blocks` this entity is.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BlockIndex(pub usize);
+
+/// Pending map switch requests.
+#[derive(Resource, Default)]
+struct MapRequest {
+    /// `map.load`: switch to this map on the next `Playing` entry, even mid-match.
+    force: Option<MapId>,
+    /// The next `Playing` entry comes from the menu (the player may have picked a new map).
+    from_menu: bool,
+}
 
 /// Ground-plane point → world position at height `h`.
 pub fn to_world(p: V2, h: f32) -> Vec3 {
@@ -43,62 +89,84 @@ pub fn to_ground(p: Vec3) -> V2 {
     V2::new(p.x, p.z)
 }
 
-/// Texture repeat size in metres for [floor, wall, tall, low].
-const TILE: [f32; 4] = [4.0, 3.0, 2.0, 1.5];
+/// Render-side resources for spawning map visuals (absent headless).
+pub(crate) struct Gfx<'a> {
+    pub meshes: &'a mut Assets<Mesh>,
+    pub mats: &'a mut Assets<StandardMaterial>,
+    pub server: &'a AssetServer,
+    pub pending: &'a mut PendingMips,
+    pub dir: &'a AssetsDir,
+    pub quality: GraphicsQuality,
+}
 
-fn spawn_arena(
+fn spawn_current_map(
     mut commands: Commands,
     arena: Res<ArenaRes>,
     headless: Res<Headless>,
     assets_dir: Res<AssetsDir>,
+    settings: Option<Res<Settings>>,
     server: Option<Res<AssetServer>>,
     pending: Option<ResMut<PendingMips>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
-    // Visuals only when the renderer's asset types exist.
-    let mut vis = match (headless.0, meshes, materials, server, pending) {
-        (false, Some(m), Some(s), Some(a), Some(p)) => Some((m, s, a, p)),
-        _ => None,
+    let quality = settings.map(|s| s.quality).unwrap_or_default();
+    match (headless.0, meshes, materials, server, pending) {
+        (false, Some(mut m), Some(mut s), Some(a), Some(mut p)) => {
+            let mut gfx = Gfx { meshes: &mut m, mats: &mut s, server: &a, pending: &mut p, dir: &assets_dir, quality };
+            spawn_map(&mut commands, &arena.0, Some(&mut gfx));
+        }
+        _ => spawn_map(&mut commands, &arena.0, None),
+    }
+}
+
+/// On entering `Playing`: if a new match starts (or we came from the menu) and the chosen
+/// map differs from the built one, tear the old map down and build the new one.
+fn sync_map(
+    mut commands: Commands,
+    mut arena: ResMut<ArenaRes>,
+    mut request: ResMut<MapRequest>,
+    flow: Res<MatchFlow>,
+    pieces: Query<Entity, With<ArenaPiece>>,
+    headless: Res<Headless>,
+    assets_dir: Res<AssetsDir>,
+    settings: Option<Res<Settings>>,
+    server: Option<Res<AssetServer>>,
+    pending: Option<ResMut<PendingMips>>,
+    meshes: Option<ResMut<Assets<Mesh>>>,
+    materials: Option<ResMut<Assets<StandardMaterial>>>,
+) {
+    let new_match = flow.round == 0 || flow.player_rounds >= ROUNDS_TO_WIN || flow.enemy_rounds >= ROUNDS_TO_WIN;
+    let from_menu = std::mem::take(&mut request.from_menu);
+    let wanted = match request.force.take() {
+        Some(id) => id,
+        None if new_match || from_menu => settings.as_ref().map_or(arena.0.id, |s| s.map),
+        None => return,
     };
+    if wanted == arena.0.id {
+        return;
+    }
+    info!("map: {} -> {}", arena.0.id.label(), wanted.label());
+    for e in &pieces {
+        commands.entity(e).despawn();
+    }
+    arena.0 = Arena::build(wanted);
+    let quality = settings.map(|s| s.quality).unwrap_or_default();
+    match (headless.0, meshes, materials, server, pending) {
+        (false, Some(mut m), Some(mut s), Some(a), Some(mut p)) => {
+            let mut gfx = Gfx { meshes: &mut m, mats: &mut s, server: &a, pending: &mut p, dir: &assets_dir, quality };
+            spawn_map(&mut commands, &arena.0, Some(&mut gfx));
+        }
+        _ => spawn_map(&mut commands, &arena.0, None),
+    }
+}
 
-    // Textured PBR when `assets/textures/*` exists, flat colours otherwise.
-    let mats = vis.as_mut().map(|(_, mats, server, pending)| {
-        let mut mk = |name: &str, tint: Color, fallback: StandardMaterial| {
-            let m = load_pbr(server, &assets_dir, pending, name, tint).unwrap_or(fallback);
-            mats.add(m)
-        };
-        let flat = |c: Color, rough: f32| StandardMaterial {
-            base_color: c,
-            perceptual_roughness: rough,
-            ..default()
-        };
-        [
-            // Floor: weathered concrete.
-            mk("floor", Color::srgb(0.62, 0.62, 0.62), flat(Color::srgb(0.32, 0.33, 0.34), 0.95)),
-            // Wall: cool dark concrete framing the arena.
-            mk("wall", Color::srgb(0.42, 0.45, 0.50), flat(Color::srgb(0.22, 0.23, 0.26), 0.9)),
-            // Tall: teal painted steel with rust.
-            mk("tall", Color::srgb(0.62, 0.72, 0.72), flat(Color::srgb(0.48, 0.30, 0.20), 0.6)),
-            // Low: warm sand-coloured concrete barriers (amber trim says "crouch here").
-            mk("wall", Color::srgb(0.95, 0.80, 0.55), flat(Color::srgb(0.70, 0.58, 0.25), 0.8)),
-        ]
-    });
-    // Glowing trims: amber edge on low cover, cyan base strip on walls.
-    let trims = vis.as_mut().map(|(meshes, mats, ..)| {
-        let glow = |c: LinearRgba| StandardMaterial {
-            base_color: Color::BLACK,
-            emissive: c,
-            ..default()
-        };
-        (
-            meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            mats.add(glow(LinearRgba::new(5.0, 2.2, 0.4, 0.0))),
-            mats.add(glow(LinearRgba::new(0.4, 2.6, 4.0, 0.0))),
-        )
-    });
+/// Spawn floor, blocks, door headers and roofs (with colliders), plus visuals and map lights
+/// when `gfx` is given. Everything gets [`ArenaPiece`].
+fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) {
+    let mut pal = gfx.as_deref_mut().map(|g| look::Palette::new(g, arena.id));
 
-    // Floor: a thin static slab whose top is at y = 0.
+    // Floor: a thick static slab whose top is at y = 0.
     let floor_size = ARENA_HALF * 2.0 + 8.0;
     let floor_center = Vec3::new(0.0, -0.5, 0.0);
     let mut floor = commands.spawn((
@@ -108,60 +176,117 @@ fn spawn_arena(
         Collider::cuboid(floor_size, 1.0, floor_size),
         Transform::from_translation(floor_center),
     ));
-    if let (Some((meshes, ..)), Some(mats)) = (vis.as_mut(), mats.as_ref()) {
-        let size = Vec3::new(floor_size, 1.0, floor_size);
+    if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
+        let (mat, tile) = p.floor(g);
         floor.insert((
-            Mesh3d(meshes.add(world_uv_cuboid(size, floor_center, TILE[0]))),
-            MeshMaterial3d(mats[0].clone()),
+            Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(Vec3::new(floor_size, 1.0, floor_size), floor_center, tile))),
+            MeshMaterial3d(mat),
         ));
     }
 
-    for (i, b) in arena.0.blocks.iter().enumerate() {
+    for (i, b) in arena.blocks.iter().enumerate() {
         let size = Vec3::new(b.half.x * 2.0, b.height, b.half.y * 2.0);
-        let (kind_name, k) = match b.kind {
-            BlockKind::Wall => ("Wall", 1),
-            BlockKind::Tall => ("Tall", 2),
-            BlockKind::Low => ("Low", 3),
+        let kind_name = match b.kind {
+            BlockKind::Wall => "Wall",
+            BlockKind::Tall => "Tall",
+            BlockKind::Low => "Low",
         };
         let center = to_world(b.center, b.height * 0.5);
+        let id = commands
+            .spawn((
+                Name::new(format!("{kind_name} block {i}")),
+                ArenaPiece,
+                BlockIndex(i),
+                RigidBody::Static,
+                look::block_collider(b),
+                Transform::from_translation(center),
+            ))
+            .id();
+        if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
+            look::dress_block(commands, id, i, b, size, center, g, p);
+        }
+    }
+
+    // Door lintels and roofs: solid (bullets stop on them) but overhead, so the 2D AI
+    // never needs to know about them.
+    for (i, h) in arena.decor.headers.iter().enumerate() {
+        let (min, max) = (h.min, h.max);
+        let size = Vec3::new(max.x - min.x, h.top - h.bottom, max.y - min.y);
+        let center = Vec3::new((min.x + max.x) * 0.5, (h.top + h.bottom) * 0.5, (min.y + max.y) * 0.5);
         let mut e = commands.spawn((
-            Name::new(format!("{kind_name} block {i}")),
+            Name::new(format!("Door header {i}")),
             ArenaPiece,
-            BlockIndex(i),
             RigidBody::Static,
             Collider::cuboid(size.x, size.y, size.z),
             Transform::from_translation(center),
         ));
-        if let (Some((meshes, ..)), Some(mats)) = (vis.as_mut(), mats.as_ref()) {
-            e.insert((
-                Mesh3d(meshes.add(world_uv_cuboid(size, center, TILE[k]))),
-                MeshMaterial3d(mats[k].clone()),
-            ));
-            if let Some((cube, amber, cyan)) = trims.as_ref() {
-                let trim = match b.kind {
-                    // Thin lip around the top edge.
-                    BlockKind::Low => Some((
-                        amber,
-                        Vec3::new(size.x + 0.02, 0.035, size.z + 0.02),
-                        size.y * 0.5 - 0.0175,
-                    )),
-                    // Light strip along the base.
-                    BlockKind::Wall => Some((
-                        cyan,
-                        Vec3::new(size.x + 0.02, 0.05, size.z + 0.02),
-                        -size.y * 0.5 + 0.35,
-                    )),
-                    BlockKind::Tall => None,
-                };
-                if let Some((mat, tsize, y)) = trim {
-                    e.with_child((
-                        Mesh3d(cube.clone()),
-                        MeshMaterial3d(mat.clone()),
-                        Transform::from_xyz(0.0, y, 0.0).with_scale(tsize),
-                        bevy::light::NotShadowCaster,
-                    ));
-                }
-            }
+        if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
+            let (mat, tile) = p.header(g);
+            e.insert((Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(size, center, tile))), MeshMaterial3d(mat)));
         }
+    }
+    for (i, r) in arena.decor.roofs.iter().enumerate() {
+        let size = Vec3::new(r.max.x - r.min.x, r.thickness, r.max.y - r.min.y);
+        let center = Vec3::new((r.min.x + r.max.x) * 0.5, r.bottom + r.thickness * 0.5, (r.min.y + r.max.y) * 0.5);
+        let mut e = commands.spawn((
+            Name::new(format!("Roof {i}")),
+            ArenaPiece,
+            RigidBody::Static,
+            Collider::cuboid(size.x, size.y, size.z),
+            Transform::from_translation(center),
+        ));
+        if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
+            let (mat, tile) = p.roof(g);
+            e.insert((Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(size, center, tile))), MeshMaterial3d(mat)));
+        }
+    }
+
+    if let (Some(g), Some(p)) = (gfx, pal.as_mut()) {
+        dressing::spawn(commands, arena, g, p);
+    }
+}
+
+// ---------------------------------------------------------------- control port
+
+fn parse_map(name: &str) -> Option<MapId> {
+    MapId::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(name.trim()))
+}
+
+#[cfg(feature = "control")]
+fn map_load_command(world: &mut World, p: serde_json::Value) -> Result<serde_json::Value, String> {
+    let name = p.get("name").and_then(serde_json::Value::as_str).ok_or("`name` (string) is required")?;
+    let id = parse_map(name).ok_or_else(|| format!("unknown map `{name}` (Foundry, Depot, Office)"))?;
+    if let Some(mut s) = world.get_resource_mut::<Settings>() {
+        s.map = id;
+    }
+    world.resource_mut::<MapRequest>().force = Some(id);
+    // Re-entering Playing rebuilds the map, then resets the player and squad on it.
+    world.resource_mut::<NextState<GameState>>().set(GameState::Playing);
+    Ok(serde_json::json!({ "map": id.label() }))
+}
+
+#[cfg(feature = "control")]
+fn map_info_command(world: &mut World, _: serde_json::Value) -> Result<serde_json::Value, String> {
+    let a = &world.resource::<ArenaRes>().0;
+    Ok(serde_json::json!({
+        "map": a.id.label(),
+        "blocks": a.blocks.len(),
+        "cover": a.cover.len(),
+        "player_spawn": [a.player_spawn.x, a.player_spawn.y],
+        "enemy_spawns": a.enemy_spawns.iter().map(|s| [s.x, s.y]).collect::<Vec<_>>(),
+        "zones": a.zones.iter().map(|z| z.name).collect::<Vec<_>>(),
+        "lamps": a.decor.lamps.len(),
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_names_parse_case_insensitively() {
+        assert_eq!(parse_map("office"), Some(MapId::Office));
+        assert_eq!(parse_map(" Depot "), Some(MapId::Depot));
+        assert_eq!(parse_map("nuke"), None);
     }
 }
