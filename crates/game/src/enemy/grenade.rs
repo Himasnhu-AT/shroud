@@ -260,7 +260,7 @@ fn detonate(
                     crate::audio::play_at(&mut commands, sfx, master, name, 1.0, at);
                 }
                 if let Some((m, s)) = visuals.as_mut() {
-                    spawn_blast(&mut commands, &mut *m, &mut *s, at, LinearRgba::rgb(12.0, 5.0, 1.0), 2.2, 0.3, Color::srgb(1.0, 0.6, 0.25), 900_000.0);
+                    spawn_blast(&mut commands, &mut *m, &mut *s, at, LinearRgba::rgb(3.2, 1.1, 0.2), 2.0, 0.35, Color::srgb(1.0, 0.6, 0.25), 900_000.0);
                 }
             }
             GrenadeKind::Flash => {

@@ -54,6 +54,7 @@ impl Plugin for EnemyPlugin {
         app.init_resource::<Squad>()
             .add_message::<Callout>()
             .init_resource::<EnemyFreeze>()
+            .init_resource::<LeanOverride>()
             .configure_sets(
                 Update,
                 // Paused (Esc menu): the AI doesn't advance.
@@ -83,6 +84,10 @@ pub struct EnemySet;
 /// Test hook: frozen enemies still perceive but don't move or shoot.
 #[derive(Resource, Default)]
 pub struct EnemyFreeze(pub bool);
+
+/// Test hook: force every enemy's lean (-1 left .. +1 right) to check the pose visually.
+#[derive(Resource, Default)]
+pub struct LeanOverride(pub Option<f32>);
 
 #[derive(Component)]
 pub struct Enemy {
@@ -336,6 +341,7 @@ fn think_and_act(
     globals: Query<&GlobalTransform>,
     inbox: Res<Inbox>,
     freeze: Res<EnemyFreeze>,
+    lean_override: Res<LeanOverride>,
     mut out: AiOut,
     slots: Query<&Enemy>,
     mut hurt: Local<(f32, f32)>,
@@ -532,7 +538,9 @@ fn think_and_act(
         }
         let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
         // Lean out of tall cover toward where the squad thinks he is (or the angle it holds).
-        let lean_want = if !freeze.0 && act.move_dir.len() < 0.35 && matches!(mind.0.goal(), Goal::Hold | Goal::Attack | Goal::Ambush) {
+        let lean_want = if let Some(l) = lean_override.0 {
+            l
+        } else if !freeze.0 && act.move_dir.len() < 0.35 && matches!(mind.0.goal(), Goal::Hold | Goal::Attack | Goal::Ambush) {
             let target = mind.0.order().and_then(|o| o.watch).filter(|_| !sees && c.last_seen > ENGAGE_MEMORY).unwrap_or(shared.0);
             let side = posture::lean_side(&arena.0, pos, target);
             let world = (target - pos).norm().perp() * side;

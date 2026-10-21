@@ -1,0 +1,15 @@
+[
+  {"cmd": "enemy.freeze", "params": {"on": true}},
+  {"cmd": "player.god", "params": {"on": true}},
+  {"cmd": "player.teleport", "params": {"x": 10, "z": -23}},
+  {"cmd": "player.look", "params": {"at": [10, 1.0, -29]}},
+  {"sleep": 1.0},
+  {"shot": "lean_none"},
+  {"cmd": "enemy.lean", "params": {"side": 1}},
+  {"sleep": 0.8},
+  {"shot": "lean_right"},
+  {"cmd": "enemy.lean", "params": {"side": -1}},
+  {"sleep": 0.8},
+  {"shot": "lean_left"},
+  {"cmd": "enemy.list"}
+]

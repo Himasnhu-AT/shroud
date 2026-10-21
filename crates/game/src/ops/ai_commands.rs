@@ -9,7 +9,7 @@ use brain::grenade::GrenadeKind;
 use serde_json::{Value, json};
 
 use super::control::{ControlAppExt, params};
-use crate::enemy::grenade::{Flashed, Grenade};
+use crate::enemy::grenade::{Flashed, Grenade, ThrowGrenade};
 use crate::enemy::{Enemy, EnemyCombat, EnemyFreeze, Mind, Squad};
 use crate::map::{ArenaRes, to_ground};
 use crate::match_flow::MatchFlow;
@@ -29,9 +29,19 @@ pub fn register(app: &mut App) {
         .add_control_command("ai.squad", "Squad state: play, roles, tokens, re-peek spots, grenades, bandit scores", none.clone(), ai_squad)
         .add_control_command(
             "ai.throw",
-            "Make the squad throw a grenade at the player as soon as someone can",
-            params(&[("kind", "string", "frag | flash (default frag)")]),
+            "Make the squad throw a grenade at the player as soon as someone can (or, with `at`, throw one now from `from` to that point)",
+            params(&[
+                ("kind", "string", "frag | flash (default frag)"),
+                ("at", "array", "[x, z] landing point: throw immediately (test hook)"),
+                ("from", "array", "[x, y, z] release point for `at` (default 6 m short of it, 1.6 m up)"),
+            ]),
             ai_throw,
+        )
+        .add_control_command(
+            "enemy.lean",
+            "Force every enemy's lean (test hook; omit `side` to give control back to the AI)",
+            params(&[("side", "number", "-1 left .. +1 right")]),
+            enemy_lean,
         )
         .add_control_command(
             "ai.difficulty",
@@ -220,10 +230,27 @@ fn ai_throw(world: &mut World, p: Value) -> Result<Value, String> {
         "flash" | "flashbang" => GrenadeKind::Flash,
         k => return Err(format!("unknown grenade kind {k:?} (frag | flash)")),
     };
+    let num = |v: &Value, i: usize| v.get(i).and_then(Value::as_f64).map(|x| x as f32);
+    if let Some(at) = p.get("at") {
+        let (Some(x), Some(z)) = (num(at, 0), num(at, 1)) else { return Err("`at` must be [x, z]".into()) };
+        let target = Vec3::new(x, 0.1, z);
+        let from = p
+            .get("from")
+            .and_then(|f| Some(Vec3::new(num(f, 0)?, num(f, 1)?, num(f, 2)?)))
+            .unwrap_or(target + Vec3::new(0.0, 1.5, -6.0));
+        world.write_message(ThrowGrenade { thrower: Entity::PLACEHOLDER, kind, from, target });
+        return Ok(json!({ "thrown": kind.label(), "from": [from.x, from.y, from.z], "at": [x, z] }));
+    }
     let mut sq = world.resource_mut::<Squad>();
     let Some(c) = sq.coord.as_mut() else { return Err("no squad".into()) };
     c.force_throw = Some(kind);
     Ok(json!({ "queued": kind.label() }))
+}
+
+fn enemy_lean(world: &mut World, p: Value) -> Result<Value, String> {
+    let side = p.get("side").and_then(Value::as_f64).map(|v| (v as f32).clamp(-1.0, 1.0));
+    world.resource_mut::<crate::enemy::LeanOverride>().0 = side;
+    Ok(json!({ "lean": side }))
 }
 
 fn ai_difficulty(world: &mut World, p: Value) -> Result<Value, String> {
