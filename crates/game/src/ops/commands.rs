@@ -196,7 +196,26 @@ pub(super) fn register(app: &mut App) {
             params(&[("on", "boolean", "default true")]),
             debug_overlay,
         )
-        .add_control_command("perf.stats", "Frame-time statistics", none, perf_stats);
+        .add_control_command("perf.stats", "Frame-time statistics", none.clone(), perf_stats)
+        .add_control_command("game.menu", "Abandon the match and go to the main menu", none.clone(), game_menu)
+        .add_control_command(
+            "ui.screen",
+            "Open a menu screen (pause = pause menu in a round)",
+            params(&[("screen", "string", "main|setup|settings|pause|none"), ("tab", "integer", "settings tab 0..3")]),
+            ui_screen,
+        )
+        .add_control_command(
+            "ui.nav",
+            "Send a menu input",
+            params(&[("input", "string", "up|down|left|right|accept|back|next_tab|prev_tab")]),
+            ui_nav,
+        )
+        .add_control_command(
+            "ui.setting",
+            "Change a setting (no params: list them)",
+            params(&[("key", "string", "e.g. fov, quality, master_volume"), ("value", "number", "index for choices, 0/1 toggles")]),
+            ui_setting,
+        );
 }
 
 // ---- params ----
@@ -605,4 +624,39 @@ fn perf_stats(world: &mut World, _: Value) -> Result<Value, String> {
         "entities": world.entities().count_spawned(),
         "perf": super::perf::stats_json(world),
     }))
+}
+
+// ---- ui ----
+
+fn game_menu(world: &mut World, _: Value) -> Result<Value, String> {
+    world.resource_mut::<crate::match_flow::MatchFlow>().abandon();
+    world.resource_mut::<NextState<GameState>>().set(GameState::Menu);
+    Ok(json!({}))
+}
+
+fn ui_screen(world: &mut World, p: Value) -> Result<Value, String> {
+    use crate::ui::screens::{Screen, open_screen};
+    let name = p.get("screen").and_then(Value::as_str).unwrap_or("none");
+    let screen = if name == "none" { None } else { Some(Screen::parse(name).ok_or_else(|| format!("unknown screen `{name}`"))?) };
+    let tab = p.get("tab").and_then(Value::as_u64).map(|t| t as usize);
+    open_screen(world, screen, tab)?;
+    Ok(json!({}))
+}
+
+fn ui_nav(world: &mut World, p: Value) -> Result<Value, String> {
+    use crate::ui::widgets::{NavInput, NavQueue};
+    let s = p.get("input").and_then(Value::as_str).ok_or("`input` (string) is required")?;
+    let n = NavInput::parse(s).ok_or_else(|| format!("unknown input `{s}`"))?;
+    world.resource_mut::<NavQueue>().0.push(n);
+    Ok(json!({}))
+}
+
+fn ui_setting(world: &mut World, p: Value) -> Result<Value, String> {
+    use crate::ui::widgets::Field;
+    if let Some(k) = p.get("key").and_then(Value::as_str) {
+        let f = Field::from_key(k).ok_or_else(|| format!("unknown setting `{k}`"))?;
+        let v = need(&p, "value")? as f32;
+        f.set(&mut world.resource_mut::<crate::settings::Settings>(), v);
+    }
+    serde_json::to_value(world.resource::<crate::settings::Settings>()).map_err(|e| e.to_string())
 }

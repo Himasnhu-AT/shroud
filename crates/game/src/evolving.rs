@@ -112,34 +112,56 @@ fn poll(
     next.set(GameState::Debrief);
 }
 
+#[derive(Component)]
+struct ProgressFill;
+
 fn spawn_label(mut commands: Commands) {
-    commands.spawn((
-        DespawnOnExit(GameState::Evolving),
-        Node {
-            width: percent(100),
-            height: percent(100),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            row_gap: px(12),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
-        children![
-            (Text::new("The squad is evolving"), TextFont::from_font_size(40.0)),
-            (
-                ProgressText,
-                Text::new("Training against your ghost... 0%"),
-                TextFont::from_font_size(20.0),
-                TextColor(Color::srgb(0.6, 0.65, 0.75)),
-            ),
-            (DetailText, Text::new(""), TextFont::from_font_size(16.0), TextColor(Color::srgb(0.5, 0.55, 0.62))),
-        ],
-    ));
+    use crate::ui::theme::*;
+    commands
+        .spawn((
+            DespawnOnExit(GameState::Evolving),
+            fullscreen(),
+            BackgroundColor(BG.with_alpha(0.94)),
+            GlobalZIndex(20),
+        ))
+        .with_children(|s| {
+            s.spawn((
+                Node {
+                    width: percent(100),
+                    height: percent(100),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    row_gap: px(GAP_M),
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ))
+            .with_children(|c| {
+                c.spawn(eyebrow("Between matches", INTEL));
+                c.spawn(text("THE SQUAD IS EVOLVING", display(SIZE_H1), TEXT));
+                c.spawn((
+                    Node { width: px(640), height: px(6), margin: UiRect::top(px(GAP_S)), ..default() },
+                    BackgroundColor(RAISED),
+                    Pickable::IGNORE,
+                ))
+                .with_child((ProgressFill, Node { width: percent(0), height: percent(100), ..default() }, BackgroundColor(INTEL), Pickable::IGNORE));
+                c.spawn((ProgressText, text("Training against your ghost... 0%", body_bold(SIZE_BODY), TEXT)));
+                c.spawn((DetailText, text("", body(SIZE_SMALL), TEXT_MUTED), TextLayout::justify(Justify::Center)));
+            });
+        });
 }
 
-fn update_label(job: Res<Job>, mut q: Query<&mut Text, With<ProgressText>>, mut d: Query<&mut Text, (With<DetailText>, Without<ProgressText>)>) {
+fn update_label(
+    job: Res<Job>,
+    mut q: Query<&mut Text, With<ProgressText>>,
+    mut d: Query<&mut Text, (With<DetailText>, Without<ProgressText>)>,
+    mut fill: Query<&mut Node, With<ProgressFill>>,
+) {
     let pct = job.progress.load(Ordering::Relaxed);
+    for mut n in &mut fill {
+        n.width = percent(pct.min(100) as f32);
+    }
     for mut t in &mut q {
         let s = format!("Training against your ghost... {pct}%");
         if t.0 != s {

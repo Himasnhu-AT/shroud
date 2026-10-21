@@ -3,7 +3,9 @@
 
 use bevy::prelude::*;
 
+use super::theme::*;
 use crate::enemy::Callout;
+use crate::settings::Settings;
 use crate::state::{GameState, has_visuals};
 
 const LIFE_S: f32 = 2.5;
@@ -30,13 +32,14 @@ fn spawn_root(mut commands: Commands) {
     commands.spawn((
         Name::new("Callouts"),
         CalloutRoot,
+        super::hud::HideWhenPaused,
         DespawnOnExit(GameState::Playing),
         Node {
             position_type: PositionType::Absolute,
-            left: px(24),
-            bottom: px(64),
+            left: px(40),
+            bottom: px(150),
             flex_direction: FlexDirection::Column,
-            row_gap: px(2),
+            row_gap: px(4),
             ..default()
         },
         Pickable::IGNORE,
@@ -48,9 +51,11 @@ fn add_lines(
     mut msgs: MessageReader<Callout>,
     root: Query<Entity, With<CalloutRoot>>,
     lines: Query<(Entity, &CalloutLine)>,
+    settings: Res<Settings>,
     log: Option<Res<crate::ops::session_log::SessionLog>>,
 ) {
-    let Ok(root) = root.single() else {
+    let root = root.single().ok().filter(|_| settings.show_callouts);
+    let Some(root) = root else {
         for m in msgs.read() {
             if let Some(log) = &log {
                 log.event("callout", serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": false }));
@@ -72,19 +77,28 @@ fn add_lines(
         if let Some(log) = &log {
             log.event("callout", serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": true }));
         }
-        // The UI font is ASCII-only.
-        let text: String = format!("{}: {}", m.speaker, m.text).chars().filter(|c| c.is_ascii()).collect();
-        commands.spawn((
-            CalloutLine(0.0),
-            Text::new(text),
-            TextFont::from_font_size(22.0),
-            TextColor(Color::srgb(0.9, 1.0, 0.85)),
-            TextShadow::default(),
-            // Dark backing so lines stay readable over the red damage vignette.
-            Node { padding: UiRect::axes(px(8), px(3)), ..default() },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, BG_ALPHA)),
-            ChildOf(root),
-        ));
+        // Callouts are ASCII by contract; keep it that way for the font.
+        let clean = |t: &str| t.chars().filter(|c| c.is_ascii()).collect::<String>();
+        commands
+            .spawn((
+                CalloutLine(0.0),
+                // Dark backing so lines stay readable over the red damage vignette.
+                Node {
+                    padding: UiRect::new(px(10), px(12), px(4), px(5)),
+                    column_gap: px(10),
+                    align_items: AlignItems::Baseline,
+                    border: UiRect::left(px(3)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.02, 0.03, 0.05, BG_ALPHA)),
+                BorderColor::all(ENEMY),
+                Pickable::IGNORE,
+                ChildOf(root),
+            ))
+            .with_children(|l| {
+                l.spawn((text(clean(m.speaker).to_uppercase(), label(SIZE_LABEL + 1.0), ENEMY), TextShadow::default()));
+                l.spawn((text(clean(&m.text), body(SIZE_BODY - 1.0), TEXT), TextShadow::default()));
+            });
         count += 1;
     }
 }
@@ -94,16 +108,22 @@ const BG_ALPHA: f32 = 0.6;
 fn fade_lines(
     mut commands: Commands,
     time: Res<Time>,
-    mut lines: Query<(Entity, &mut CalloutLine, &mut TextColor, &mut BackgroundColor)>,
+    mut lines: Query<(Entity, &mut CalloutLine, &mut BackgroundColor, &mut BorderColor, &Children)>,
+    mut texts: Query<&mut TextColor>,
 ) {
-    for (e, mut l, mut color, mut bg) in &mut lines {
+    for (e, mut l, mut bg, mut border, kids) in &mut lines {
         l.0 += time.delta_secs();
         if l.0 >= LIFE_S {
             commands.entity(e).despawn();
         } else {
             let a = ((LIFE_S - l.0) / FADE_S).min(1.0);
-            color.0.set_alpha(a);
             bg.0.set_alpha(a * BG_ALPHA);
+            *border = BorderColor::all(ENEMY.with_alpha(a));
+            for k in kids.iter() {
+                if let Ok(mut t) = texts.get_mut(k) {
+                    t.0.set_alpha(a);
+                }
+            }
         }
     }
 }
