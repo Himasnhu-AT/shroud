@@ -141,9 +141,11 @@ impl TrainerHandle {
             if let Some(init) = cfg.worker_init {
                 init();
             }
-            let arena = Arena::foundry();
+            // Train on every map in turn, so squads don't overfit Foundry's layout.
+            let arenas: Vec<Arena> = crate::arena::MapId::ALL.iter().map(|&m| Arena::build(m)).collect();
             while !p.cancel.load(Ordering::Relaxed) && trainer.session_rounds < cfg.max_session_rounds {
-                let Some(s) = trainer.step(&arena, &cfg, Some(&p.cancel)) else { break };
+                let arena = &arenas[(trainer.steps as usize) % arenas.len()];
+                let Some(s) = trainer.step(arena, &cfg, Some(&p.cancel)) else { break };
                 p.rounds.store(trainer.session_rounds, Ordering::Relaxed);
                 p.steps.store(trainer.steps, Ordering::Relaxed);
                 p.champion_win_milli.store((s.champion_win * 1000.0) as u32, Ordering::Relaxed);

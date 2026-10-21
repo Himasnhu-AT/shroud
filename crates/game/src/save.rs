@@ -21,7 +21,7 @@ impl Brain {
         let mut state = BrainState::load_or_new(&path, seed);
         if state.generation == 0 && !state.evaluated {
             let t = std::time::Instant::now();
-            state.bootstrap(&brain::arena::Arena::foundry(), &brain::evolve::EvolveConfig::default());
+            state.bootstrap(&brain::arena::Arena::build(crate::settings::Settings::load().map), &brain::evolve::EvolveConfig::default());
             info!("brain: bootstrap training took {} ms", t.elapsed().as_millis());
         }
         info!("brain: generation {} from {}", state.generation, path.display());
@@ -41,7 +41,7 @@ impl Brain {
         }
         let _ = std::fs::copy(&self.path, self.path.with_extension("json.bak"));
         self.state = BrainState::new(rand::random());
-        self.state.bootstrap(&brain::arena::Arena::foundry(), &brain::evolve::EvolveConfig::default());
+        self.state.bootstrap(&brain::arena::Arena::build(crate::settings::Settings::load().map), &brain::evolve::EvolveConfig::default());
         self.save();
     }
 }

@@ -172,8 +172,8 @@ fn sim_run(world: &mut World, p: Value) -> Result<Value, String> {
     let n = p.get("generations").and_then(Value::as_u64).unwrap_or(5).min(50) as usize;
     let seed = p.get("seed").and_then(Value::as_u64).unwrap_or(1);
     let mut state = brain::evolve::BrainState::new(seed);
-    let _ = world; // runs on a fresh brain so the player's brain is untouched
-    let arena = Arena::foundry();
+    // Runs on a fresh brain so the player's brain is untouched, on the current map.
+    let arena = Arena::build(world.resource::<crate::map::ArenaRes>().0.id);
     let curve: Vec<Value> = (0..n)
         .map(|_| {
             let s = state.evolve(&MatchReport::default(), &arena, &EvolveConfig::default(), |_| {});

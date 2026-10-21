@@ -80,7 +80,7 @@ fn difficulty_and_grenades() {
     let s = wait_for(&mut c, 8.0, |s| s["difficulty"] == json!("Elite"));
     assert_eq!(s["difficulty"], json!("Elite"), "{s}");
     let n = exec(&mut c, "enemy.list", json!({})).as_array().map_or(0, |a| a.len());
-    assert!(n >= 5 && s["size"].as_u64() == Some(n as u64), "elite squad: {n} enemies, {s}");
+    assert!(n == 6 && s["size"].as_u64() == Some(n as u64), "elite squad: {n} enemies, {s}");
     assert_eq!(s["max_tokens"], json!(3));
     assert!(s["utility"]["frags"].as_u64() >= Some(1), "{s}");
 
