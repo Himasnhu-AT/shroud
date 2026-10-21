@@ -78,7 +78,7 @@ impl Sfx {
 }
 
 /// Spatial one-shot for other modules (enemy grenades). Silent if the group has no files.
-pub(crate) fn play_at(commands: &mut Commands, sfx: &Sfx, master: &MasterVolume, name: &str, volume: f32, at: Vec3) {
+pub(crate) fn play_at(commands: &mut Commands, sfx: &Sfx, master: &Volumes, name: &str, volume: f32, at: Vec3) {
     play(commands, sfx, master, name, volume, Some(at));
 }
 

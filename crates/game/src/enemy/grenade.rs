@@ -85,7 +85,8 @@ impl Plugin for GrenadePlugin {
                 Update,
                 (spawn_grenades, fly, detonate).chain().after(EnemySet).before(WeaponSet).run_if(in_state(GameState::Playing).and_then(not_paused)),
             )
-            .add_systems(Update, (tick_flash, update_overlay.run_if(has_visuals), blink, tick_blasts.run_if(has_visuals)).run_if(not_paused));
+            .add_systems(Update, (tick_flash, blink, tick_blasts.run_if(has_visuals)).run_if(not_paused))
+            .add_systems(Update, update_overlay.run_if(has_visuals));
     }
 }
 
@@ -213,7 +214,7 @@ fn detonate(
     mut flashed: ResMut<Flashed>,
     mut damage: MessageWriter<Damage>,
     sfx: Option<Res<crate::audio::Sfx>>,
-    master: Option<Res<crate::audio::MasterVolume>>,
+    master: Option<Res<crate::audio::Volumes>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
@@ -359,8 +360,9 @@ fn spawn_overlay(mut commands: Commands) {
     ));
 }
 
-fn update_overlay(f: Res<Flashed>, mut q: Query<&mut BackgroundColor, With<FlashOverlay>>) {
-    let a = f.alpha();
+/// Above the HUD (z 8) and debrief (20); hidden while paused so the pause menu stays readable.
+fn update_overlay(f: Res<Flashed>, paused: Res<crate::state::Paused>, mut q: Query<&mut BackgroundColor, With<FlashOverlay>>) {
+    let a = if paused.0 { 0.0 } else { f.alpha() };
     for mut bg in &mut q {
         if (bg.0.alpha() - a).abs() > 1e-3 {
             bg.0.set_alpha(a);
