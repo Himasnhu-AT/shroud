@@ -65,6 +65,15 @@ impl Difficulty {
         }
     }
 
+    /// Grenades the squad may throw per round (frags, flashbangs) when `params().utility`.
+    pub fn grenades(self) -> (u32, u32) {
+        match self {
+            Difficulty::Recruit | Difficulty::Regular => (0, 0),
+            Difficulty::Veteran => (2, 2),
+            Difficulty::Elite => (3, 3),
+        }
+    }
+
     /// Generation limits scaled by this difficulty.
     pub fn limits(self, generation: u32) -> Limits {
         let base = Limits::for_generation(generation);

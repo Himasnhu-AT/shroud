@@ -8,6 +8,7 @@ use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::neat;
 use crate::perception::{Alert, COMBAT_CALM_S, Heard, SUSPICIOUS_CALM_S, Sound};
 use crate::player_model::PlayerModel;
+use crate::posture;
 use crate::squad::{self, Order};
 use crate::utility::{self, Goal, UtilityInput};
 
@@ -155,6 +156,9 @@ pub struct Action {
     /// Vertical aim error for the shot (radians, + is high).
     pub shot_pitch_err: f32,
     pub reload: bool,
+    /// Pre-firing at this spot (the player is not visible): the shot's pitch should aim at
+    /// chest height there, not at the player.
+    pub prefire: Option<V2>,
 }
 
 pub struct MindCtx<'a> {
@@ -219,8 +223,18 @@ pub struct EnemyMind {
     /// Strafe while shooting (A-D rhythm).
     strafe_t: f32,
     strafe_sign: f32,
+    /// Trigger time spent on the current pre-fire burst.
+    prefire_t: f32,
+    /// Crouch-peek rhythm behind low cover.
+    peek_t: f32,
     pub debug: MindDebug,
 }
+
+/// Pre-fire spread is this much wider than aimed fire (shooting at a spot, not a target).
+pub const PREFIRE_SPREAD: f32 = 1.6;
+/// Crouch-peek cycle behind low cover: down for `PEEK_DOWN_S`, up for the rest of `PEEK_CYCLE_S`.
+pub const PEEK_CYCLE_S: f32 = 2.4;
+pub const PEEK_DOWN_S: f32 = 1.3;
 
 /// Minimum time in a goal before switching (unless hit): no flip-flopping between goals.
 pub const GOAL_COMMIT_S: f32 = 0.6;
@@ -269,6 +283,8 @@ impl EnemyMind {
             force_repath: false,
             strafe_t: 0.0,
             strafe_sign: flank_side,
+            prefire_t: 0.0,
+            peek_t: 0.0,
             debug: MindDebug::default(),
         }
     }
@@ -509,7 +525,14 @@ impl EnemyMind {
 
         // 4. Aim: turn toward the player (with a small lead) at a capped rate; out of contact,
         // turn to face a fresh sound.
-        let target_dir = if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S {
+        // Anchor pre-fire: the squad says he is about to re-peek this exact spot.
+        let prefire = self.following().and_then(|od| od.prefire).filter(|_| !o.player_visible);
+        if prefire.is_none() {
+            self.prefire_t = 0.0;
+        }
+        let target_dir = if let Some(pf) = prefire {
+            (pf - o.pos).norm()
+        } else if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S {
             (o.player_pos + o.player_vel * 0.08 - o.pos).norm()
         } else if let Some(h) = self.heard_prev.filter(|_| self.heard_t < 2.5 && !self.path.is_empty() || self.heard_t < 1.0) {
             (h - o.pos).norm()
@@ -553,6 +576,12 @@ impl EnemyMind {
         } else {
             self.burst_timer = 0.0;
         }
+        // One short burst per pre-fire window, only once the aim has arrived at the spot.
+        let prefiring = prefire.is_some() && !fire && aim_off < 0.06 && o.ammo_frac > 0.0 && self.prefire_t < squad::PREFIRE_BURST_S;
+        if prefiring {
+            fire = true;
+            self.prefire_t += o.dt;
+        }
 
         // Spread: base error, worse while moving, better once settled on target.
         let settle = 1.0 + 0.6 * (1.0 - (self.on_target_time / 0.6).min(1.0));
@@ -563,14 +592,25 @@ impl EnemyMind {
         self.was_hit = o.taking_fire;
         self.flinch_t = (self.flinch_t - o.dt).max(0.0);
         let flinch = 1.0 + FLINCH_SPREAD * self.flinch_t / FLINCH_S;
-        let sigma = t.aim_error_deg.to_radians() * settle * moving * flinch;
+        let sigma = t.aim_error_deg.to_radians() * settle * moving * flinch * if prefiring { PREFIRE_SPREAD } else { 1.0 };
         let shot_dir = V2::from_angle(self.aim_yaw + gauss(&mut self.rng) * sigma);
         let shot_pitch_err = gauss(&mut self.rng) * sigma * 0.6;
 
-        let crouch = match self.goal {
-            Goal::TakeCover | Goal::Retreat => self.path.is_empty(),
-            Goal::Attack => micro[3] > 0.3 && !fire,
-            _ => false,
+        // Behind low cover while holding or fighting: duck, pop up to look and shoot, duck to reload.
+        let ducking = matches!(self.goal, Goal::Hold | Goal::Attack) && self.path.is_empty() && posture::low_cover_toward(cx.arena, o.pos, o.player_pos);
+        if ducking {
+            self.peek_t = (self.peek_t + o.dt) % PEEK_CYCLE_S;
+        } else {
+            self.peek_t = 0.0;
+        }
+        let crouch = if ducking {
+            !fire && (o.ammo_frac <= 0.0 || (!o.player_visible && self.peek_t < PEEK_DOWN_S))
+        } else {
+            match self.goal {
+                Goal::TakeCover | Goal::Retreat => self.path.is_empty(),
+                Goal::Attack => micro[3] > 0.3 && !fire,
+                _ => false,
+            }
         };
         // Sticky orders (the trader keeping up with the entry) sprint to close any gap.
         let gap = if self.following().is_some_and(|od| od.sticky) { 1.0 } else { 2.0 };
@@ -600,6 +640,7 @@ impl EnemyMind {
             shot_dir,
             shot_pitch_err,
             reload,
+            prefire: prefire.filter(|_| fire),
         }
     }
 

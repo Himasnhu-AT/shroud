@@ -94,3 +94,26 @@ Floors that loosen with generation `g` and never go below human-plausible values
 
 The point: most of the difficulty increase must come from **better decisions** (traits, tactics, micro, prediction),
 not from raw stats.
+
+## Squad tactics v2 (learned plays, anchors, utility, difficulty)
+
+- **Play selection** (`brain::bandit`): disjoint LinUCB over Crossfire / PinFlank / Trade / Bait.
+  Context: rush vs hold, zone focus, re-peek rate, strafe bias, his range, his accuracy, squad
+  alive/hp, his hp. The old hand weights are the prior (fading with data). Reward per engagement
+  window (<= 9 s or until the play changes): damage dealt, player forced back, minus untraded
+  losses. Stored in `BrainState::tactics`, copied into the coordinator each round and back on
+  round exit; forgets 15% per match. `ai.squad` shows context and arm scores.
+- **Anchors**: the coordinator tracks re-peeks (lost at a spot, seen there again within 5 s,
+  3 m). A member with a view holds and pre-aims the spot; after two re-peeks it pre-fires a
+  ~0.3 s burst (1.6x spread, glint telegraph) in a window around his usual delay.
+- **Breachers**: frag a player camping / hugging cover (after ~2-3 s still), flashbang ahead of a
+  flank or entry. Wind-up, 7 s squad cooldown, one of each per member, per-round budget by
+  difficulty (`Difficulty::grenades`). Game: `enemy/grenade.rs`; trainer: `grenade::SimGrenade`
+  (frag LOS damage, ghost dashes to cover, flash blinds the ghost), so evolution trains with it
+  (willingness keys off aggression / team cohesion genes).
+- **Body language**: lean out past tall corners (eye, hitboxes and model shift), crouch-peek
+  behind low cover, habit callouts ("He keeps re-peeking that crate - holding it",
+  "He's camping the east lane - frag out").
+- **Difficulty**: squad size, limits, coordination, attack-token cap and grenades come from
+  `Settings.difficulty` at each round spawn; more enemies than evolved slots reuse genomes.
+- The background trainer cycles over every map.
