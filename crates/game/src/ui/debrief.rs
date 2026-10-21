@@ -1,10 +1,12 @@
 //! `GameState::Debrief`: match result, what the squad learned about you, how it changed.
-//! Enter/click: next match | R: reset the AI | Esc: quit.
+//! Buttons: next match (Enter) | main menu (Esc) | reset the AI (R).
 
 use bevy::prelude::*;
 
 use crate::match_flow::MatchFlow;
 use crate::save::{Brain, LastEvolve};
+use super::theme::*;
+use super::widgets::{UiAction, action_button};
 use crate::state::{GameState, Headless};
 
 pub struct DebriefPlugin;
@@ -75,110 +77,138 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
         .collect();
 
     let card = last.0.as_ref().and_then(|s| s.card.clone());
-    let deltas = if deltas.is_empty() { vec!["-".into()] } else { deltas };
+    let deltas = if deltas.is_empty() { vec!["No change".into()] } else { deltas };
     let history = if history.is_empty() { vec!["-".into()] } else { history };
+    let color = if won { FRIENDLY } else { ENEMY };
 
     commands
         .spawn((
             DespawnOnExit(GameState::Debrief),
-            Node {
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: px(12),
-                padding: UiRect::all(px(24)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.94)),
+            fullscreen(),
+            BackgroundColor(BG.with_alpha(0.96)),
+            GlobalZIndex(20),
         ))
-        .with_children(|root| {
-            root.spawn((
-                Text::new(format!("{title}  {pr}-{er}")),
-                TextFont::from_font_size(48.0),
-                TextColor(if won { Color::srgb(0.5, 1.0, 0.6) } else { Color::srgb(1.0, 0.4, 0.35) }),
-            ));
-            root.spawn((
-                Text::new(gen_line),
-                TextFont::from_font_size(15.0),
-                TextLayout::justify(Justify::Center),
-                TextColor(MUTED),
-            ));
-            if let Some(card) = card {
-                root.spawn(panel()).with_children(|p| {
-                    p.spawn(heading("THEIR PLAN THIS MATCH", ACCENT));
-                    for (label, text) in
-                        [("They learned", card.learned), ("They did", card.did), ("Did it work", card.worked), ("Next time", card.counter)]
-                    {
-                        // One text per row (the font is monospace, so a padded label lines up);
-                        // side-by-side text nodes get mis-measured by the flex layout.
-                        p.spawn((Text::default(), TextFont::from_font_size(17.0), TextColor(BODY))).with_children(|t| {
-                            t.spawn((TextSpan::new(format!("{label:<13}")), TextFont::from_font_size(17.0), TextColor(ACCENT)));
-                            t.spawn((TextSpan::new(text), TextFont::from_font_size(17.0), TextColor(BODY)));
+        .with_children(|screen| {
+            screen
+                .spawn((
+                    Node {
+                        width: percent(100),
+                        height: percent(100),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        row_gap: px(GAP_M),
+                        ..default()
+                    },
+                    Pickable::IGNORE,
+                ))
+                .with_children(|root| {
+                    root.spawn((Node { width: px(PANEL_W), flex_direction: FlexDirection::Column, ..default() }, Pickable::IGNORE))
+                        .with_children(|h| {
+                            h.spawn(eyebrow(&format!("Match complete \u{b7} Squad generation {}", brain.state.generation), ACCENT));
+                            h.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_L), ..default() }, Pickable::IGNORE))
+                                .with_children(|r| {
+                                    r.spawn(text(title, display(104.0), color));
+                                    r.spawn(text(format!("{pr} \u{2013} {er}"), display(56.0), TEXT));
+                                });
+                            if !gen_line.is_empty() {
+                                h.spawn(text(gen_line, body(SIZE_SMALL), TEXT_MUTED));
+                            }
+                        });
+                    if let Some(card) = card {
+                        root.spawn(card_panel()).with_children(|p| {
+                            p.spawn(eyebrow("Their plan this match", ACCENT));
+                            for (label_text, body_text) in
+                                [("They learned", card.learned), ("They did", card.did), ("Did it work", card.worked), ("Next time", card.counter)]
+                            {
+                                p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                                    // Text sits inside fixed-width boxes: text nodes as direct flex siblings
+                                    // get mis-measured.
+                                    r.spawn((Node { width: px(140), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
+                                        .with_child(text(label_text.to_uppercase(), label(SIZE_LABEL), ACCENT.with_alpha(0.85)));
+                                    r.spawn((Node { width: px(PANEL_W - 40.0 - 140.0 - GAP_M), ..default() }, Pickable::IGNORE))
+                                        .with_child(text(body_text, body(SIZE_BODY - 2.0), TEXT));
+                                });
+                            }
                         });
                     }
-                });
-            }
-            root.spawn(panel()).with_children(|p| {
-                p.spawn(heading("WHAT TO WORK ON", INSIGHT));
-                for (i, line) in insights.iter().take(4).enumerate() {
-                    p.spawn((Text::new(format!("{}. {line}", i + 1)), TextFont::from_font_size(17.0), TextColor(BODY)));
-                }
-            });
-            root.spawn(Node { width: px(PANEL_W), max_width: percent(96), flex_direction: FlexDirection::Row, column_gap: px(16), ..default() })
-                .with_children(|row| {
-                    for (title, lines) in [("HOW THEY CHANGED", deltas), ("HISTORY", history)] {
-                        row.spawn(Node { flex_grow: 1.0, flex_basis: px(0), flex_direction: FlexDirection::Column, row_gap: px(3), ..default() })
-                            .with_children(|col| {
-                                col.spawn(heading(title, MUTED));
-                                for l in lines {
-                                    col.spawn((Text::new(l), TextFont::from_font_size(15.0), TextColor(BODY)));
-                                }
+                    root.spawn(card_panel()).with_children(|p| {
+                        p.spawn(eyebrow("What to work on", INTEL));
+                        for (i, line) in insights.iter().take(4).enumerate() {
+                            p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                                r.spawn((Node { width: px(24), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
+                                    .with_child(text(format!("0{}", i + 1), label(SIZE_LABEL), INTEL));
+                                r.spawn((Node { width: px(PANEL_W - 40.0 - 24.0 - GAP_M), ..default() }, Pickable::IGNORE))
+                                    .with_child(text(line.clone(), body(SIZE_BODY - 2.0), TEXT));
                             });
-                    }
+                        }
+                    });
+                    root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), ..default() }, Pickable::IGNORE))
+                        .with_children(|row| {
+                            for (title, lines) in [("How they changed", deltas), ("History", history)] {
+                                row.spawn((
+                                    Node {
+                                        flex_grow: 1.0,
+                                        flex_basis: px(0),
+                                        flex_direction: FlexDirection::Column,
+                                        row_gap: px(4),
+                                        padding: UiRect::all(px(20)),
+                                        border: UiRect::all(px(1)),
+                                        border_radius: BorderRadius::all(px(RADIUS)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(PANEL),
+                                    BorderColor::all(LINE),
+                                    Pickable::IGNORE,
+                                ))
+                                .with_children(|col| {
+                                    col.spawn(eyebrow(title, TEXT_MUTED));
+                                    for l in lines {
+                                        col.spawn(text(l, body(SIZE_SMALL), TEXT));
+                                    }
+                                });
+                            }
+                        });
+                    root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), align_items: AlignItems::Center, margin: UiRect::top(px(GAP_S)), ..default() }, Pickable::IGNORE))
+                        .with_children(|b| {
+                            action_button(b, "Next match", UiAction::NextMatch, Some(1), true, 300.0);
+                            action_button(b, "Main menu", UiAction::MainMenu, Some(2), false, 200.0);
+                            action_button(b, "Reset AI", UiAction::ResetAi, Some(3), false, 200.0);
+                        });
                 });
-            root.spawn((Text::new("Enter / click: next match    R: reset AI    Esc: quit"), TextFont::from_font_size(16.0), TextColor(MUTED)));
+            screen.spawn((Node::default(), Pickable::IGNORE)).with_children(|f| {
+                spawn_footer(f, &[("ENTER", "Next match"), ("ESC", "Main menu"), ("R", "Reset the AI")]);
+            });
         });
 }
 
-const PANEL_W: f32 = 980.0;
-const BODY: Color = Color::srgb(0.86, 0.89, 0.95);
-const MUTED: Color = Color::srgb(0.6, 0.65, 0.75);
-const ACCENT: Color = Color::srgb(1.0, 0.75, 0.35);
-const INSIGHT: Color = Color::srgb(0.55, 0.85, 1.0);
+const PANEL_W: f32 = 1100.0;
 
-fn panel() -> impl Bundle {
+fn card_panel() -> impl Bundle {
     (
         Node {
             width: px(PANEL_W),
-            max_width: percent(96),
             flex_direction: FlexDirection::Column,
-            row_gap: px(6),
-            padding: UiRect::axes(px(18), px(12)),
+            row_gap: px(10),
+            padding: UiRect::all(px(20)),
             border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(6)),
+            border_radius: BorderRadius::all(px(RADIUS)),
             ..default()
         },
-        BackgroundColor(Color::srgba(0.08, 0.1, 0.14, 0.9)),
-        BorderColor::all(Color::srgba(0.4, 0.45, 0.55, 0.5)),
+        BackgroundColor(PANEL),
+        BorderColor::all(LINE),
+        Pickable::IGNORE,
     )
-}
-
-fn heading(text: &str, color: Color) -> impl Bundle {
-    (Text::new(text), TextFont::from_font_size(14.0), TextColor(color))
 }
 
 fn input(
     time: Res<Time>,
     headless: Res<Headless>,
     mut auto: Option<ResMut<HeadlessAdvance>>,
-    mouse: Option<Res<ButtonInput<MouseButton>>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut brain: ResMut<Brain>,
     tracer: Option<Res<crate::ops::trace::GameTracer>>,
     mut next: ResMut<NextState<GameState>>,
-    mut exit: MessageWriter<AppExit>,
 ) {
     if headless.0 {
         if let Some(t) = auto.as_mut()
@@ -188,13 +218,10 @@ fn input(
         }
         return;
     }
-    let (Some(mouse), Some(keys)) = (mouse, keys) else { return };
-    if mouse.just_pressed(MouseButton::Left) || keys.just_pressed(KeyCode::Enter) {
-        next.set(GameState::Playing);
-    } else if keys.just_pressed(KeyCode::KeyR) {
+    // Enter / Esc / clicks go through the buttons (`ui::widgets`); R is a shortcut.
+    let Some(keys) = keys else { return };
+    if keys.just_pressed(KeyCode::KeyR) {
         brain.reset(tracer.as_deref());
         next.set(GameState::Menu);
-    } else if keys.just_pressed(KeyCode::Escape) {
-        exit.write(AppExit::Success);
     }
 }

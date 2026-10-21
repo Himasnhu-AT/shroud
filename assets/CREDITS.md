@@ -49,3 +49,11 @@ Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
 | `audio/round_won.ogg` | Interface Sounds `confirmation_002` + `003` | Kenney | https://kenney.nl/assets/interface-sounds |
 | `audio/round_lost.ogg` | Interface Sounds `bong_001`, pitched down | Kenney | https://kenney.nl/assets/interface-sounds |
 | `audio/ambient.ogg` | Sci-fi Sounds `spaceEngineLow_001`, lowpassed | Kenney | https://kenney.nl/assets/sci-fi-sounds |
+
+## Fonts (`fonts/*.ttf`), SIL Open Font License 1.1
+Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back to Bevy's built-in font if these are missing.
+
+| File | Family | Author | URL | License |
+|---|---|---|---|---|
+| `fonts/Barlow-Medium.ttf`, `fonts/Barlow-SemiBold.ttf` | Barlow | Jeremy Tribby (The Barlow Project Authors) | https://fonts.google.com/specimen/Barlow | OFL 1.1 |
+| `fonts/BarlowCondensed-SemiBold.ttf`, `fonts/BarlowCondensed-Bold.ttf` | Barlow Condensed | Jeremy Tribby (The Barlow Project Authors) | https://fonts.google.com/specimen/Barlow+Condensed | OFL 1.1 |

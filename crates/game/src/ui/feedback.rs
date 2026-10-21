@@ -5,7 +5,7 @@ use bevy::prelude::*;
 
 use crate::audio::LOW_HP_FRAC;
 use crate::player::{Player, PlayerCamera, PlayerSet};
-use crate::state::{GameState, has_visuals};
+use crate::state::{GameState, has_visuals, not_paused};
 use crate::weapon::{Damage, Health};
 
 const INDICATORS: usize = 6;
@@ -32,7 +32,7 @@ impl Plugin for FeedbackPlugin {
                 Update,
                 camera_shake
                     .after(PlayerSet::Move)
-                    .run_if(in_state(GameState::Playing).and_then(has_visuals)),
+                    .run_if(in_state(GameState::Playing).and_then(has_visuals).and_then(not_paused)),
             );
     }
 }

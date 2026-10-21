@@ -12,7 +12,8 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions};
 
 use crate::map::{ArenaRes, to_world};
-use crate::state::{GameState, has_visuals};
+use crate::settings::Settings;
+use crate::state::{GameState, Paused, has_visuals};
 use crate::weapon::Health;
 
 pub const RADIUS: f32 = 0.35;
@@ -52,11 +53,12 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 Update,
                 (
-                    (cursor_toggle, keyboard_mouse_to_intent)
-                        .chain()
-                        .in_set(PlayerSet::Input)
-                        .run_if(has_visuals),
+                    keyboard_mouse_to_intent.in_set(PlayerSet::Input).run_if(has_visuals),
                     move_player.in_set(PlayerSet::Move),
+                    // Outside PlayerSet: must also run while paused.
+                    cursor_follow_pause
+                        .before(PlayerSet::Input)
+                        .run_if(in_state(GameState::Playing).and_then(has_visuals).and_then(not_test_driven)),
                 ),
             );
     }
@@ -153,7 +155,7 @@ fn spawn_position(arena: &ArenaRes) -> Vec3 {
     to_world(arena.0.player_spawn, STAND_HEIGHT * 0.5)
 }
 
-fn spawn_player(mut commands: Commands, arena: Res<ArenaRes>, headless: Res<crate::Headless>) {
+fn spawn_player(mut commands: Commands, arena: Res<ArenaRes>, headless: Res<crate::Headless>, settings: Res<Settings>) {
     let camera = if headless.0 {
         commands
             .spawn((PlayerCamera, Transform::from_xyz(0.0, eye_offset(false), 0.0)))
@@ -164,11 +166,11 @@ fn spawn_player(mut commands: Commands, arena: Res<ArenaRes>, headless: Res<crat
                 PlayerCamera,
                 Camera3d::default(),
                 Projection::from(PerspectiveProjection {
-                    fov: 80f32.to_radians(),
+                    fov: settings.fov_deg.to_radians(),
                     near: 0.03,
                     ..default()
                 }),
-                crate::gfx::camera_components(),
+                crate::gfx::camera_components(settings.quality),
                 Transform::from_xyz(0.0, eye_offset(false), 0.0),
             ))
             .id()
@@ -216,7 +218,7 @@ fn set_cursor(cursor: &mut CursorOptions, locked: bool) {
 }
 
 /// Runs driven by the control port / MCP never grab the user's mouse.
-fn not_test_driven() -> bool {
+pub fn not_test_driven() -> bool {
     !crate::ops::has_flag("control") && !crate::ops::has_flag("mcp")
 }
 
@@ -232,16 +234,20 @@ fn unlock_cursor(mut cursors: Query<&mut CursorOptions>) {
     }
 }
 
-/// Esc releases the cursor; a click re-captures it.
-fn cursor_toggle(
+/// The pause menu frees the cursor and resuming captures it again. A click re-captures it
+/// if it was lost some other way (e.g. the window lost focus).
+fn cursor_follow_pause(
+    paused: Res<Paused>,
     mut cursors: Query<&mut CursorOptions>,
-    keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
 ) {
     for mut c in &mut cursors {
-        if keys.just_pressed(KeyCode::Escape) {
-            set_cursor(&mut c, false);
-        } else if mouse.just_pressed(MouseButton::Left) && c.grab_mode == CursorGrabMode::None {
+        let locked = c.grab_mode != CursorGrabMode::None;
+        if paused.0 {
+            if locked {
+                set_cursor(&mut c, false);
+            }
+        } else if !locked && (paused.is_changed() || mouse.just_pressed(MouseButton::Left)) {
             set_cursor(&mut c, true);
         }
     }
@@ -253,6 +259,7 @@ fn keyboard_mouse_to_intent(
     mouse: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     cursors: Query<&CursorOptions>,
+    settings: Res<Settings>,
     mut intent: ResMut<PlayerIntent>,
 ) {
     if external.0 {
@@ -268,7 +275,8 @@ fn keyboard_mouse_to_intent(
     *intent = PlayerIntent {
         move_axis: mv.clamp_length_max(1.0),
         look_delta: if captured {
-            Vec2::new(motion.delta.x, -motion.delta.y) * MOUSE_SENSITIVITY
+            let invert = if settings.invert_y { -1.0 } else { 1.0 };
+            Vec2::new(motion.delta.x, -motion.delta.y * invert) * MOUSE_SENSITIVITY * settings.sensitivity
         } else {
             Vec2::ZERO
         },
