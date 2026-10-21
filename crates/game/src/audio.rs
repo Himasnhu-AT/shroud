@@ -30,7 +30,19 @@ impl Default for MasterVolume {
 
 /// Loaded sound groups, keyed by base name (`step` holds `step_0..`).
 #[derive(Resource, Default)]
-struct Sfx(HashMap<&'static str, Vec<Handle<AudioSource>>>);
+pub(crate) struct Sfx(HashMap<&'static str, Vec<Handle<AudioSource>>>);
+
+impl Sfx {
+    /// At least one file of this group loaded.
+    pub(crate) fn has(&self, name: &str) -> bool {
+        self.0.get(name).is_some_and(|l| !l.is_empty())
+    }
+}
+
+/// Spatial one-shot for other modules (enemy grenades). Silent if the group has no files.
+pub(crate) fn play_at(commands: &mut Commands, sfx: &Sfx, master: &MasterVolume, name: &str, volume: f32, at: Vec3) {
+    play(commands, sfx, master, name, volume, Some(at));
+}
 
 /// (group name, number of variations). Files are `audio/<name>.ogg` or `audio/<name>_<i>.ogg`.
 const SOUNDS: &[(&str, usize)] = &[
@@ -53,6 +65,9 @@ const SOUNDS: &[(&str, usize)] = &[
     ("ambient", 1),
     // Optional: plays on squad callouts if `audio/radio_click.ogg` exists.
     ("radio_click", 1),
+    // Optional: enemy grenades (`enemy/grenade.rs`; frags fall back to `impact`).
+    ("frag_explode", 1),
+    ("flashbang", 1),
 ];
 
 #[derive(Component)]

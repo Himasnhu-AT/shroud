@@ -3,14 +3,19 @@
 
 pub mod animation;
 pub mod debug;
+pub mod grenade;
 pub mod gun;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
+use bevy::ecs::system::SystemParam;
+use brain::difficulty::{Difficulty, DifficultyParams};
 use brain::evolve::EnemyReport;
+use brain::limits::Limits;
 use brain::math::V2;
+use brain::posture;
 use brain::mind::{Action, AllyInfo, EnemyMind, MindCtx, Observation};
-use brain::squad::{MemberView, SquadCoordinator, callsign};
+use brain::squad::{MemberView, SquadCoordinator, UtilityBudget, callsign};
 use brain::utility::Goal;
 use brain::perception::{self, GUNSHOT_RANGE, Heard, RELOAD_RANGE, Sound};
 use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, MAG, RELOAD_S, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
@@ -19,8 +24,10 @@ use crate::assets::{AssetsDir, ENEMY_MODEL};
 use crate::map::{ArenaRes, to_ground, to_world};
 use crate::player::{Player, PlayerMotor, PlayerSet, collide_and_slide};
 use crate::save::Brain;
-use crate::state::{GameState, Headless};
+use crate::settings::Settings;
+use crate::state::{GameState, Headless, not_paused};
 use crate::weapon::{Damage, Health, Hitbox, Rifle, ShotFired, WeaponSet};
+use grenade::ThrowGrenade;
 use gun::{EnemyFx, GunLink};
 
 pub const ENEMY_HP: f32 = 100.0;
@@ -31,6 +38,10 @@ const CROUCH_HEAD_Y: f32 = 1.0;
 const ENGAGE_MEMORY: f32 = 1.5;
 /// After first spotting the player, an enemy glints and holds fire this long (fairness telegraph).
 const TELEGRAPH_S: f32 = 0.25;
+/// Pre-fire aims at chest height of a standing player at the predicted spot.
+const PREFIRE_AIM_Y: f32 = 1.15;
+/// Lean roll of the model (radians at full lean).
+const LEAN_ROLL: f32 = 0.3;
 /// Enemy tracers that hit the player stop this far short, so nothing draws at the camera.
 const TRACER_CLEARANCE: f32 = 1.5;
 /// Near-misses stop a bit further out: a streak right past the face reads as noise, not a shot.
@@ -45,13 +56,16 @@ impl Plugin for EnemyPlugin {
             .init_resource::<EnemyFreeze>()
             .configure_sets(
                 Update,
-                EnemySet.after(PlayerSet::Move).before(WeaponSet).run_if(in_state(GameState::Playing)),
+                // Paused (Esc menu): the AI doesn't advance.
+                EnemySet.after(PlayerSet::Move).before(WeaponSet).run_if(in_state(GameState::Playing).and_then(not_paused)),
             )
             .init_resource::<Inbox>()
-            .add_systems(Update, (collect_inbox, think_and_act, sync_crouch).chain().in_set(EnemySet))
+            .add_systems(Update, (collect_inbox, think_and_act, sync_pose).chain().in_set(EnemySet))
             .add_systems(Update, enemy_deaths.after(WeaponSet).run_if(in_state(GameState::Playing)))
-            .add_systems(Update, despawn_corpses)
-            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin, gun::EnemyGunPlugin));
+            .add_systems(Update, despawn_corpses.run_if(not_paused))
+            // Round over: score the bandit's last engagement window and keep what it learned.
+            .add_systems(OnExit(GameState::Playing), finish_round)
+            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin, gun::EnemyGunPlugin, grenade::GrenadePlugin));
     }
 }
 
@@ -101,7 +115,15 @@ pub struct EnemyCombat {
     /// World point the gun should point at while engaged.
     pub aim_at: Option<Vec3>,
     pub report: EnemyReport,
+    /// Lean out from cover: -1 left … +1 right (local), smoothed.
+    pub lean: f32,
+    /// Was pre-firing last frame (for the telegraph glint).
+    pub prefiring: bool,
 }
+
+/// The glTF model under an enemy root (leans with the body).
+#[derive(Component)]
+pub struct ModelRoot;
 
 #[derive(Component)]
 pub struct BodyPart {
@@ -116,6 +138,10 @@ pub struct Squad {
     pub coord: Option<SquadCoordinator>,
     /// Number of enemies spawned this round (coordinator slots).
     pub size: usize,
+    /// This round's difficulty and what it set.
+    pub difficulty: Difficulty,
+    pub params: Option<DifficultyParams>,
+    pub limits: Option<Limits>,
 }
 
 struct Visuals {
@@ -137,6 +163,8 @@ pub fn spawn_squad(
     materials: Option<ResMut<Assets<StandardMaterial>>>,
     mut squad: ResMut<Squad>,
     flow: Res<crate::match_flow::MatchFlow>,
+    settings: Option<Res<Settings>>,
+    telemetry: Option<Res<crate::telemetry::Telemetry>>,
 ) {
     for e in &old {
         commands.entity(e).despawn();
@@ -159,9 +187,34 @@ pub fn spawn_squad(
     };
 
     let seed = flow.seed();
-    let minds = brain.state.squad_minds(seed);
-    squad.size = minds.len().min(arena.0.enemy_spawns.len());
-    squad.coord = Some(SquadCoordinator::new(&arena.0, squad.size));
+    // Difficulty (headless tests have no settings: Regular).
+    let difficulty = settings.map_or(Difficulty::Regular, |s| s.difficulty);
+    let params = difficulty.params();
+    let limits = difficulty.limits(brain.state.generation);
+    let n = params.squad_size.min(arena.0.enemy_spawns.len());
+    // More enemies than evolved squad slots: slots are reused with their own seeds.
+    let minds = brain.state.squad_minds_for(seed, n, &limits);
+    squad.size = minds.len();
+    squad.difficulty = difficulty;
+    squad.params = Some(params);
+    squad.limits = Some(limits);
+    let mut coord = SquadCoordinator::new(&arena.0, squad.size);
+    coord.enabled = params.coordination;
+    coord.max_tokens = params.max_attackers;
+    coord.utility = if params.utility {
+        let (frags, flashes) = difficulty.grenades();
+        UtilityBudget { frags, flashes }
+    } else {
+        UtilityBudget::NONE
+    };
+    coord.tactics = brain.state.tactics.clone();
+    // Re-peeks from earlier rounds of this match: the anchor watches those corners from the start.
+    if let Some(t) = &telemetry {
+        let spots: Vec<(V2, u32)> = t.0.duels.iter().filter(|d| d.repeek).map(|d| (V2::new(d.pos[0], d.pos[1]), 1)).collect();
+        coord.seed_peeks(&spots);
+    }
+    info!("squad: {} x{} ({} coordination, {:?} utility)", difficulty.label(), squad.size, if params.coordination { "with" } else { "no" }, coord.utility);
+    squad.coord = Some(coord);
     for (slot, (mind, spawn)) in minds.into_iter().zip(arena.0.enemy_spawns.iter()).enumerate() {
         let report = EnemyReport { trait_id: mind.trait_id, neat_id: mind.neat_id, ..default() };
         let root = commands
@@ -187,6 +240,8 @@ pub fn spawn_squad(
                     engage_t: 99.0,
                     aim_at: None,
                     report,
+                    lean: 0.0,
+                    prefiring: false,
                 },
                 Health::new(ENEMY_HP),
                 RigidBody::Kinematic,
@@ -216,6 +271,7 @@ pub fn spawn_squad(
         }
         if let Some(scene) = &model {
             commands.spawn((
+                ModelRoot,
                 bevy::world_serialization::WorldAssetRoot(scene.clone()),
                 Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
                 ChildOf(root),
@@ -280,13 +336,11 @@ fn think_and_act(
     globals: Query<&GlobalTransform>,
     inbox: Res<Inbox>,
     freeze: Res<EnemyFreeze>,
-    mut damage_out: MessageWriter<Damage>,
-    mut shots_out: MessageWriter<ShotFired>,
-    mut fx: MessageWriter<EnemyFx>,
+    mut out: AiOut,
     slots: Query<&Enemy>,
-    mut callouts: MessageWriter<Callout>,
     mut hurt: Local<(f32, f32)>,
 ) {
+    let AiOut { damage: damage_out, shots: shots_out, fx, callouts, throws: throws_out } = &mut out;
     let dt = time.delta_secs();
     if dt <= 0.0 {
         return;
@@ -330,8 +384,13 @@ fn think_and_act(
     // --- Squad layer: one coordinator tick before the minds think (perception from last frame).
     let n = squad.size;
     let mut views: Vec<Option<MemberView>> = vec![None; n];
+    // Where each slot's thrower would release a grenade from (its hand).
+    let mut hands: Vec<Option<(Entity, Vec3)>> = vec![None; n];
     for (e, tf, mut mind, mut c, _, hp, _) in &mut enemies {
         let Ok(slot) = slots.get(e).map(|s| s.slot) else { continue };
+        if slot < n && !c.dead {
+            hands[slot] = Some((e, tf.translation + Vec3::Y * 1.65 + tf.forward() * 0.35 + tf.right() * 0.2));
+        }
         if !c.dead {
             let pos = to_ground(tf.translation);
             // Damage is a sense: being hit reveals where the shooter stands, to everyone.
@@ -359,7 +418,9 @@ fn think_and_act(
             });
         }
     }
+    let limits = squad.limits.unwrap_or_else(|| brain.state.limits());
     let Some(coord) = squad.coord.as_mut() else { return };
+    coord.player_hp = php.hp / php.max;
     let views: Vec<MemberView> = views.into_iter().map(|v| v.unwrap_or_else(MemberView::gone)).collect();
     for &slot in &reveals {
         coord.reveal(slot, p_ground, &arena.0);
@@ -375,11 +436,19 @@ fn think_and_act(
             callouts.write(Callout { speaker: callsign(c.speaker), text: c.text });
         }
     }
+    // Breachers releasing grenades this frame.
+    for t in coord.take_throws() {
+        if let Some(Some((thrower, from))) = hands.get(t.thrower)
+            && !freeze.0
+        {
+            throws_out.write(ThrowGrenade { thrower: *thrower, kind: t.kind, from: *from, target: Vec3::new(t.target.x, 0.1, t.target.y) });
+        }
+    }
     let board = coord.board;
     let tokens = coord.tokens.clone();
-    let limits = brain.state.limits();
     let cx = MindCtx { arena: &arena.0, model: &brain.state.player_model, limits };
     let mut player_hp_left = php.hp;
+    let mut dealt = 0.0;
     // SHROUD_LOG_AI=1: log every enemy's decision about once per second.
     let log_ai = std::env::var_os("SHROUD_LOG_AI").is_some() && (time.elapsed_secs() % 1.0) < dt;
 
@@ -388,7 +457,8 @@ fn think_and_act(
             continue;
         }
         let pos = to_ground(tf.translation);
-        let eye = tf.translation + Vec3::Y * if c.crouched { CROUCH_EYE } else { EYE };
+        // Leaning out past a corner moves the eye (and the hitboxes, in `sync_pose`) sideways.
+        let eye = tf.translation + Vec3::Y * if c.crouched { CROUCH_EYE } else { EYE } + tf.right() * (c.lean * posture::LEAN_M);
         let mut excluded: Vec<Entity> = children.iter().collect();
         excluded.push(e);
         let filter = SpatialQueryFilter::from_excluded_entities(excluded);
@@ -461,6 +531,24 @@ fn think_and_act(
             mind.0.set_order(orders.get(en.slot).copied().flatten());
         }
         let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
+        // Lean out of tall cover toward where the squad thinks he is (or the angle it holds).
+        let lean_want = if !freeze.0 && act.move_dir.len() < 0.35 && matches!(mind.0.goal(), Goal::Hold | Goal::Attack | Goal::Ambush) {
+            let target = mind.0.order().and_then(|o| o.watch).filter(|_| !sees && c.last_seen > ENGAGE_MEMORY).unwrap_or(shared.0);
+            let side = posture::lean_side(&arena.0, pos, target);
+            let world = (target - pos).norm().perp() * side;
+            world.dot(act.look_dir.norm().perp()).clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        c.lean += (lean_want - c.lean) * (1.0 - (-8.0 * dt).exp());
+        // Pre-fire: the gun points at the spot; a glint telegraphs the burst.
+        if let Some(pf) = act.prefire {
+            c.aim_at = Some(Vec3::new(pf.x, PREFIRE_AIM_Y, pf.y));
+            if !c.prefiring {
+                fx.write(EnemyFx::Glint { shooter: e, at: gun::muzzle_point(&tf, c.crouched, gun_link, &globals) });
+            }
+        }
+        c.prefiring = act.prefire.is_some();
         if log_ai {
             info!(
                 "ai {e}: pos ({:.1},{:.1}) goal {:?} sees {} hp {:.0} path {} dest {:?} move ({:.2},{:.2}) fire {} seen_t {:.2} aim_off {:.3} gate {:.2} ammo {} reload {:.1} react {:.2}",
@@ -505,9 +593,15 @@ fn think_and_act(
         if c.ammo == 0 {
             c.reload = RELOAD_S;
         }
-        let muzzle = gun::muzzle_point(&tf, c.crouched, gun_link, &globals);
-        let horiz = (p_center - muzzle).xz().length().max(0.1);
-        let pitch = (p_center.y - muzzle.y).atan2(horiz) + act.shot_pitch_err;
+        let mut muzzle = gun::muzzle_point(&tf, c.crouched, gun_link, &globals);
+        if gun_link.is_none() {
+            // No animated hand to follow the lean: shift the fallback muzzle with it.
+            muzzle += tf.right() * (c.lean * posture::LEAN_M);
+        }
+        // Aimed fire pitches at the player; pre-fire at chest height on the spot.
+        let aim_pt = act.prefire.map_or(p_center, |pf| Vec3::new(pf.x, PREFIRE_AIM_Y, pf.y));
+        let horiz = (aim_pt - muzzle).xz().length().max(0.1);
+        let pitch = (aim_pt.y - muzzle.y).atan2(horiz) + act.shot_pitch_err;
         let dir = Vec3::new(act.shot_dir.x * pitch.cos(), pitch.sin(), act.shot_dir.y * pitch.cos());
         let Ok(dir3) = Dir3::new(dir) else { continue };
         shots_out.write(ShotFired { origin: muzzle, dir, by: e });
@@ -526,19 +620,55 @@ fn think_and_act(
             damage_out.write(Damage { target: player, amount, source: e, headshot: false });
             c.report.damage_dealt += amount;
             player_hp_left -= amount;
+            dealt += amount;
             if player_hp_left <= 0.0 {
                 c.report.kills += 1;
                 c.report.kills_by_goal[brain::evolve::goal_index(mind.0.goal())] += 1;
             }
         }
     }
+    if dealt > 0.0
+        && let Some(coord) = squad.coord.as_mut()
+    {
+        coord.player_damaged(dealt);
+    }
 }
 
-/// Shrink the hitboxes while crouched so low cover hides the enemy.
-fn sync_crouch(enemies: Query<(&EnemyCombat, &Children)>, mut parts: Query<(&BodyPart, &mut Transform, &mut Collider)>) {
+/// Message writers the AI system needs (bundled to stay under the system parameter limit).
+#[derive(SystemParam)]
+struct AiOut<'w> {
+    damage: MessageWriter<'w, Damage>,
+    shots: MessageWriter<'w, ShotFired>,
+    fx: MessageWriter<'w, EnemyFx>,
+    callouts: MessageWriter<'w, Callout>,
+    throws: MessageWriter<'w, ThrowGrenade>,
+}
+
+/// Round over: reward the open engagement window and keep the bandit for the next round/match.
+fn finish_round(mut squad: ResMut<Squad>, mut brain: ResMut<Brain>, players: Query<&Health, With<Player>>) {
+    let dead = players.single().is_ok_and(|h| h.is_dead());
+    if let Some(c) = squad.coord.as_mut() {
+        c.end_round(dead);
+        brain.state.tactics = c.tactics.clone();
+    }
+}
+
+/// Shrink the hitboxes while crouched so low cover hides the enemy; shift them (and roll the
+/// model) sideways while leaning out of cover.
+fn sync_pose(
+    enemies: Query<(&EnemyCombat, &Children)>,
+    mut parts: Query<(&BodyPart, &mut Transform, &mut Collider), Without<ModelRoot>>,
+    mut models: Query<&mut Transform, With<ModelRoot>>,
+) {
     for (c, children) in &enemies {
+        let lean = if c.dead { 0.0 } else { c.lean };
         for child in children.iter() {
+            if let Ok(mut tf) = models.get_mut(child) {
+                // Roll about the feet: the head moves ~LEAN_M sideways at full lean.
+                tf.rotation = Quat::from_rotation_z(-lean * LEAN_ROLL) * Quat::from_rotation_y(std::f32::consts::PI);
+            }
             if let Ok((part, mut tf, mut col)) = parts.get_mut(child) {
+                tf.translation.x = lean * posture::LEAN_M * if part.head { 1.0 } else { 0.45 };
                 if part.head {
                     tf.translation.y = if c.crouched { CROUCH_HEAD_Y } else { HEAD_Y };
                 } else {
