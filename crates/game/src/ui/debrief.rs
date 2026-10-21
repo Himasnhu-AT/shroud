@@ -122,12 +122,12 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                                 [("They learned", card.learned), ("They did", card.did), ("Did it work", card.worked), ("Next time", card.counter)]
                             {
                                 p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
-                                    r.spawn((
-                                        text(label_text.to_uppercase(), label(SIZE_LABEL), ACCENT.with_alpha(0.85)),
-                                        Node { width: px(140), flex_shrink: 0.0, ..default() },
-                                    ));
-                                    // Fixed width: a flexible text node next to another gets mis-measured.
-                                    r.spawn((text(body_text, body(SIZE_BODY - 2.0), TEXT), Node { width: px(PANEL_W - 40.0 - 140.0 - GAP_M), ..default() }));
+                                    // Text sits inside fixed-width boxes: text nodes as direct flex siblings
+                                    // get mis-measured.
+                                    r.spawn((Node { width: px(140), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
+                                        .with_child(text(label_text.to_uppercase(), label(SIZE_LABEL), ACCENT.with_alpha(0.85)));
+                                    r.spawn((Node { width: px(PANEL_W - 40.0 - 140.0 - GAP_M), ..default() }, Pickable::IGNORE))
+                                        .with_child(text(body_text, body(SIZE_BODY - 2.0), TEXT));
                                 });
                             }
                         });
@@ -136,8 +136,10 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                         p.spawn(eyebrow("What to work on", INTEL));
                         for (i, line) in insights.iter().take(4).enumerate() {
                             p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
-                                r.spawn((text(format!("0{}", i + 1), label(SIZE_LABEL), INTEL), Node { width: px(24), flex_shrink: 0.0, ..default() }));
-                                r.spawn((text(line.clone(), body(SIZE_BODY - 2.0), TEXT), Node { width: px(PANEL_W - 40.0 - 24.0 - GAP_M), ..default() }));
+                                r.spawn((Node { width: px(24), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
+                                    .with_child(text(format!("0{}", i + 1), label(SIZE_LABEL), INTEL));
+                                r.spawn((Node { width: px(PANEL_W - 40.0 - 24.0 - GAP_M), ..default() }, Pickable::IGNORE))
+                                    .with_child(text(line.clone(), body(SIZE_BODY - 2.0), TEXT));
                             });
                         }
                     });

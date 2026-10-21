@@ -703,7 +703,7 @@ fn round_over_banner(
         b.spawn((Node { align_items: AlignItems::Center, column_gap: px(GAP_L), ..default() }, Pickable::IGNORE)).with_children(|r| {
             r.spawn(text("YOU", label(SIZE_LABEL + 2.0), TEXT_MUTED));
             r.spawn(text(flow.player_rounds.to_string(), display(56.0), FRIENDLY));
-            r.spawn((Node { width: px(24), height: px(3), ..default() }, BackgroundColor(TEXT_DIM), Pickable::IGNORE));
+            r.spawn((Node { width: px(24), height: px(3), ..default() }, BackgroundColor(TEXT_MUTED), Pickable::IGNORE));
             r.spawn(text(flow.enemy_rounds.to_string(), display(56.0), ENEMY));
             r.spawn(text("SQUAD", label(SIZE_LABEL + 2.0), TEXT_MUTED));
         });

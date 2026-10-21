@@ -36,12 +36,18 @@ fn pan_camera(
     }
 }
 
-/// The rifle only shows in a round (not behind the menu, evolution or debrief screens).
-fn viewmodel_only_in_rounds(state: Res<State<GameState>>, mut q: Query<(&Name, &mut Visibility)>, mut done: Local<Option<GameState>>) {
-    if *done == Some(*state.get()) {
+/// The rifle only shows in a live round (not behind menus, pause, evolution or debrief).
+fn viewmodel_only_in_rounds(
+    state: Res<State<GameState>>,
+    paused: Res<crate::state::Paused>,
+    mut q: Query<(&Name, &mut Visibility)>,
+    mut done: Local<Option<bool>>,
+) {
+    let show = *state.get() == GameState::Playing && !paused.0;
+    if *done == Some(show) {
         return;
     }
-    let want = if *state.get() == GameState::Playing { Visibility::Inherited } else { Visibility::Hidden };
+    let want = if show { Visibility::Inherited } else { Visibility::Hidden };
     let mut found = false;
     for (name, mut v) in &mut q {
         if name.as_str() == "ViewModel" {
@@ -51,7 +57,7 @@ fn viewmodel_only_in_rounds(state: Res<State<GameState>>, mut q: Query<(&Name, &
     }
     // The viewmodel spawns in PostStartup: retry until it exists.
     if found {
-        *done = Some(*state.get());
+        *done = Some(show);
     }
 }
 
