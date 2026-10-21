@@ -181,6 +181,9 @@ pub struct BrainState {
     /// Recent deployed squads with real results (ghost calibration data).
     #[serde(default)]
     pub replay: Vec<ReplaySquad>,
+    /// Learned play selection (contextual bandit), updated during real rounds.
+    #[serde(default)]
+    pub tactics: crate::bandit::TacticsLearner,
 }
 
 /// A whole squad (one trait + one NEAT genome per slot), kept outside the populations so
@@ -401,6 +404,7 @@ impl BrainState {
             champion: None,
             sim_rounds: 0,
             replay: Vec::new(),
+            tactics: crate::bandit::TacticsLearner::default(),
         }
     }
 
@@ -471,17 +475,24 @@ impl BrainState {
 
     /// Build the minds for the current squad (one per enemy spawn).
     pub fn squad_minds(&self, seed: u64) -> Vec<EnemyMind> {
-        let limits = self.limits();
-        self.squad
-            .iter()
-            .enumerate()
-            .map(|(k, s)| {
+        self.squad_minds_for(seed, self.squad.len(), &self.limits())
+    }
+
+    /// `n` minds under `limits` (e.g. `Difficulty::limits`). With more enemies than squad
+    /// slots, slots are reused (same genomes, their own seeds and minds).
+    pub fn squad_minds_for(&self, seed: u64, n: usize, limits: &Limits) -> Vec<EnemyMind> {
+        if self.squad.is_empty() {
+            return Vec::new();
+        }
+        (0..n)
+            .map(|k| {
+                let s = self.squad[k % self.squad.len()];
                 EnemyMind::new(
                     &self.traits.genomes[s.trait_id],
                     s.trait_id,
                     &self.neat.genomes[s.neat_id],
                     s.neat_id,
-                    &limits,
+                    limits,
                     seed.wrapping_add(k as u64 * 7919),
                 )
             })
@@ -512,6 +523,10 @@ impl BrainState {
         // 1. Learn the player (keeping the model the squad was trained against, for the card).
         let model_before = self.player_model.clone();
         self.player_model.ingest(&report.telemetry);
+        // The play-selection bandit forgets a little each match, so it keeps adapting.
+        if report.player_rounds + report.enemy_rounds > 0 {
+            self.tactics.forget();
+        }
 
         // 1b. Calibrate the ghost (paper §4.1.1): replay recently deployed squads against it and fit
         // the Ghost v2 parameters to their real outcomes plus this match's TTK, round length and

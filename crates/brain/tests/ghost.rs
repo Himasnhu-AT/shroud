@@ -5,13 +5,16 @@ use brain::ghost::{self, CalibConfig, GhostMode, GhostParams, Outcome, SimStats}
 use brain::limits::Limits;
 use brain::player_model::PlayerModel;
 use brain::sim;
+use brain::squad::UtilityBudget;
 
 fn win_rate(a: &Arena, model: &PlayerModel, mode: GhostMode, brains: &[BrainState], rounds: u64) -> f32 {
     let mut wins = 0;
     for (b, s) in brains.iter().enumerate() {
         for k in 0..rounds {
             let seed = 100 + b as u64 * 1000 + k;
-            wins += sim::run_round_with(a, model, Limits::for_generation(0), s.squad_minds(seed), seed, mode).player_won as u32;
+            // Squad grenades off: this compares the ghosts' own skill, and frags/flashes
+            // deliberately punish V2's hold-and-re-peek style.
+            wins += sim::run_round_opts(a, model, Limits::for_generation(0), s.squad_minds(seed), seed, mode, true, UtilityBudget::NONE).player_won as u32;
         }
     }
     wins as f32 / (brains.len() as u64 * rounds) as f32

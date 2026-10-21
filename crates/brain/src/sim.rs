@@ -5,10 +5,11 @@ use crate::arena::Arena;
 use crate::limits::Limits;
 use crate::math::{V2, angle_diff, rng_from_seed};
 use crate::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
-use crate::squad::{MemberView, SquadCoordinator};
+use crate::squad::{MemberView, SquadCoordinator, UtilityBudget};
 use crate::utility::Goal;
 use crate::perception::{self, Sound, GUNSHOT_RANGE, RELOAD_RANGE};
 use crate::ghost::{EnemyView, Ghost, GhostMode, GhostStats, GhostView};
+use crate::grenade::{self, GrenadeKind, SimGrenade};
 use crate::player_model::PlayerModel;
 use rand::Rng;
 
@@ -142,7 +143,22 @@ pub fn run_round_with(arena: &Arena, model: &PlayerModel, limits: Limits, minds:
 }
 
 /// `run_round_with`, with the squad coordinator's plays on or off (off: minds act alone).
-pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut minds: Vec<EnemyMind>, seed: u64, mode: GhostMode, coordinated: bool) -> RoundResult {
+pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, minds: Vec<EnemyMind>, seed: u64, mode: GhostMode, coordinated: bool) -> RoundResult {
+    run_round_opts(arena, model, limits, minds, seed, mode, coordinated, UtilityBudget::STANDARD)
+}
+
+/// `run_round_squad` with a grenade budget (`UtilityBudget::NONE`: no grenades).
+#[allow(clippy::too_many_arguments)]
+pub fn run_round_opts(
+    arena: &Arena,
+    model: &PlayerModel,
+    limits: Limits,
+    mut minds: Vec<EnemyMind>,
+    seed: u64,
+    mode: GhostMode,
+    coordinated: bool,
+    utility: UtilityBudget,
+) -> RoundResult {
     let n = minds.len();
     let mut enemies: Vec<Body> = arena.enemy_spawns.iter().take(n).map(|&p| Body::new(p)).collect();
     let mut looks: Vec<V2> = vec![V2::new(0.0, 1.0); n];
@@ -158,9 +174,13 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
     // --- squad layer (squad.rs) ---
     let mut squad = SquadCoordinator::new(arena, n);
     squad.enabled = coordinated;
+    squad.utility = utility;
     // --- end squad layer ---
     let mut last_hit: Vec<f32> = vec![f32::NEG_INFINITY; n]; // assist/trade bookkeeping
     let mut last_ally_death = f32::NEG_INFINITY;
+    // Utility: grenades in flight, and how long the ghost stays flashed.
+    let mut grenades: Vec<SimGrenade> = Vec::new();
+    let mut blind_t = 0.0f32;
 
     while t < ROUND_TIME && ghost.body.alive() && enemies.iter().any(Body::alive) {
         t += DT;
@@ -183,8 +203,14 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                 bark: minds[i].take_bark(),
             })
             .collect();
+        squad.player_hp = ghost.body.hp / HP;
         let orders = squad.tick(DT, &views, arena, model).to_vec();
         squad.drain_callouts();
+        for th in squad.take_throws() {
+            if enemies[th.thrower].alive() {
+                grenades.push(SimGrenade::new(arena, th.kind, th.thrower, enemies[th.thrower].pos, th.target));
+            }
+        }
         for (m, o) in minds.iter_mut().zip(orders) {
             m.set_order(o);
         }
@@ -243,8 +269,11 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                 e.reload_t = RELOAD_S;
             }
             enemy_fired[i] = e.try_fire(act.fire);
-            if enemy_fired[i] && sees && ray_hits(e.pos, act.shot_dir, act.shot_pitch_err, ghost.body.pos, ghost.body.height()) {
+            // Pre-fire at a spot hits only if he really is there (in the open).
+            let can_hit = sees || act.prefire.is_some() && arena.line_of_sight(e.pos, e.crouched, ghost.body.pos, ghost.body.crouched);
+            if enemy_fired[i] && can_hit && ray_hits(e.pos, act.shot_dir, act.shot_pitch_err, ghost.body.pos, ghost.body.height()) {
                 let dmg = limits.damage_per_hit;
+                squad.player_damaged(dmg);
                 ghost.body.hp -= dmg;
                 ghost.body.hit_t = 0.0;
                 stats[i].damage_dealt += dmg;
@@ -263,9 +292,48 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
         if ghost_spotted {
             ghost.stats.engaged_s += DT;
         }
+        // --- Grenades: fly, wait out the fuse, then hurt or blind the ghost.
+        let gp = ghost.body.pos;
+        let mut flee: Option<V2> = None;
+        grenades.retain_mut(|g| {
+            g.fuse -= DT;
+            let at = g.pos();
+            if g.fuse > 0.0 {
+                // A landed frag (heard clinking, called out) makes him run from it after a
+                // reaction delay, like a player would.
+                let d = at.dist(gp);
+                let reacting = g.kind.fuse() - g.fuse > 0.45 * g.kind.fuse() + model.reaction_s;
+                if g.kind == GrenadeKind::Frag && reacting && d < grenade::FRAG_RADIUS + 1.0 {
+                    flee = Some(at);
+                }
+                return true;
+            }
+            match g.kind {
+                GrenadeKind::Frag => {
+                    let dmg = grenade::frag_damage_at(arena, at, gp, ghost.body.crouched);
+                    if dmg > 0.0 && ghost.body.alive() {
+                        ghost.body.hp -= dmg;
+                        ghost.body.hit_t = 0.0;
+                        stats[g.thrower].damage_dealt += dmg;
+                        squad.player_damaged(dmg);
+                        if !ghost.body.alive() {
+                            stats[g.thrower].kills += 1;
+                        }
+                    }
+                }
+                GrenadeKind::Flash => {
+                    if arena.line_of_sight(at, false, gp, ghost.body.crouched) {
+                        let facing = V2::from_angle(ghost.facing).dot((at - gp).norm());
+                        blind_t = blind_t.max(grenade::flash_duration(grenade::flash_intensity(facing, at.dist(gp))));
+                    }
+                }
+            }
+            false
+        });
         if !ghost.body.alive() {
             break;
         }
+        blind_t = (blind_t - DT).max(0.0);
 
         // --- Ghost acts (ghost.rs); its shots resolve geometrically, like the enemies' do.
         let look = V2::from_angle(ghost.facing);
@@ -277,13 +345,27 @@ pub fn run_round_squad(arena: &Arena, model: &PlayerModel, limits: Limits, mut m
                     vel: e.vel,
                     alive: e.alive(),
                     crouched: e.crouched,
-                    visible: e.alive() && visible(arena, &ghost.body, look, e, true),
+                    visible: e.alive() && blind_t <= 0.0 && visible(arena, &ghost.body, look, e, true),
                     fired: enemy_fired[i],
                 }
             })
             .collect();
         let view = GhostView { arena, model, enemies: &views };
-        let act = ghost.act(&view);
+        let mut act = ghost.act(&view);
+        if blind_t > 0.0 {
+            act.shot = None;
+        }
+        if let Some(at) = flee {
+            // Like a player: dash to the nearest cover outside the blast, else straight away.
+            let away = (gp - at).norm();
+            let spot = arena
+                .cover
+                .iter()
+                .map(|c| c.pos)
+                .filter(|c| c.dist(at) > grenade::FRAG_RADIUS + 0.5 && c.dist(gp) < 9.0 && (*c - gp).dot(away) > -0.2 && arena.nav.clear_line(gp, *c))
+                .min_by(|a, b| a.dist(gp).total_cmp(&b.dist(gp)));
+            act.vel = spot.map_or(away, |c| (c - gp).norm()) * SPRINT;
+        }
         ghost.body.vel = act.vel;
         // --- Stimuli the ghost makes this tick: gunshot, footsteps, reload (perception.rs).
         let gp = ghost.body.pos;

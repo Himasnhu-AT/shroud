@@ -8,14 +8,21 @@
 //!   The coordinator assigns roles; minds treat orders as high-priority goals and keep their micro.
 //! - **Position evaluation** (Killzone-style): cover points scored by Σ w_k·f_k, with evolvable
 //!   weights (`Traits::pef`). The same terms are A* link costs for tactical paths.
+//! - **Learned play selection**: a LinUCB contextual bandit (`bandit`) picks the tactical play
+//!   from player-habit features; the hand weights are its prior. Rewarded per engagement window.
+//! - **Anchors**: a member holds and pre-aims the corner the player keeps re-peeking, and fires a
+//!   short pre-fire burst when he is due to reappear there.
+//! - **Breachers**: frags flush a player camping cover, flashbangs go in before a flank or entry.
 //! - **Callouts**: short ASCII text events for the UI.
 
-use crate::arena::{ARENA_HALF, Arena};
+use crate::arena::{ARENA_HALF, Arena, BlockKind};
+use crate::bandit::{self, ArmScore, CTX_DIM, LiveCtx, TacticsLearner};
 use crate::genome::Traits;
+use crate::grenade::{self, GrenadeKind};
 use crate::math::{V2, angle_diff};
 use crate::mind::{Blackboard, RADIO_PERIOD_S};
 use crate::perception::{Alert, Heard, Sound, heard_sigma};
-use crate::player_model::{HEAT_W, PlayerModel, SECTORS, heat_idx, sector_of};
+use crate::player_model::{CoverState, HEAT_W, PlayerModel, SECTORS, classify_cover, heat_idx, sector_of};
 use crate::utility::Goal;
 use std::cell::RefCell;
 use std::f32::consts::{PI, TAU};
@@ -365,6 +372,29 @@ pub enum Role {
     Collapser,
     Bait,
     Support,
+    /// Holds and pre-aims the angle the player keeps re-peeking.
+    Anchor,
+    /// Throwing utility (winding up a frag or flashbang).
+    Breacher,
+}
+
+impl Role {
+    pub fn label(self) -> &'static str {
+        match self {
+            Role::Overwatch => "overwatch",
+            Role::Bound => "bound",
+            Role::Crossfire => "crossfire",
+            Role::Entry => "entry",
+            Role::Trader => "trader",
+            Role::Pin => "pin",
+            Role::Flanker => "flanker",
+            Role::Collapser => "collapser",
+            Role::Bait => "bait",
+            Role::Support => "support",
+            Role::Anchor => "anchor",
+            Role::Breacher => "breacher",
+        }
+    }
 }
 
 /// A high-priority goal from the coordinator.
@@ -380,7 +410,68 @@ pub struct Order {
     pub threat: Option<V2>,
     /// Keep following the order while in contact (flanker, trader); others fight first.
     pub sticky: bool,
+    /// Anchor only: fire a short burst at this spot now (he is due to re-peek it).
+    pub prefire: Option<V2>,
 }
+
+/// The coordinator wants member `thrower` to release a grenade at `target` now.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ThrowOrder {
+    pub thrower: usize,
+    pub kind: GrenadeKind,
+    pub target: V2,
+}
+
+/// Grenades the squad may throw this round (difficulty).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UtilityBudget {
+    pub frags: u32,
+    pub flashes: u32,
+}
+
+impl UtilityBudget {
+    pub const NONE: UtilityBudget = UtilityBudget { frags: 0, flashes: 0 };
+    /// Default (the trainer and tests): two of each.
+    pub const STANDARD: UtilityBudget = UtilityBudget { frags: 2, flashes: 2 };
+}
+
+/// A spot the player has re-peeked: lost there and seen again there within a few seconds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PeekSpot {
+    pub pos: V2,
+    /// Re-peeks seen here.
+    pub count: u32,
+    /// Typical seconds from ducking out of sight to re-appearing.
+    pub delay: f32,
+    called: bool,
+}
+
+/// One bandit decision being scored (an engagement window).
+#[derive(Clone, Copy, Debug)]
+struct Episode {
+    arm: Play,
+    x: [f32; CTX_DIM],
+    t: f32,
+    dmg: f32,
+    losses: u32,
+    traded: u32,
+    killed: bool,
+    player_start: Option<V2>,
+    centroid: V2,
+}
+
+/// A loss that a teammate can still trade within this long (s).
+const TRADE_S: f32 = 3.0;
+/// An engagement window ends (and is rewarded) after this long even if the play continues.
+pub const EPISODE_S: f32 = 9.0;
+/// Re-peek: seen again within this long (s) and this close (m) to where he vanished.
+pub const REPEEK_S: f32 = 5.0;
+pub const REPEEK_M: f32 = 3.0;
+/// Pre-fire burst length (s of trigger time, about 3-4 rounds).
+pub const PREFIRE_BURST_S: f32 = 0.32;
+/// The player counts as camping after this long within `CAMP_M` of one spot.
+pub const CAMP_S: f32 = 2.8;
+pub const CAMP_M: f32 = 2.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Callout {
@@ -472,6 +563,56 @@ pub struct SquadCoordinator {
     /// Attack tokens (DOOM / Amalur style): who may actively shoot and push right now.
     pub tokens: Vec<bool>,
     token_t: Vec<f32>,
+    /// Cap on simultaneous attackers (difficulty), on top of `token_budget`.
+    pub max_tokens: usize,
+
+    // --- Learned play selection.
+    /// The contextual bandit. Callers copy it in from `BrainState::tactics` and back out after
+    /// the round (`end_round`), so it learns across rounds and matches.
+    pub tactics: TacticsLearner,
+    /// Update the bandit from rewards (off: choose only).
+    pub learn: bool,
+    /// The player's health 0..1 (set by the caller each tick; part of the context).
+    pub player_hp: f32,
+    /// Last bandit scores (debug / control port) and the context they used.
+    pub last_scores: Vec<ArmScore>,
+    pub last_ctx: [f32; CTX_DIM],
+    zone_focus: Option<f32>,
+    episode: Option<Episode>,
+    /// Times of recent losses not yet traded.
+    untraded: Vec<f32>,
+    /// Camping detector over radio-delayed sightings.
+    still_at: V2,
+    pub still_t: f32,
+    still_samples: f32,
+    known_samples: f32,
+
+    // --- Re-peek tracking and anchors.
+    pub peeks: Vec<PeekSpot>,
+    seen_prev: bool,
+    last_fresh: V2,
+    /// (position, time) where the player was last lost from sight.
+    vanish: Option<(V2, f32)>,
+    /// Seconds since anyone had a fresh sighting.
+    pub unseen_t: f32,
+    repeeks: f32,
+    reappears: f32,
+    anchor: Option<usize>,
+
+    // --- Utility (grenades).
+    pub utility: UtilityBudget,
+    pub frags_used: u32,
+    pub flashes_used: u32,
+    /// Per member: (has thrown a frag, has thrown a flash) this round.
+    thrown: Vec<(bool, bool)>,
+    throw_cd: f32,
+    /// A throw being wound up: the order and seconds until release.
+    pending_throw: Option<(ThrowOrder, f32)>,
+    throws: Vec<ThrowOrder>,
+    /// A flashbang is wanted before a push (set when a flank or entry starts).
+    flash_wanted: f32,
+    /// Tests / control port: throw this as soon as anyone can.
+    pub force_throw: Option<GrenadeKind>,
 }
 
 /// At most this many members hold attack tokens at once (fewer in small squads).
@@ -516,6 +657,132 @@ impl SquadCoordinator {
             time: 0.0,
             tokens: vec![true; n],
             token_t: vec![0.0; n],
+            max_tokens: MAX_TOKENS,
+            tactics: TacticsLearner::default(),
+            learn: true,
+            player_hp: 1.0,
+            last_scores: Vec::new(),
+            last_ctx: [0.0; CTX_DIM],
+            zone_focus: None,
+            episode: None,
+            untraded: Vec::new(),
+            still_at: V2::ZERO,
+            still_t: 0.0,
+            still_samples: 0.0,
+            known_samples: 0.0,
+            peeks: Vec::new(),
+            seen_prev: false,
+            last_fresh: V2::ZERO,
+            vanish: None,
+            unseen_t: 99.0,
+            repeeks: 0.0,
+            reappears: 0.0,
+            anchor: None,
+            utility: UtilityBudget::STANDARD,
+            frags_used: 0,
+            flashes_used: 0,
+            thrown: vec![(false, false); n],
+            throw_cd: 3.0,
+            pending_throw: None,
+            throws: Vec::new(),
+            flash_wanted: 0.0,
+            force_throw: None,
+        }
+    }
+
+    /// Seed re-peek spots seen earlier in the match (e.g. from the duel log): (position, count).
+    pub fn seed_peeks(&mut self, spots: &[(V2, u32)]) {
+        for &(p, c) in spots {
+            self.add_peek(p, c, 1.5, false);
+        }
+    }
+
+    fn add_peek(&mut self, p: V2, count: u32, delay: f32, live: bool) {
+        match self.peeks.iter_mut().find(|s| s.pos.dist(p) < REPEEK_M) {
+            Some(s) => {
+                s.pos = s.pos.lerp(p, 0.3);
+                s.count += count;
+                s.delay = if live { 0.6 * s.delay + 0.4 * delay } else { s.delay };
+            }
+            None => self.peeks.push(PeekSpot { pos: p, count, delay, called: false }),
+        }
+    }
+
+    /// The player took `amount` damage from the squad (bullets or grenades): bandit reward.
+    pub fn player_damaged(&mut self, amount: f32) {
+        if let Some(e) = self.episode.as_mut() {
+            e.dmg += amount;
+        }
+        // A hit soon after a loss trades it.
+        let now = self.time;
+        if let Some(k) = self.untraded.iter().position(|&t| now - t <= TRADE_S) {
+            self.untraded.remove(k);
+            if let Some(e) = self.episode.as_mut() {
+                e.traded += 1;
+            }
+        }
+    }
+
+    /// Round over: score the open engagement window (`player_dead`: the squad won it).
+    pub fn end_round(&mut self, player_dead: bool) {
+        if let Some(e) = self.episode.as_mut() {
+            e.killed |= player_dead;
+        }
+        self.close_episode(None);
+    }
+
+    /// Grenades to release now (the caller spawns them at the thrower).
+    pub fn take_throws(&mut self) -> Vec<ThrowOrder> {
+        std::mem::take(&mut self.throws)
+    }
+
+    /// The re-peek spot the player just ducked away from, if he is due back there.
+    pub fn hot_peek(&self) -> Option<PeekSpot> {
+        let (v, _) = self.vanish?;
+        if !(0.25..6.0).contains(&self.unseen_t) {
+            return None;
+        }
+        self.peeks.iter().copied().filter(|s| s.pos.dist(v) < REPEEK_M + 0.5).max_by_key(|s| s.count)
+    }
+
+    /// Context for the bandit from the model and the live match.
+    pub fn context(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel) -> [f32; CTX_DIM] {
+        let zf = *self.zone_focus.get_or_insert_with(|| bandit::zone_focus(model, arena));
+        let alive: Vec<&MemberView> = members.iter().filter(|m| m.alive).collect();
+        let live = LiveCtx {
+            live_still: (self.known_samples >= 5.0).then(|| self.still_samples / self.known_samples),
+            repeeks: self.repeeks,
+            reappears: self.reappears,
+            alive_ratio: alive.len() as f32 / members.len().max(1) as f32,
+            squad_hp: alive.iter().map(|m| m.hp).sum::<f32>() / alive.len().max(1) as f32,
+            player_hp: self.player_hp,
+        };
+        bandit::context(model, zf, &live)
+    }
+
+    fn centroid(members: &[MemberView]) -> V2 {
+        let alive: Vec<V2> = members.iter().filter(|m| m.alive).map(|m| m.pos).collect();
+        let n = alive.len().max(1) as f32;
+        alive.iter().fold(V2::ZERO, |a, p| a + *p) * (1.0 / n)
+    }
+
+    /// Reward the open episode and update the bandit. `members`: for the forced-back check.
+    fn close_episode(&mut self, members: Option<&[MemberView]>) {
+        let Some(e) = self.episode.take() else { return };
+        let dur = self.time - e.t;
+        if dur < 1.0 && e.dmg <= 0.0 && e.losses == 0 && !e.killed {
+            return; // too short to say anything
+        }
+        let untraded = e.losses.saturating_sub(e.traded) as f32;
+        // Forced back: he ended farther from where the squad stood, without the squad losing anyone.
+        let known_now = (self.board.age < KNOWN_S).then_some(self.board.pos);
+        let forced = match (e.player_start, known_now, members) {
+            (Some(a), Some(b), Some(_)) if e.losses == 0 => b.dist(e.centroid) - a.dist(e.centroid) > 3.0,
+            _ => false,
+        };
+        let r = (e.dmg / 50.0).min(1.0) + if e.killed { 0.6 } else { 0.0 } + if forced { 0.25 } else { 0.0 } - 0.5 * untraded - 0.2 * e.traded as f32;
+        if self.learn {
+            self.tactics.update(e.arm, &e.x, r);
         }
     }
 
@@ -569,7 +836,7 @@ impl SquadCoordinator {
         };
         let mut ranked = alive.clone();
         ranked.sort_by(|&a, &b| score(b).total_cmp(&score(a)).then(a.cmp(&b)));
-        let k = token_budget(alive.len());
+        let k = token_budget(alive.len()).min(self.max_tokens.max(1));
         let mut next = vec![false; n];
         for &i in ranked.iter().take(k) {
             next[i] = true;
@@ -613,7 +880,10 @@ impl SquadCoordinator {
         self.orders.resize(n, None);
         self.prev_heard.resize(n, None);
         self.prev_alive.resize(n, true);
+        self.thrown.resize(n, (false, false));
         self.time += dt;
+        self.throw_cd -= dt;
+        self.flash_wanted -= dt;
         self.play_t += dt;
         self.bound_t += dt;
         self.heard_t += dt;
@@ -634,12 +904,17 @@ impl SquadCoordinator {
             }
         }
         self.was_known = known || spotter.is_some_and(|s| members[s].last_seen < FRESH_CONTACT_S);
+        self.track_peeks(dt, members, spotter);
 
         // Barks every tick: man down, the minds' own.
         for i in 0..n {
             if self.prev_alive[i] && !members[i].alive {
                 self.orders[i] = None;
                 self.claims[i] = None;
+                if let Some(e) = self.episode.as_mut() {
+                    e.losses += 1;
+                }
+                self.untraded.push(self.time);
                 if let Some(s) = nearest_alive(members, members[i].pos) {
                     self.bark(s, format!("Man down - {} is down", callsign(i)), true);
                 }
@@ -657,6 +932,21 @@ impl SquadCoordinator {
         }
         self.radio_t = RADIO_PERIOD_S;
         self.radio_ticks += 1;
+        let now = self.time;
+        self.untraded.retain(|&t| now - t <= TRADE_S);
+        // Camping detector: radioed sightings that stay put.
+        if self.board.age < 1.0 {
+            self.known_samples += 1.0;
+            if self.board.pos.dist(self.still_at) < CAMP_M {
+                self.still_t += RADIO_PERIOD_S;
+                self.still_samples += 1.0;
+            } else {
+                self.still_at = self.board.pos;
+                self.still_t = 0.0;
+            }
+        } else if self.board.age > KNOWN_S {
+            self.still_t = 0.0;
+        }
         self.belief.diffuse(RADIO_PERIOD_S);
         if self.board.age > KNOWN_S {
             self.belief.habit_prior(model, 0.03);
@@ -700,7 +990,37 @@ impl SquadCoordinator {
         &self.orders
     }
 
-    fn choose_play(&self, members: &[MemberView], model: &PlayerModel) -> Play {
+    /// Re-peek detection from the squad's fresh sightings: lost at a spot, seen again there soon.
+    fn track_peeks(&mut self, dt: f32, members: &[MemberView], spotter: Option<usize>) {
+        match spotter.filter(|&s| members[s].last_seen < FRESH_CONTACT_S) {
+            Some(s) => {
+                let at = members[s].last_known;
+                if !self.seen_prev
+                    && self.unseen_t > 0.5
+                    && let Some((v, vt)) = self.vanish
+                {
+                    self.reappears += 1.0;
+                    let gap = self.time - vt;
+                    if gap <= REPEEK_S && at.dist(v) <= REPEEK_M {
+                        self.repeeks += 1.0;
+                        self.add_peek((v + at) * 0.5, 1, gap, true);
+                    }
+                }
+                self.unseen_t = 0.0;
+                self.last_fresh = at;
+                self.seen_prev = true;
+            }
+            None => {
+                if self.seen_prev {
+                    self.vanish = Some((self.last_fresh, self.time));
+                }
+                self.seen_prev = false;
+                self.unseen_t += dt;
+            }
+        }
+    }
+
+    fn choose_play(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel) -> Play {
         let alive = members.iter().filter(|m| m.alive).count();
         if !self.enabled || alive == 0 {
             return Play::Free;
@@ -733,19 +1053,172 @@ impl SquadCoordinator {
         let k = alive as f32;
         let avg = |f: fn(&Traits) -> f32| members.iter().filter(|m| m.alive).map(|m| f(&m.traits)).sum::<f32>() / k;
         let (aggr, flank, coh, pred) = (avg(|t| t.aggression), avg(|t| t.flank_bias), avg(|t| t.team_cohesion), avg(|t| t.prediction_trust));
-        let mut options = vec![(Play::Crossfire, 0.35 + 0.4 * coh), (Play::PinFlank, 0.2 + 0.6 * flank), (Play::Trade, 0.15 + 0.5 * aggr)];
-        if alive >= 3 {
-            options.push((Play::Bait, 0.05 + 0.5 * pred * model.confidence()));
+        // The hand weights are the bandit's prior (they fade as an arm gathers rewards).
+        let mut prior = [Some(0.35 + 0.4 * coh), Some(0.2 + 0.6 * flank), Some(0.15 + 0.5 * aggr), (alive >= 3).then(|| 0.05 + 0.5 * pred * model.confidence())];
+        if let Some(k) = bandit::arm_of(self.play) {
+            prior[k] = prior[k].map(|p| p + 0.15);
         }
-        options
-            .into_iter()
-            .map(|(p, s)| (p, s + if p == self.play { 0.15 } else { 0.0 }))
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .map_or(Play::Crossfire, |b| b.0)
+        let x = self.context(members, arena, model);
+        self.last_scores = self.tactics.scores(&x, &prior);
+        self.last_ctx = x;
+        self.tactics.choose(&x, &prior).unwrap_or(Play::Crossfire)
     }
 
     fn plan(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
-        let play = self.choose_play(members, model);
+        let play = self.choose_play(members, arena, model);
+        // Engagement windows: score the bandit's choice when the play changes or the window ends.
+        let expired = self.episode.is_some_and(|e| self.time - e.t > EPISODE_S);
+        if play != self.play || expired {
+            self.close_episode(Some(members));
+        }
+        self.plan_play(play, members, arena, model, full);
+        if self.play == Play::Free {
+            self.anchor = None;
+            self.pending_throw = None;
+            return;
+        }
+        self.plan_anchor(members, arena);
+        self.plan_utility(members, arena);
+        if self.episode.is_none() && self.force_play.is_none() && bandit::arm_of(self.play).is_some() {
+            self.episode = Some(Episode {
+                arm: self.play,
+                x: self.last_ctx,
+                t: self.time,
+                dmg: 0.0,
+                losses: 0,
+                traded: 0,
+                killed: false,
+                player_start: (self.board.age < KNOWN_S).then_some(self.board.pos),
+                centroid: Self::centroid(members),
+            });
+        }
+    }
+
+    /// An anchor holds the angle the player keeps re-peeking, and pre-fires when he is due.
+    fn plan_anchor(&mut self, members: &[MemberView], arena: &Arena) {
+        let Some(spot) = self.hot_peek() else {
+            self.anchor = None;
+            return;
+        };
+        let thrower = self.pending_throw.map(|(t, _)| t.thrower);
+        let busy = |i: usize| Some(i) == self.lead || Some(i) == self.second || Some(i) == thrower;
+        let sees = |i: usize| {
+            let m = &members[i];
+            m.alive && (4.0..40.0).contains(&m.pos.dist(spot.pos)) && arena.line_of_sight(m.pos, false, spot.pos, false)
+        };
+        let keep = self.anchor.filter(|&i| i < members.len() && sees(i) && !busy(i));
+        let pick = keep.or_else(|| {
+            (0..members.len())
+                .filter(|&i| sees(i) && !busy(i))
+                .min_by(|&a, &b| members[a].pos.dist(spot.pos).total_cmp(&members[b].pos.dist(spot.pos)).then(a.cmp(&b)))
+        });
+        self.anchor = pick;
+        let Some(i) = pick else { return };
+        // Pre-fire a little before his usual re-peek delay; only once he has done it twice.
+        let w0 = (spot.delay * 0.75).max(0.5);
+        let prefire = (spot.count >= 2 && (w0..w0 + 0.7).contains(&self.unseen_t)).then_some(spot.pos);
+        self.orders[i] = Some(Order { role: Role::Anchor, goal: Goal::Hold, dest: None, watch: Some(spot.pos), threat: None, sticky: true, prefire });
+        if spot.count >= 2
+            && let Some(s) = self.peeks.iter_mut().find(|s| s.pos == spot.pos && !s.called)
+        {
+            s.called = true;
+            let text = format!("He keeps re-peeking {} - holding it", spot_noun(arena, spot.pos));
+            self.bark(i, text, true);
+        }
+    }
+
+    /// Breacher: frag a player camping cover; flashbang ahead of a flank or entry.
+    fn plan_utility(&mut self, members: &[MemberView], arena: &Arena) {
+        if let Some((t, left)) = self.pending_throw {
+            if !members.get(t.thrower).is_some_and(|m| m.alive) {
+                self.pending_throw = None;
+                return;
+            }
+            self.orders[t.thrower] =
+                Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(t.target), threat: None, sticky: true, prefire: None });
+            let left = left - RADIO_PERIOD_S;
+            if left > 0.0 {
+                self.pending_throw = Some((t, left));
+                return;
+            }
+            self.pending_throw = None;
+            self.throws.push(t);
+            self.throw_cd = grenade::SQUAD_COOLDOWN_S;
+            let text = match t.kind {
+                GrenadeKind::Frag => {
+                    self.frags_used += 1;
+                    self.thrown[t.thrower].0 = true;
+                    if self.still_t >= CAMP_S {
+                        match arena.zone_of(t.target) {
+                            Some(z) => format!("He's camping {} - frag out", z.name),
+                            None => "He's camping - frag out".to_string(),
+                        }
+                    } else {
+                        "Frag out!".to_string()
+                    }
+                }
+                GrenadeKind::Flash => {
+                    self.flashes_used += 1;
+                    self.thrown[t.thrower].1 = true;
+                    self.flash_wanted = 0.0;
+                    "Flashbang!".to_string()
+                }
+            };
+            self.bark(t.thrower, text, true);
+            return;
+        }
+        let forced = self.force_throw;
+        if self.throw_cd > 0.0 && forced.is_none() {
+            return;
+        }
+        let known = self.board.age < 1.5;
+        let target = if known { self.board.pos } else { self.predicted(arena) };
+        let kind = match forced {
+            Some(k) => k,
+            None if !known => return,
+            None => {
+                let camping = self.still_t >= CAMP_S;
+                let hugging = self.still_t >= 2.0 && classify_cover(arena, target, Self::centroid(members)).0 != CoverState::Exposed;
+                if self.frags_used < self.utility.frags && (camping || hugging) {
+                    GrenadeKind::Frag
+                } else if self.flashes_used < self.utility.flashes && self.flash_wanted > 0.0 {
+                    GrenadeKind::Flash
+                } else {
+                    return;
+                }
+            }
+        };
+        let frag = kind == GrenadeKind::Frag;
+        let mut best: Option<(f32, usize, V2)> = None;
+        for (i, m) in members.iter().enumerate() {
+            let used = if frag { self.thrown[i].0 } else { self.thrown[i].1 };
+            if !m.alive || (used && forced.is_none()) || Some(i) == self.lead || Some(i) == self.anchor {
+                continue;
+            }
+            // A flash lands a step in front of him, on the thrower's side, so he sees it pop.
+            let aim = if frag { target } else { target + (m.pos - target).norm() * 1.5 };
+            let d = m.pos.dist(aim);
+            if !(grenade::THROW_MIN..grenade::THROW_MAX).contains(&d) || grenade::landing(arena, m.pos, aim).dist(aim) > 2.0 {
+                continue;
+            }
+            // Never frag a spot a teammate stands in.
+            if frag && members.iter().any(|o| o.alive && o.pos.dist(aim) < grenade::FRAG_RADIUS + 1.0) {
+                continue;
+            }
+            let will = if frag { m.traits.aggression } else { m.traits.team_cohesion };
+            let score = 0.6 * will + 0.4 * (1.0 - d / grenade::THROW_MAX);
+            if best.is_none_or(|(b, _, _)| score > b) {
+                best = Some((score, i, aim));
+            }
+        }
+        // Willingness is evolvable (aggression for frags, cohesion for flashes).
+        let Some((_, i, aim)) = best.filter(|b| forced.is_some() || b.0 >= 0.3) else { return };
+        self.force_throw = None;
+        self.pending_throw = Some((ThrowOrder { thrower: i, kind, target: aim }, grenade::WINDUP_S));
+        self.orders[i] = Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(aim), threat: None, sticky: true, prefire: None });
+    }
+
+    fn plan_play(&mut self, play: Play, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
         let changed = play != self.play;
         if changed {
             self.play = play;
@@ -777,7 +1250,7 @@ impl SquadCoordinator {
         // Members closest to the target first.
         let mut by_dist = alive.clone();
         by_dist.sort_by(|&a, &b| members[a].pos.dist(target).total_cmp(&members[b].pos.dist(target)).then(a.cmp(&b)));
-        let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false };
+        let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false, prefire: None };
 
         match play {
             Play::Free => {}
@@ -801,7 +1274,7 @@ impl SquadCoordinator {
                 let second = self.second;
                 let ep = members[entry].pos;
                 let away = (ep - target).norm();
-                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: false });
+                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: false, prefire: None });
                 if let Some(tr) = second {
                     if self.trail.last().is_none_or(|l| l.dist(ep) > 0.5) {
                         self.trail.push(ep);
@@ -814,7 +1287,7 @@ impl SquadCoordinator {
                             .find(|p| arena.nav.walkable_at(*p) && arena.nav.clear_line(ep, *p))
                             .unwrap_or_else(|| arena.nav.nearest_walkable(ep + away * 5.0))
                     });
-                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(follow), watch: Some(target), threat: None, sticky: true });
+                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(follow), watch: Some(target), threat: None, sticky: true, prefire: None });
                 }
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != entry && Some(i) != second).collect();
                 if full || changed {
@@ -825,6 +1298,7 @@ impl SquadCoordinator {
                 }
                 if changed {
                     self.bark(entry, "Going in - trade me".into(), true);
+                    self.flash_wanted = 4.0;
                 }
             }
             Play::PinFlank => {
@@ -839,10 +1313,11 @@ impl SquadCoordinator {
                     self.claims[flanker] = Some(dest);
                     if changed {
                         self.bark(flanker, format!("Flanking {}", SECTORS[sector]), true);
+                        self.flash_wanted = 4.0;
                     }
                 }
                 self.orders[flanker] =
-                    Some(Order { role: Role::Flanker, goal: Goal::Flank, dest: self.claims[flanker], watch: Some(target), threat: Some(target), sticky: true });
+                    Some(Order { role: Role::Flanker, goal: Goal::Flank, dest: self.claims[flanker], watch: Some(target), threat: Some(target), sticky: true, prefire: None });
                 let pins: Vec<usize> = by_dist.iter().copied().filter(|&i| i != flanker).collect();
                 if full || changed {
                     self.assign_positions(&pins, members, arena, model, target, None);
@@ -862,7 +1337,7 @@ impl SquadCoordinator {
                 for (r, &i) in by_bearing.iter().enumerate() {
                     let ang = (members[i].pos - target).angle() + (r as f32 - (k - 1.0) * 0.5) * 0.35;
                     let dest = arena.nav.nearest_walkable(target + V2::from_angle(ang) * 5.0);
-                    self.orders[i] = Some(Order { role: Role::Collapser, goal: Goal::Hunt, dest: Some(dest), watch: Some(target), threat: Some(target), sticky: false });
+                    self.orders[i] = Some(Order { role: Role::Collapser, goal: Goal::Hunt, dest: Some(dest), watch: Some(target), threat: Some(target), sticky: false, prefire: None });
                 }
                 if changed {
                     let z = arena.zone_of(target).map_or("there", |z| z.name);
@@ -876,7 +1351,7 @@ impl SquadCoordinator {
                     .get_or_insert_with(|| *alive.iter().max_by(|&&a, &&b| members[a].hp.total_cmp(&members[b].hp).then(b.cmp(&a))).unwrap_or(&alive[0]));
                 let r = model.weakest_range().clamp(6.0, 28.0);
                 let dest = arena.nav.nearest_walkable(target + (members[bait].pos - target).norm() * r);
-                self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None, sticky: true });
+                self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None, sticky: true, prefire: None });
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != bait).collect();
                 if full || changed {
                     self.assign_positions(&rest, members, arena, model, target, Some(dest));
@@ -896,7 +1371,7 @@ impl SquadCoordinator {
                     self.bound_team ^= 1;
                     self.bound_t = 0.0;
                     self.claims.iter_mut().for_each(|c| *c = None);
-                    return self.plan(members, arena, model, full);
+                    return self.plan_play(play, members, arena, model, full);
                 }
                 let mut mates: Vec<V2> = Vec::new();
                 for &i in &alive {
@@ -910,7 +1385,7 @@ impl SquadCoordinator {
                         if let Some(c) = self.claims[i] {
                             mates.push(c);
                         }
-                        self.orders[i] = Some(Order { role: Role::Bound, goal: Goal::Hold, dest: self.claims[i], watch: Some(target), threat: Some(target), sticky: false });
+                        self.orders[i] = Some(Order { role: Role::Bound, goal: Goal::Hold, dest: self.claims[i], watch: Some(target), threat: Some(target), sticky: false, prefire: None });
                     } else {
                         self.claims[i] = None;
                         self.orders[i] = Some(hold(None, Role::Overwatch));
@@ -952,6 +1427,25 @@ fn trail_point(trail: &[V2], back: f32) -> Option<V2> {
 
 fn nearest_alive(members: &[MemberView], to: V2) -> Option<usize> {
     (0..members.len()).filter(|&i| members[i].alive).min_by(|&a, &b| members[a].pos.dist(to).total_cmp(&members[b].pos.dist(to)))
+}
+
+/// "that crate" / "that corner": the nearest block to a re-peek spot, in callout words.
+fn spot_noun(arena: &Arena, p: V2) -> &'static str {
+    let near = arena
+        .blocks
+        .iter()
+        .filter(|b| b.kind != BlockKind::Wall)
+        .map(|b| {
+            let dx = ((p.x - b.center.x).abs() - b.half.x).max(0.0);
+            let dz = ((p.y - b.center.y).abs() - b.half.y).max(0.0);
+            (b.kind, dx.hypot(dz))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1));
+    match near {
+        Some((BlockKind::Low, d)) if d < 2.5 => "that crate",
+        Some((_, d)) if d < 2.5 => "that corner",
+        _ => "that angle",
+    }
 }
 
 /// "at the west lane" / "close" for a spot outside any zone.
