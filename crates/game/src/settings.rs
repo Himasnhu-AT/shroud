@@ -5,6 +5,7 @@
 //! - Maps stream reads `map` when a new match starts.
 //! - UI stream owns the menus that edit these, and applies the rest
 //!   (sensitivity, FOV, volume, graphics) to the game.
+//!
 //! A corrupt or missing file falls back to defaults; unknown/missing fields use defaults.
 
 use bevy::prelude::*;

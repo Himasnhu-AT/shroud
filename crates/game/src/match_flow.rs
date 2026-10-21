@@ -36,6 +36,11 @@ impl MatchFlow {
     pub fn seed(&self) -> u64 {
         (self.match_no as u64) << 8 | self.round as u64
     }
+    /// Drop the current match (pause menu restart / quit): the next round starts a new match.
+    pub fn abandon(&mut self) {
+        self.started = false;
+        self.round_over = None;
+    }
     fn needs_new_match(&self) -> bool {
         !self.started || self.player_rounds >= ROUNDS_TO_WIN || self.enemy_rounds >= ROUNDS_TO_WIN
     }
@@ -44,9 +49,6 @@ impl MatchFlow {
 /// The finished match, waiting for `Evolving`.
 #[derive(Resource, Default)]
 pub struct PendingReport(pub Option<MatchReport>);
-
-#[derive(Component)]
-struct RoundBanner;
 
 pub struct MatchFlowPlugin;
 
@@ -88,13 +90,11 @@ fn merge(into: &mut Vec<EnemyReport>, r: &EnemyReport) {
 }
 
 fn check_round_end(
-    mut commands: Commands,
     mut flow: ResMut<MatchFlow>,
     squad: Res<Squad>,
     players: Query<(&Health, &Transform), With<Player>>,
     enemies: Query<&EnemyCombat, With<Enemy>>,
     mut telemetry: ResMut<Telemetry>,
-    visuals: Option<Res<crate::state::Headless>>,
     tracer: Option<Res<GameTracer>>,
 ) {
     if flow.round_over.is_some() {
@@ -123,25 +123,7 @@ fn check_round_end(
         }
         trace_event(t, GameEvent::RoundEnd, &[("round", Prop::Int(flow.round as i64)), ("player_won", Prop::Bool(player_won))]);
     }
-    if visuals.is_some_and(|h| !h.0) {
-        let text = format!(
-            "{}\n{} : {}",
-            if player_won { "ROUND WON" } else { "ROUND LOST" },
-            flow.player_rounds,
-            flow.enemy_rounds
-        );
-        commands.spawn((
-            RoundBanner,
-            DespawnOnExit(GameState::Playing),
-            Node { width: percent(100), height: percent(100), align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() },
-            children![(
-                Text::new(text),
-                TextFont::from_font_size(52.0),
-                TextLayout::justify(Justify::Center),
-                TextColor(if player_won { Color::srgb(0.5, 1.0, 0.6) } else { Color::srgb(1.0, 0.4, 0.35) }),
-            )],
-        ));
-    }
+    // The round-over banner is drawn by `ui::hud`.
 }
 
 fn tick_round_over(

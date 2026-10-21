@@ -1,6 +1,7 @@
 //! Rendering look: sky, sun, post-processing, PBR texture loading with
 //! world-scale UVs, procedural FX textures. Nothing here runs headless.
 
+use bevy::anti_alias::fxaa::Fxaa;
 use bevy::anti_alias::taa::TemporalAntiAliasing;
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::Exposure;
@@ -8,16 +9,20 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
 use bevy::light::atmosphere::ScatteringMedium;
 use bevy::light::{
-    Atmosphere, AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, light_consts::lux,
+    Atmosphere, AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, DirectionalLightShadowMap, light_consts::lux,
 };
 use bevy::mesh::VertexAttributeValues;
-use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion};
+use bevy::pbr::{
+    AtmosphereSettings, DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel,
+};
 use bevy::platform::collections::HashSet;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::render::camera::{MipBias, TemporalJitter};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::assets::AssetsDir;
+use crate::settings::GraphicsQuality;
 use crate::state::has_visuals;
 
 /// Haze colour for distance fog (matches the low-sun sky near the horizon).
@@ -29,21 +34,18 @@ impl Plugin for GfxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PendingMips>()
             .add_systems(Startup, (spawn_sky_and_sun, init_fx_assets).run_if(has_visuals))
-            .add_systems(Update, (generate_mips, face_camera).run_if(has_visuals));
+            .add_systems(Update, (generate_mips, face_camera, apply_camera_quality).run_if(has_visuals));
     }
 }
 
-/// Render components for the first-person camera (never used headless).
-pub fn camera_components() -> impl Bundle {
+/// Render components for the first-person camera (never used headless). The quality-dependent
+/// parts (AA, SSAO, bloom, shadow resolution) are added by [`apply_camera_quality`], which
+/// also re-applies them whenever `Settings::quality` changes.
+pub fn camera_components(quality: GraphicsQuality) -> impl Bundle {
     (
         Msaa::Off,
-        TemporalAntiAliasing::default(),
-        ScreenSpaceAmbientOcclusion::default(),
+        WantQuality(quality),
         Tonemapping::AgX,
-        Bloom {
-            intensity: 0.12,
-            ..Bloom::NATURAL
-        },
         Exposure { ev100: 13.0 },
         AtmosphereSettings::default(),
         AtmosphereEnvironmentMapLight {
@@ -61,6 +63,67 @@ pub fn camera_components() -> impl Bundle {
             },
         },
     )
+}
+
+/// Quality preset currently applied to a camera's render features.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WantQuality(pub GraphicsQuality);
+
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AppliedQuality(GraphicsQuality);
+
+/// Low: FXAA, no SSAO/bloom, 1k shadows. Medium: TAA. High: TAA + SSAO + bloom.
+/// Ultra: TAA + best SSAO + 4k shadows.
+pub fn apply_camera_quality(
+    mut commands: Commands,
+    settings: Res<crate::settings::Settings>,
+    mut cams: Query<(Entity, &mut WantQuality, Option<&AppliedQuality>)>,
+    mut shadow_map: ResMut<DirectionalLightShadowMap>,
+) {
+    let q = settings.quality;
+    for (e, mut want, applied) in &mut cams {
+        if want.0 != q {
+            want.0 = q;
+        }
+        if applied.is_some_and(|a| a.0 == q) {
+            continue;
+        }
+        let mut ec = commands.entity(e);
+        ec.insert(AppliedQuality(q));
+        let bloom = Bloom {
+            intensity: 0.12,
+            ..Bloom::NATURAL
+        };
+        match q {
+            GraphicsQuality::Low => {
+                ec.remove::<(TemporalAntiAliasing, TemporalJitter, MipBias, ScreenSpaceAmbientOcclusion, Bloom)>()
+                    .insert(Fxaa::default());
+            }
+            GraphicsQuality::Medium => {
+                ec.remove::<(Fxaa, ScreenSpaceAmbientOcclusion, Bloom)>()
+                    .insert(TemporalAntiAliasing::default());
+            }
+            GraphicsQuality::High | GraphicsQuality::Ultra => {
+                let ssao = ScreenSpaceAmbientOcclusion {
+                    quality_level: if q == GraphicsQuality::Ultra {
+                        ScreenSpaceAmbientOcclusionQualityLevel::Ultra
+                    } else {
+                        ScreenSpaceAmbientOcclusionQualityLevel::High
+                    },
+                    ..default()
+                };
+                ec.remove::<Fxaa>().insert((TemporalAntiAliasing::default(), ssao, bloom));
+            }
+        }
+        let size = match q {
+            GraphicsQuality::Low => 1024,
+            GraphicsQuality::Medium | GraphicsQuality::High => 2048,
+            GraphicsQuality::Ultra => 4096,
+        };
+        if shadow_map.size != size {
+            shadow_map.size = size;
+        }
+    }
 }
 
 fn spawn_sky_and_sun(mut commands: Commands, media: Option<ResMut<Assets<ScatteringMedium>>>) {
