@@ -12,6 +12,15 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `textures/floor/*` | Concrete047A (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete047A | CC0 1.0 |
 | `textures/wall/*` | Concrete034 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete034 | CC0 1.0 |
 | `textures/tall/*` | PaintedMetal006 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedMetal006 | CC0 1.0 |
+| `textures/depot_ground/*` | Ground093A (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Ground093A | CC0 1.0 |
+| `textures/stucco/*` | Plaster001 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Plaster001 | CC0 1.0 |
+| `textures/container/*` | CorrugatedSteel005 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=CorrugatedSteel005 | CC0 1.0 |
+| `textures/crate/*` | Planks037A (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Planks037A | CC0 1.0 |
+| `textures/asphalt/*` | Asphalt031 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Asphalt031 | CC0 1.0 |
+| `textures/carpet/*` | Carpet001 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Carpet001 | CC0 1.0 |
+| `textures/office_wall/*` | PaintedPlaster017 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedPlaster017 | CC0 1.0 |
+| `textures/ceiling/*` | OfficeCeiling004 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=OfficeCeiling004 | CC0 1.0 |
+| `textures/tiles/*` | Tiles107 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Tiles107 | CC0 1.0 |
 
 Notes:
 - ambientCG maps are renamed to `color.jpg`, `normal.jpg` (OpenGL convention), `rough.jpg` and `ao.jpg` and are otherwise unmodified. Mipmaps are built at load time (`gfx.rs`).

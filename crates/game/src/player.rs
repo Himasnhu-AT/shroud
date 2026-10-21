@@ -47,7 +47,7 @@ impl Plugin for PlayerPlugin {
             .add_systems(Startup, spawn_player)
             .add_systems(
                 OnEnter(GameState::Playing),
-                (reset_player, lock_cursor.run_if(has_visuals).run_if(not_test_driven)),
+                (reset_player.after(crate::map::MapSet), lock_cursor.run_if(has_visuals).run_if(not_test_driven)),
             )
             .add_systems(OnExit(GameState::Playing), (unlock_cursor.run_if(has_visuals), clear_intent))
             .add_systems(
