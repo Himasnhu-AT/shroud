@@ -540,6 +540,9 @@ fn think_and_act(
         // Lean out of tall cover toward where the squad thinks he is (or the angle it holds).
         let lean_want = if let Some(l) = lean_override.0 {
             l
+        } else if act.lean != 0.0 {
+            // The mind is peeking out of a post: lean the way it steps.
+            act.lean.clamp(-1.0, 1.0)
         } else if !freeze.0 && act.move_dir.len() < 0.35 && matches!(mind.0.goal(), Goal::Hold | Goal::Attack | Goal::Ambush) {
             let target = mind.0.order().and_then(|o| o.watch).filter(|_| !sees && c.last_seen > ENGAGE_MEMORY).unwrap_or(shared.0);
             let side = posture::lean_side(&arena.0, pos, target);

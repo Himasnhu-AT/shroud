@@ -1,0 +1,23 @@
+[
+  {"cmd": "player.god", "params": {"on": true}},
+  {"cmd": "enemy.freeze", "params": {"on": true}},
+  {"cmd": "enemy.kill", "params": {"id": 0}},
+  {"cmd": "enemy.kill", "params": {"id": 1}},
+  {"cmd": "enemy.kill", "params": {"id": 2}},
+  {"cmd": "player.teleport", "params": {"x": 10, "z": -2}},
+  {"cmd": "player.look", "params": {"at": [10, 1.0, -18]}},
+  {"cmd": "enemy.freeze", "params": {"on": false}},
+  {"sleep": 2},
+  {"shot": "t00"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t01"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t02"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t03"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t04"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t05"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t06"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t07"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t08"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t09"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t10"}, {"cmd": "enemy.list"}, {"sleep": 0.9},
+  {"shot": "t11"}, {"cmd": "enemy.list"}
+]
