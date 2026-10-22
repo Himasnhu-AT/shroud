@@ -25,6 +25,8 @@ fn launch() -> (Game, u16, PathBuf) {
         .args(["--headless", "--control", "0", "--seed", "1"])
         .env_remove("SHROUD_TRACE_ENDPOINT")
         .env_remove("SHROUD_TRACE_KEY")
+        // Own data dir: never read or write the player's settings.json / brain.json.
+        .env("SHROUD_DATA_DIR", std::env::temp_dir().join(format!("shroud-test-ai-{}", std::process::id())))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -77,9 +79,15 @@ fn difficulty_and_grenades() {
     let d = exec(&mut c, "ai.difficulty", json!({"level": "elite"}));
     assert_eq!(d["squad_size"], json!(6), "{d}");
     exec(&mut c, "enemy.kill", json!({}));
-    let s = wait_for(&mut c, 8.0, |s| s["difficulty"] == json!("Elite"));
+    // Wait for the next round's squad to be alive (not just the setting to read Elite).
+    let alive = |c: &mut Client| exec(c, "enemy.list", json!({})).as_array().map_or(0, |a| a.len());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(&mut c) != 6 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let s = exec(&mut c, "ai.squad", json!({}));
     assert_eq!(s["difficulty"], json!("Elite"), "{s}");
-    let n = exec(&mut c, "enemy.list", json!({})).as_array().map_or(0, |a| a.len());
+    let n = alive(&mut c);
     assert!(n == 6 && s["size"].as_u64() == Some(n as u64), "elite squad: {n} enemies, {s}");
     assert_eq!(s["max_tokens"], json!(3));
     assert!(s["utility"]["frags"].as_u64() >= Some(1), "{s}");

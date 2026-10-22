@@ -25,6 +25,8 @@ fn launch() -> (Game, u16, PathBuf) {
         .args(["--headless", "--control", "0", "--seed", "1"])
         .env_remove("SHROUD_TRACE_ENDPOINT")
         .env_remove("SHROUD_TRACE_KEY")
+        // Own data dir: never read or write the player's settings.json / brain.json.
+        .env("SHROUD_DATA_DIR", std::env::temp_dir().join(format!("shroud-test-control-{}", std::process::id())))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
