@@ -74,7 +74,14 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
         }
         Goal::Push if seen_recently => {
             let far = if i.dist > t.preferred_range + 4.0 { 0.25 } else { 0.0 };
-            (0.25 + 0.5 * t.aggression * (1.0 - 0.5 * i.player_hp) + far + 0.15 * i.hp + window) * tok
+            // He's badly hurt and just broke line of sight: run him down before he heals up
+            // behind cover (any healthy member, token or not).
+            let finish = !i.visible && i.player_hp < 0.35 && i.time_since_seen < 4.0 && i.hp > 0.4;
+            if finish {
+                0.25 + 0.5 * t.aggression + far + 0.15 * i.hp + window + 0.4
+            } else {
+                (0.25 + 0.5 * t.aggression * (1.0 - 0.5 * i.player_hp) + far + 0.15 * i.hp + window) * tok
+            }
         }
         Goal::Flank if seen_recently && i.dist > 8.0 => {
             let support = if i.allies_engaged > 0 { 1.0 } else { 0.3 };

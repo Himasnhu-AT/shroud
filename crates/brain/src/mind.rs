@@ -8,6 +8,7 @@ use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::neat;
 use crate::perception::{Alert, COMBAT_CALM_S, Heard, SUSPICIOUS_CALM_S, Sound};
 use crate::player_model::PlayerModel;
+use crate::posts;
 use crate::posture;
 use crate::squad::{self, Order};
 use crate::utility::{self, Goal, UtilityInput};
@@ -159,6 +160,9 @@ pub struct Action {
     /// Pre-firing at this spot (the player is not visible): the shot's pitch should aim at
     /// chest height there, not at the player.
     pub prefire: Option<V2>,
+    /// Lean out of cover: -1 left .. +1 right of `look_dir` (0 = upright; the game may still
+    /// lean on its own at tall corners).
+    pub lean: f32,
 }
 
 pub struct MindCtx<'a> {
@@ -177,6 +181,53 @@ pub struct MindDebug {
     pub micro: [f32; NEAT_OUTPUTS],
     pub seen_time: f32,
     pub aim_off: f32,
+    /// Peek-shoot-hide phase, if running the post loop.
+    pub post: Option<PostPhase>,
+    /// No ally close enough to help.
+    pub isolated: bool,
+}
+
+/// Peek-shoot-hide loop at cover posts (`posts.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PostPhase {
+    /// Moving to the post.
+    Move,
+    /// Crouched behind it (reloading if needed).
+    Hide,
+    /// Stepped / stood out to fire a burst.
+    Peek,
+}
+
+impl PostPhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            PostPhase::Move => "to-post",
+            PostPhase::Hide => "hide",
+            PostPhase::Peek => "peek",
+        }
+    }
+}
+
+impl PostState {
+    /// Where to stand now.
+    fn target(&self) -> V2 {
+        if self.phase == PostPhase::Peek { self.post.peek } else { self.post.pos }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PostState {
+    post: posts::Post,
+    phase: PostPhase,
+    /// Seconds left in the phase (Hide / Peek); time spent in Move.
+    t: f32,
+    /// Trigger time spent this peek, and the burst wanted.
+    fired: f32,
+    burst: f32,
+    /// Hid after a peek: the next step is a new post.
+    peeked: bool,
+    /// Only here to reload; leave once the magazine is full.
+    reload_only: bool,
 }
 
 pub struct EnemyMind {
@@ -227,8 +278,49 @@ pub struct EnemyMind {
     prefire_t: f32,
     /// Crouch-peek rhythm behind low cover.
     peek_t: f32,
+    /// Peek-shoot-hide state, recent peek spots (pos, seconds ago), retry timer.
+    post: Option<PostState>,
+    recent_peeks: Vec<(V2, f32)>,
+    post_retry: f32,
+    isolated: bool,
+    alone_barked: bool,
+    /// This enemy's own radio delay (s) and its belief of where the player is: radio updates
+    /// reach it `radio_lag` late, so the squad never turns in unison.
+    radio_lag: f32,
+    belief: Option<V2>,
+    radio_wait: f32,
+    /// Crouch decisions in a fight hold for a moment (no robotic crouch-spam).
+    crouch_hold: f32,
+    crouch_prev: bool,
+    /// Burst length jitter for the current burst.
+    burst_jitter: f32,
+    /// Reaction time needed for the current sighting (latched when it starts).
+    react_need: f32,
     pub debug: MindDebug,
 }
+
+/// No living ally within this distance (m, ~4 s at a walk): the enemy is on its own.
+pub const ISOLATION_M: f32 = 15.0;
+/// The post loop runs while this enemy saw the player within this long (s) or is under fire.
+pub const POST_CONTACT_S: f32 = 4.0;
+/// Peek burst length range (s) and hide time after a peek (s).
+pub const PEEK_BURST_S: (f32, f32) = (0.4, 0.9);
+pub const HIDE_S: (f32, f32) = (1.2, 3.0);
+/// Longest a peek waits for a shot (s) before ducking back.
+pub const PEEK_MAX_S: f32 = 2.0;
+/// Radio delay range (s), seeded per enemy.
+pub const RADIO_LAG_S: (f32, f32) = (0.2, 0.6);
+/// Members without an attack token shoot suppressively: spread this much wider.
+pub const SUPPRESS_SPREAD: f32 = 1.6;
+/// Reaction in a fight is the trait's reaction times this (never below the generation floor);
+/// unalerted it is this much slower.
+pub const COMBAT_REACTION: f32 = 0.6;
+pub const UNALERTED_REACTION: f32 = 1.8;
+/// First-shot accuracy: spread starts `1 + SETTLE_SPREAD` times wider and narrows over `SETTLE_S`.
+pub const SETTLE_SPREAD: f32 = 0.6;
+pub const SETTLE_S: f32 = 0.6;
+/// Reload behind cover if there is cover this close (m).
+pub const RELOAD_COVER_M: f32 = 4.0;
 
 /// Pre-fire spread is this much wider than aimed fire (shooting at a spot, not a target).
 pub const PREFIRE_SPREAD: f32 = 1.6;
@@ -248,6 +340,7 @@ impl EnemyMind {
     pub fn new(tg: &TraitGenome, trait_id: usize, ng: &neat::Genome, neat_id: usize, limits: &Limits, seed: u64) -> Self {
         let mut rng = rng_from_seed(seed);
         let flank_side = if rand::Rng::random::<bool>(&mut rng) { 1.0 } else { -1.0 };
+        let radio_lag = RADIO_LAG_S.0 + (RADIO_LAG_S.1 - RADIO_LAG_S.0) * rand::Rng::random::<f32>(&mut rng);
         EnemyMind {
             traits: tg.decode(limits),
             trait_id,
@@ -285,8 +378,30 @@ impl EnemyMind {
             strafe_sign: flank_side,
             prefire_t: 0.0,
             peek_t: 0.0,
+            post: None,
+            recent_peeks: Vec::new(),
+            post_retry: 0.0,
+            isolated: false,
+            alone_barked: false,
+            radio_lag,
+            belief: None,
+            radio_wait: -1.0,
+            crouch_hold: 0.0,
+            crouch_prev: false,
+            burst_jitter: 1.0,
+            react_need: 0.0,
             debug: MindDebug::default(),
         }
+    }
+
+    /// Running the peek-shoot-hide loop (and its phase).
+    pub fn post_phase(&self) -> Option<PostPhase> {
+        self.post.map(|p| p.phase)
+    }
+
+    /// No ally close enough to help (as of the last `think`).
+    pub fn isolated(&self) -> bool {
+        self.isolated
     }
 
     pub fn goal(&self) -> Goal {
@@ -316,15 +431,50 @@ impl EnemyMind {
         self.order.filter(|o| o.goal == self.goal)
     }
 
-    pub fn think(&mut self, o: &Observation, cx: &MindCtx) -> Action {
+    pub fn think(&mut self, raw: &Observation, cx: &MindCtx) -> Action {
+        // Radio lag: what the squad says reaches this enemy `radio_lag` s late (its own eyes
+        // are instant), so they don't all turn at once.
+        let belief = *self.belief.get_or_insert(raw.player_pos);
+        if raw.player_visible {
+            self.belief = Some(raw.player_pos);
+            self.radio_wait = -1.0;
+        } else if raw.player_pos.dist(belief) > 1.5 {
+            if self.radio_wait < 0.0 {
+                self.radio_wait = self.radio_lag;
+            }
+            self.radio_wait -= raw.dt;
+            if self.radio_wait <= 0.0 {
+                self.belief = Some(raw.player_pos);
+                self.radio_wait = -1.0;
+            }
+        } else {
+            self.radio_wait = -1.0;
+        }
+        let lagged;
+        let o = match self.belief {
+            Some(b) if b != raw.player_pos => {
+                lagged = Observation { player_pos: b, allies: raw.allies.clone(), ..*raw };
+                &lagged
+            }
+            _ => raw,
+        };
         let t = self.traits;
         let to_player = o.player_pos - o.pos;
         let dist = to_player.len();
         let dir_p = to_player.norm();
 
-        // Perception timers.
+        // Perception timers. The reaction a sighting needs is set when it starts: quick if the
+        // enemy was already fighting, slow if it was caught unaware (never below the floor).
         self.own_unseen = if o.player_visible { 0.0 } else { self.own_unseen + o.dt };
         if o.player_visible {
+            if self.seen_time <= 0.0 {
+                let base = t.reaction_time.max(cx.limits.min_reaction_s);
+                self.react_need = match self.alert {
+                    Alert::Combat => (base * COMBAT_REACTION).max(cx.limits.min_reaction_s),
+                    Alert::Suspicious => base,
+                    Alert::Unaware => base * UNALERTED_REACTION,
+                };
+            }
             self.seen_time += o.dt;
         } else {
             // A brief occlusion doesn't make them start their reaction over.
@@ -352,6 +502,39 @@ impl EnemyMind {
         let combat = self.alert == Alert::Combat;
         self.goal_t += o.dt;
 
+        // Isolation: nobody close enough to help (the last survivor included). Alone in a
+        // fight it works cover posts: peek, fire a burst, hide, re-peek from somewhere else.
+        // Members without a token do the same instead of standing in the open (one cycle).
+        self.isolated = !o.allies.iter().any(|a| a.pos.dist(o.pos) < ISOLATION_M);
+        let sticky_order = self.order.is_some_and(|od| od.sticky);
+        let contact = self.own_unseen < POST_CONTACT_S || o.taking_fire;
+        let window = o.player_reloading || o.player_hp < 0.35;
+        let open_fight = matches!(self.goal, Goal::Attack | Goal::TakeCover) || self.post.is_some();
+        let want_post = combat
+            && contact
+            && !sticky_order
+            && !window
+            && self.goal != Goal::Retreat
+            && dist > posts::MIN_PLAYER_DIST
+            && (self.isolated || o.token_denied && open_fight || self.goal == Goal::TakeCover);
+        // Reload behind cover when it is close, not in the open.
+        let hidden_here = !cx.arena.line_of_sight(o.player_pos, false, o.pos, true);
+        let reload_spot = if engaged && o.ammo_frac < 0.2 && !hidden_here && !want_post {
+            posts::reload_spot(cx.arena, o.pos, o.player_pos, RELOAD_COVER_M)
+        } else {
+            None
+        };
+        let had_post = self.post.is_some();
+        self.update_post(o, cx, want_post, reload_spot);
+        if !self.isolated {
+            self.alone_barked = false;
+        } else if !had_post && !self.alone_barked && let Some(st) = self.post.filter(|p| !p.reload_only) {
+            self.alone_barked = true;
+            let back = st.post.pos.dist(o.player_pos) > o.pos.dist(o.player_pos) + 2.0;
+            self.bark = Some(if back { "Falling back" } else { "I'm alone - holding" });
+        }
+        let post_dest = self.post.map(|p| p.target());
+
         // 1. Tactics (~4 Hz, or immediately when hit or stuck).
         self.think_timer -= o.dt;
         let urgent = o.taking_fire && self.goal != Goal::TakeCover && self.goal != Goal::Retreat;
@@ -376,6 +559,17 @@ impl EnemyMind {
                 player_reloading: o.player_reloading,
             };
             let mut new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal), self.order.is_some_and(|o| o.sticky));
+            // Working a post: alone it overrides everything but falling back; with the squad
+            // around it only replaces standing in the open.
+            if let Some(st) = self.post {
+                let keep = new_goal != Goal::Retreat && (self.isolated || st.reload_only || matches!(new_goal, Goal::Attack | Goal::TakeCover | Goal::Hold));
+                if keep {
+                    new_goal = Goal::TakeCover;
+                } else {
+                    self.post = None;
+                }
+            }
+            let post_dest = self.post.and(post_dest);
             // Commit: hold a fresh goal briefly (being hit or ordered overrides).
             let ordered = self.order.is_some_and(|od| od.goal == new_goal);
             if self.goal_t < GOAL_COMMIT_S && !urgent && !ordered && new_goal != Goal::Retreat {
@@ -393,18 +587,23 @@ impl EnemyMind {
                 }
             }
             let order = self.order.filter(|od| od.goal == new_goal);
-            let new_dest = match order {
-                Some(Order { dest: Some(d), .. }) => Some(cx.arena.nav.nearest_walkable(d)),
-                Some(Order { goal: Goal::Hold, dest: None, .. }) => None,
-                _ => self.destination(new_goal, o, cx),
+            let new_dest = if post_dest.is_some() {
+                post_dest
+            } else {
+                match order {
+                    Some(Order { dest: Some(d), .. }) => Some(cx.arena.nav.nearest_walkable(d)),
+                    Some(Order { goal: Goal::Hold, dest: None, .. }) => None,
+                    _ => self.destination(new_goal, o, cx),
+                }
             };
             let moved = match (new_dest, self.dest) {
                 (Some(a), Some(b)) => a.dist(b) > 2.0,
                 (a, b) => a.is_some() != b.is_some(),
             };
             if new_goal != self.goal || moved || self.path.is_empty() || repath {
-                // A squad route: through its via point first (a corridor the others don't use).
-                let via = order.and_then(|od| od.via).filter(|v| v.dist(o.pos) > 2.5);
+                // A squad route (orders only, not a post move): through its via point first, a
+                // corridor the others don't use.
+                let via = order.and_then(|od| od.via).filter(|v| post_dest.is_none() && v.dist(o.pos) > 2.5);
                 let nav = &cx.arena.nav;
                 let routed = |d: V2, cost: Option<&dyn Fn(V2) -> f32>| match via {
                     Some(v) => {
@@ -414,7 +613,9 @@ impl EnemyMind {
                     }
                     None => nav.find_path_cost(o.pos, d, cost).unwrap_or_default(),
                 };
-                self.path = match (new_dest, order.and_then(|od| od.threat)) {
+                // (A post move keeps out of his sight lines too.)
+                let post_threat = post_dest.map(|_| o.player_pos);
+                self.path = match (new_dest, order.and_then(|od| od.threat).or(post_threat)) {
                     (Some(d), Some(threat)) => {
                         let cost = squad::tactical_cost(cx.arena, cx.model, threat, &t.pef);
                         routed(d, Some(&cost))
@@ -507,7 +708,9 @@ impl EnemyMind {
             micro.copy_from_slice(&out[..NEAT_OUTPUTS]);
         }
         self.debug.micro = micro;
+        let posting = self.post.map(|p| p.phase);
         let w_micro = match self.goal {
+            _ if posting.is_some() => 0.0,
             Goal::Attack => 1.0,
             Goal::Push | Goal::Flank => 0.4,
             Goal::Hold if self.path.is_empty() => 0.3,
@@ -516,12 +719,15 @@ impl EnemyMind {
         let micro_move = if engaged { dir_p * micro[0] + dir_p.perp() * micro[1] } else { V2::ZERO };
         let mut move_dir = path_dir + micro_move * w_micro;
 
-        // Strafe while shooting: never stand still in the open trading shots.
-        if o.player_visible && matches!(self.goal, Goal::Attack | Goal::Push | Goal::Hold) && self.sidestep_t <= 0.0 {
+        // Strafe while shooting: never stand still in the open trading shots. Strafes lean
+        // toward the nearest cover (a step from safety) rather than a metronome A-D.
+        if o.player_visible && posting.is_none() && matches!(self.goal, Goal::Attack | Goal::Push | Goal::Hold) && self.sidestep_t <= 0.0 {
             self.strafe_t -= o.dt;
             if self.strafe_t <= 0.0 {
-                self.strafe_sign = -self.strafe_sign;
-                self.strafe_t = 0.45 + 0.6 * self.rng_f();
+                let (cover_d, cover_side) = self.nearest_cover(o.pos, dir_p, cx);
+                let flip = -self.strafe_sign;
+                self.strafe_sign = if cover_d < 6.0 && cover_side != 0.0 && flip != cover_side && self.rng_f() < 0.6 { cover_side } else { flip };
+                self.strafe_t = 0.35 + 0.75 * self.rng_f();
             }
             let w = if self.path.is_empty() { 0.6 } else { 0.3 };
             move_dir += dir_p.perp() * self.strafe_sign * w;
@@ -543,7 +749,8 @@ impl EnemyMind {
         }
         let target_dir = if let Some(pf) = prefire {
             (pf - o.pos).norm()
-        } else if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S {
+        } else if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S || posting.is_some_and(|p| p != PostPhase::Move || self.own_unseen < 1.0) {
+            // (At a post the gun stays on where he was: the peek comes out pre-aimed.)
             (o.player_pos + o.player_vel * 0.08 - o.pos).norm()
         } else if let Some(h) = self.heard_prev.filter(|_| self.heard_t < 2.5 && !self.path.is_empty() || self.heard_t < 1.0) {
             (h - o.pos).norm()
@@ -566,12 +773,12 @@ impl EnemyMind {
             self.on_target_time = 0.0;
         }
 
-        // 5. Trigger: reaction delay (fairness floor), aim settled, bursts. Out of combat the
-        // net may veto a shot to stay hidden; in combat they shoot as soon as they can.
-        // Attack tokens: members without one hold fire unless defending themselves.
+        // 5. Trigger: shoot on sight once the reaction (fairness floor) has passed and the aim
+        // is on him, in bursts. Out of combat the net may veto a shot to stay hidden. Attack
+        // tokens no longer hold fire: members without one shoot too, just suppressively (wider
+        // spread, below).
         let fire_gate = if engaged && !combat { micro[2] > -0.6 } else { true };
-        let may_shoot = !o.token_denied || o.taking_fire || dist < 12.0 || aiming_at_me > 0.97;
-        let ready = o.player_visible && self.seen_time >= t.reaction_time && aim_off < 0.07 && fire_gate && may_shoot && o.ammo_frac > 0.0;
+        let ready = o.player_visible && self.seen_time >= self.react_need && aim_off < 0.07 && fire_gate && o.ammo_frac > 0.0;
         self.debug.seen_time = self.seen_time;
         self.debug.aim_off = aim_off;
         let mut fire = false;
@@ -580,12 +787,16 @@ impl EnemyMind {
         } else if ready {
             fire = true;
             self.burst_timer += o.dt;
-            if self.burst_timer >= t.burst_length as f32 * 0.1 {
+            if self.burst_timer >= t.burst_length as f32 * 0.1 * self.burst_jitter {
                 self.burst_timer = 0.0;
+                self.burst_jitter = 0.7 + 0.6 * self.rng_f();
                 self.burst_pause = if combat { 0.18 + 0.15 * self.rng_f() } else { 0.3 + 0.2 * self.rng_f() };
             }
         } else {
             self.burst_timer = 0.0;
+        }
+        if fire && let Some(st) = self.post.as_mut().filter(|p| p.phase == PostPhase::Peek) {
+            st.fired += o.dt;
         }
         // One short burst per pre-fire window, only once the aim has arrived at the spot.
         let prefiring = prefire.is_some() && !fire && aim_off < 0.06 && o.ammo_frac > 0.0 && self.prefire_t < squad::PREFIRE_BURST_S;
@@ -594,8 +805,11 @@ impl EnemyMind {
             self.prefire_t += o.dt;
         }
 
-        // Spread: base error, worse while moving, better once settled on target.
-        let settle = 1.0 + 0.6 * (1.0 - (self.on_target_time / 0.6).min(1.0));
+        // Spread: base error, worse while moving, wide on the first shots and narrowing as the
+        // aim settles on him; suppressive (no token, not self-defence) fire is wider still.
+        // (Pre-fire aims at a fixed spot, not a target to settle on: its own spread covers it.)
+        let settle = if prefiring { 1.0 } else { 1.0 + SETTLE_SPREAD * (1.0 - (self.on_target_time / SETTLE_S).min(1.0)) };
+        let suppress = if o.token_denied && !self.isolated && !o.taking_fire && dist >= 12.0 { SUPPRESS_SPREAD } else { 1.0 };
         let moving = 1.0 + move_dir.len() * 0.35;
         if o.taking_fire && !self.was_hit {
             self.flinch_t = FLINCH_S;
@@ -603,7 +817,7 @@ impl EnemyMind {
         self.was_hit = o.taking_fire;
         self.flinch_t = (self.flinch_t - o.dt).max(0.0);
         let flinch = 1.0 + FLINCH_SPREAD * self.flinch_t / FLINCH_S;
-        let sigma = t.aim_error_deg.to_radians() * settle * moving * flinch * if prefiring { PREFIRE_SPREAD } else { 1.0 };
+        let sigma = t.aim_error_deg.to_radians() * settle * moving * flinch * suppress * if prefiring { PREFIRE_SPREAD } else { 1.0 };
         let shot_dir = V2::from_angle(self.aim_yaw + gauss(&mut self.rng) * sigma);
         let shot_pitch_err = gauss(&mut self.rng) * sigma * 0.6;
 
@@ -614,12 +828,24 @@ impl EnemyMind {
         } else {
             self.peek_t = 0.0;
         }
-        let crouch = if ducking {
+        self.crouch_hold -= o.dt;
+        let crouch = if let Some(phase) = posting {
+            // Post loop: down behind the post, up to peek, upright on the move.
+            phase == PostPhase::Hide && self.path.is_empty()
+        } else if ducking {
             !fire && (o.ammo_frac <= 0.0 || (!o.player_visible && self.peek_t < PEEK_DOWN_S))
         } else {
             match self.goal {
                 Goal::TakeCover | Goal::Retreat => self.path.is_empty(),
-                Goal::Attack => micro[3] > 0.3 && !fire,
+                Goal::Attack => {
+                    // The net's crouch call holds for a beat: no bobbing every burst.
+                    let want_c = micro[3] > 0.3;
+                    if want_c != self.crouch_prev && self.crouch_hold <= 0.0 {
+                        self.crouch_prev = want_c;
+                        self.crouch_hold = 0.5 + 0.6 * self.rng_f();
+                    }
+                    self.crouch_prev
+                }
                 _ => false,
             }
         };
@@ -630,15 +856,32 @@ impl EnemyMind {
         // Cover-to-cover: a push dashes between covers even in view; a combat hunt runs.
         let dash = self.goal == Goal::Push && far && !fire && self.following().is_none();
         let sprint = dash
+            || posting == Some(PostPhase::Move) && far
             || (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far || combat && self.goal == Goal::Hunt)
                 && (!o.player_visible || sticky && far);
-        let reload = o.ammo_frac <= 0.0 || (!engaged && o.ammo_frac < 0.4);
+        // Reload when empty, when calm, or early while hidden (a post, or cover he can't see).
+        let hidden_now = !cx.arena.line_of_sight(o.player_pos, false, o.pos, true);
+        let reload = o.ammo_frac <= 0.0
+            || (!engaged && o.ammo_frac < 0.4)
+            || posting == Some(PostPhase::Hide) && self.path.is_empty() && o.ammo_frac < 0.6
+            || hidden_now && !o.player_visible && o.ammo_frac < 0.35;
+        // Lean out from the post toward the peek side (the game shows it and moves the eye).
+        let look = V2::from_angle(self.aim_yaw);
+        let lean = match self.post {
+            Some(st) if st.phase == PostPhase::Peek && st.post.peek.dist(st.post.pos) > 0.3 && o.pos.dist(st.post.peek) < 0.9 => {
+                let side = (st.post.peek - st.post.pos).norm().dot(look.perp());
+                if side.abs() > 0.3 { side.signum() } else { 0.0 }
+            }
+            _ => 0.0,
+        };
         if reload && !self.was_reloading {
             self.bark = Some("Reloading");
         }
         self.was_reloading = reload;
 
         self.debug.goal = Some(self.goal);
+        self.debug.post = posting;
+        self.debug.isolated = self.isolated;
         self.debug.dest = self.dest;
         self.debug.path.clone_from(&self.path);
 
@@ -646,13 +889,127 @@ impl EnemyMind {
             move_dir,
             sprint,
             crouch,
-            look_dir: V2::from_angle(self.aim_yaw),
+            look_dir: look,
             fire,
             shot_dir,
             shot_pitch_err,
             reload,
             prefire: prefire.filter(|_| fire),
+            lean,
         }
+    }
+
+    /// Advance the peek-shoot-hide loop. `want`: fight from posts; `reload_spot`: cover close
+    /// by to reload behind (used when not fighting from posts).
+    fn update_post(&mut self, o: &Observation, cx: &MindCtx, want: bool, reload_spot: Option<V2>) {
+        for r in &mut self.recent_peeks {
+            r.1 += o.dt;
+        }
+        self.recent_peeks.retain(|r| r.1 < posts::RECENT_PEEK_S);
+        self.post_retry -= o.dt;
+        let reloading_here = self.post.is_some_and(|p| p.reload_only) && o.ammo_frac < 0.99;
+        if want {
+            if self.post.is_some_and(|p| p.reload_only) && !reloading_here {
+                self.post = None;
+            }
+        } else if reloading_here {
+            // Keep going: finish the reload behind the cover.
+        } else if let Some(spot) = reload_spot {
+            if self.post.is_none_or(|p| !p.reload_only) {
+                let post = posts::Post { pos: spot, peek: spot, tall: false, score: 0.0 };
+                self.post = Some(PostState { post, phase: PostPhase::Move, t: 0.0, fired: 0.0, burst: 0.0, peeked: false, reload_only: true });
+                self.force_repath = true;
+            }
+        } else {
+            if self.post.is_some_and(|p| !p.reload_only && p.peeked) {
+                // Left the loop after a full cycle: give the squad's tactics a few seconds.
+                self.post_retry = 2.0;
+            }
+            self.post = None;
+            return;
+        }
+        if self.post.is_none() {
+            if self.post_retry > 0.0 {
+                return;
+            }
+            match posts::pick(cx.arena, o.pos, o.player_pos, &self.recent_peeks, None) {
+                Some(post) => {
+                    self.post = Some(PostState { post, phase: PostPhase::Move, t: 0.0, fired: 0.0, burst: 0.0, peeked: false, reload_only: false });
+                    self.force_repath = true;
+                }
+                None => {
+                    self.post_retry = 1.0;
+                    return;
+                }
+            }
+        }
+        let Some(mut st) = self.post else { return };
+        let before = st.target();
+        let r = self.rng_f();
+        match st.phase {
+            PostPhase::Move => {
+                st.t += o.dt;
+                if o.pos.dist(st.post.pos) < 0.7 {
+                    st.phase = PostPhase::Hide;
+                    st.t = if st.reload_only { 0.3 } else { 0.3 + 0.5 * r };
+                } else if st.t > 6.0 {
+                    // Can't get there: try another.
+                    self.post = None;
+                    self.post_retry = 0.5;
+                    return;
+                }
+            }
+            PostPhase::Hide => {
+                st.t -= o.dt;
+                // Seen at the post: it's no longer cover. Fight back briefly, then move on.
+                if o.player_visible && !st.reload_only {
+                    st.peeked = true;
+                    st.t = st.t.min(0.5);
+                }
+                let reloading = o.ammo_frac < 0.6;
+                if st.t <= 0.0 && !reloading {
+                    if st.reload_only {
+                        self.post = None;
+                        return;
+                    }
+                    if st.peeked && !self.isolated {
+                        // Squad nearby: one cycle, then back to the squad's tactics.
+                        self.post = None;
+                        self.post_retry = 2.0;
+                        return;
+                    }
+                    let next = if st.peeked { posts::pick(cx.arena, o.pos, o.player_pos, &self.recent_peeks, Some(st.post.pos)) } else { None };
+                    match next {
+                        Some(post) => {
+                            st = PostState { post, phase: PostPhase::Move, t: 0.0, fired: 0.0, burst: 0.0, peeked: false, reload_only: false };
+                        }
+                        _ => {
+                            // Peek (again) from here, from the cell seeing his latest position.
+                            if let Some(peek) = posts::peek_cell(cx.arena, st.post.pos, o.player_pos) {
+                                st.post.peek = peek;
+                            }
+                            st.phase = PostPhase::Peek;
+                            st.t = PEEK_MAX_S;
+                            st.fired = 0.0;
+                            st.burst = PEEK_BURST_S.0 + (PEEK_BURST_S.1 - PEEK_BURST_S.0) * r;
+                            self.recent_peeks.push((st.post.peek, 0.0));
+                        }
+                    }
+                }
+            }
+            PostPhase::Peek => {
+                st.t -= o.dt;
+                if st.fired >= st.burst || st.t <= 0.0 || (o.taking_fire && st.fired > 0.15) || o.ammo_frac <= 0.0 {
+                    st.phase = PostPhase::Hide;
+                    st.t = HIDE_S.0 + (HIDE_S.1 - HIDE_S.0) * r;
+                    st.peeked = true;
+                }
+            }
+        }
+        if st.target() != before {
+            self.force_repath = true;
+        }
+        self.post = Some(st);
     }
 
     fn rng_f(&mut self) -> f32 {
@@ -851,3 +1208,4 @@ pub fn standoff(move_dir: V2, pos: V2, player: V2) -> V2 {
     }
     m.clamp_len(1.0)
 }
+
