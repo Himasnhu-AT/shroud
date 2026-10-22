@@ -403,12 +403,23 @@ impl EnemyMind {
                 (a, b) => a.is_some() != b.is_some(),
             };
             if new_goal != self.goal || moved || self.path.is_empty() || repath {
+                // A squad route: through its via point first (a corridor the others don't use).
+                let via = order.and_then(|od| od.via).filter(|v| v.dist(o.pos) > 2.5);
+                let nav = &cx.arena.nav;
+                let routed = |d: V2, cost: Option<&dyn Fn(V2) -> f32>| match via {
+                    Some(v) => {
+                        let mut p = nav.find_path_cost(o.pos, v, cost).unwrap_or_default();
+                        p.extend(nav.find_path_cost(v, d, cost).unwrap_or_default());
+                        p
+                    }
+                    None => nav.find_path_cost(o.pos, d, cost).unwrap_or_default(),
+                };
                 self.path = match (new_dest, order.and_then(|od| od.threat)) {
                     (Some(d), Some(threat)) => {
                         let cost = squad::tactical_cost(cx.arena, cx.model, threat, &t.pef);
-                        cx.arena.nav.find_path_cost(o.pos, d, Some(&cost)).unwrap_or_default()
+                        routed(d, Some(&cost))
                     }
-                    (Some(d), None) => cx.arena.nav.find_path(o.pos, d).unwrap_or_default(),
+                    (Some(d), None) => routed(d, None),
                     (None, _) => Vec::new(),
                 };
             }

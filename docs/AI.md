@@ -117,3 +117,28 @@ not from raw stats.
 - **Difficulty**: squad size, limits, coordination, attack-token cap and grenades come from
   `Settings.difficulty` at each round spawn; more enemies than evolved slots reuse genomes.
 - The background trainer cycles over every map.
+
+## Squad tactics v3 (split search, report and encircle)
+
+- **Search** (`brain::search`, `Play::Search`): whenever the player is unknown (unaware, or
+  lost for > 3 s) the squad splits up instead of hunting one shared point. Spots are local
+  maxima of the belief grid plus cover near the hot spot that nobody can see into; a spot
+  someone looks into (or reaches) is off the list for 14 s. Greedy assignment with
+  reservations: mass - path distance - repulsion between targets (sigma 10 m) + a bonus inside
+  the member's own geodesic Voronoi region; softmax over each member's top 3 (seeded), and a
+  member keeps its spot until it is searched. At most two members (the closest by path) check
+  where he was last seen / heard, along different routes. Callouts: "Lost him - spreading
+  out", "Checking the yard", "Checking that noise".
+- **Encircle** (`brain::encircle`, `Play::Encircle`): a fresh contact is radioed (no wallhacks:
+  the board only knows what someone saw, heard or felt). The spotter(s) (1, or 2 in a squad of
+  4+) keep fighting on their own; the rest take distinct approach sectors: flood the nav grid
+  from him to 8-15 m, bin by bearing, one staging cell per sector (out of his sight, a step
+  from a line of fire). Exhaustive assignment minimising path length + k * angular crowding
+  (shooters included), hysteresis 15%, commit 2.5 s, softmax over the best 3. Routes are planned
+  in turn with a cost band around each committed route and a cost on his line of fire toward
+  the guns, and reach the mind as `Order::via`. When everyone is staged (or after 7 s) they
+  all peek at once ("All set - go go go"); 4 s later the bandit's plays take over.
+- **Stagger**: on a play change each member (except the one who sees him) reacts after
+  0-0.5 s. Not applied to `force_play`.
+- Metrics: `tests/squad_spread.rs` (search spread / coverage, encircle angular gap / shared
+  route cells, all maps) and `examples/squad_bench.rs` (ghost win rate per map and size).

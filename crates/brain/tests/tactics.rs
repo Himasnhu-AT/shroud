@@ -105,7 +105,7 @@ fn mind_prefires_only_at_the_spot_with_spread() {
     let spot = V2::new(7.0, 13.0);
     let me = V2::new(10.0, -5.0);
     let mut mind: EnemyMind = BrainState::new(4).squad_minds(4).remove(0);
-    let order = Order { role: Role::Anchor, goal: brain::utility::Goal::Hold, dest: None, watch: Some(spot), threat: None, sticky: true, prefire: Some(spot) };
+    let order = Order { role: Role::Anchor, goal: brain::utility::Goal::Hold, dest: None, watch: Some(spot), threat: None, sticky: true, via: None, prefire: Some(spot) };
     let mut fired = 0;
     let mut dirs = Vec::new();
     for k in 0..60 {

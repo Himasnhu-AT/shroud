@@ -172,6 +172,53 @@ impl NavGrid {
         None
     }
 
+    /// Walkable 8-neighbours of cell `idx` (no corner cutting) with the step length in metres.
+    pub fn neighbours(&self, idx: usize) -> impl Iterator<Item = (usize, f32)> + '_ {
+        let w = self.w as i64;
+        let (x, z) = ((idx % self.w) as i64, (idx / self.w) as i64);
+        [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)].into_iter().filter_map(move |(dx, dz)| {
+            let (nx, nz) = (x + dx, z + dz);
+            if nx < 0 || nz < 0 || nx >= w || nz >= w {
+                return None;
+            }
+            let ni = (nz * w + nx) as usize;
+            if !self.walkable[ni] || (dx != 0 && dz != 0 && (!self.walkable[(z * w + nx) as usize] || !self.walkable[(nz * w + x) as usize])) {
+                return None;
+            }
+            Some((ni, if dx != 0 && dz != 0 { std::f32::consts::SQRT_2 } else { 1.0 } * self.cell))
+        })
+    }
+
+    /// Path distance (m) from the nearest of `from` to every cell (Dijkstra, the same moves as
+    /// A*); `INFINITY` where unreachable or farther than `max`.
+    pub fn distance_field(&self, from: &[V2], max: f32) -> Vec<f32> {
+        let mut d = vec![f32::INFINITY; self.w * self.w];
+        let mut open = BinaryHeap::new();
+        for &p in from {
+            let i = self.idx_of(self.nearest_walkable(p));
+            d[i] = 0.0;
+            open.push(Node { f: 0.0, idx: i });
+        }
+        while let Some(Node { f, idx }) = open.pop() {
+            if f > d[idx] {
+                continue;
+            }
+            for (ni, step) in self.neighbours(idx) {
+                let nd = f + step;
+                if nd < d[ni] && nd <= max {
+                    d[ni] = nd;
+                    open.push(Node { f: nd, idx: ni });
+                }
+            }
+        }
+        d
+    }
+
+    /// Path distance from a field (`distance_field`) to `p`.
+    pub fn field_at(&self, field: &[f32], p: V2) -> f32 {
+        field[self.idx_of(self.nearest_walkable(p))]
+    }
+
     /// Smoothing for tactical paths: only shortcut a few cells so the route keeps its shape.
     fn smooth_short(&self, from: V2, pts: &[V2]) -> Vec<V2> {
         let mut out = Vec::new();

@@ -175,6 +175,7 @@ pub fn run_round_opts(
     let mut squad = SquadCoordinator::new(arena, n);
     squad.enabled = coordinated;
     squad.utility = utility;
+    squad.seed(seed);
     // --- end squad layer ---
     let mut last_hit: Vec<f32> = vec![f32::NEG_INFINITY; n]; // assist/trade bookkeeping
     let mut last_ally_death = f32::NEG_INFINITY;

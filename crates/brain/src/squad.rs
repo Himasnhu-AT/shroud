@@ -19,11 +19,14 @@ use crate::arena::{ARENA_HALF, Arena, BlockKind};
 use crate::bandit::{self, ArmScore, CTX_DIM, LiveCtx, TacticsLearner};
 use crate::genome::Traits;
 use crate::grenade::{self, GrenadeKind};
-use crate::math::{V2, angle_diff};
+use crate::encircle::{self, Sector};
+use crate::math::{BrainRng, V2, angle_diff, rng_from_seed};
 use crate::mind::{Blackboard, RADIO_PERIOD_S};
+use crate::search::{self, Searcher, Spot};
 use crate::perception::{Alert, Heard, Sound, heard_sigma};
 use crate::player_model::{CoverState, HEAT_W, PlayerModel, SECTORS, classify_cover, heat_idx, sector_of};
 use crate::utility::Goal;
+use rand::Rng;
 use std::cell::RefCell;
 use std::f32::consts::{PI, TAU};
 
@@ -181,14 +184,14 @@ const BELIEF_CELL: f32 = 2.0 * ARENA_HALF / BELIEF_W as f32;
 #[derive(Clone, Debug)]
 pub struct Belief {
     pub p: Vec<f32>,
-    walkable: Vec<bool>,
+    pub walkable: Vec<bool>,
 }
 
-fn cell_center(i: usize) -> V2 {
+pub fn cell_center(i: usize) -> V2 {
     V2::new(-ARENA_HALF + ((i % BELIEF_W) as f32 + 0.5) * BELIEF_CELL, -ARENA_HALF + ((i / BELIEF_W) as f32 + 0.5) * BELIEF_CELL)
 }
 
-fn cell_of(p: V2) -> usize {
+pub fn cell_of(p: V2) -> usize {
     let c = |v: f32| (((v + ARENA_HALF) / BELIEF_CELL).floor().clamp(0.0, (BELIEF_W - 1) as f32)) as usize;
     c(p.y) * BELIEF_W + c(p.x)
 }
@@ -341,6 +344,10 @@ pub enum Play {
     Bait,
     /// Player lost and far away: converge on the belief peak along different routes.
     Sweep,
+    /// Player unknown: split up over the belief's search spots (≤ 2 check the hot spot).
+    Search,
+    /// Player known: the spotter keeps shooting, the rest take his exits from distinct sides.
+    Encircle,
 }
 
 impl Play {
@@ -354,6 +361,8 @@ impl Play {
             Play::Collapse => "collapse",
             Play::Bait => "bait",
             Play::Sweep => "sweep",
+            Play::Search => "search",
+            Play::Encircle => "encircle",
         }
     }
 }
@@ -372,6 +381,10 @@ pub enum Role {
     Collapser,
     Bait,
     Support,
+    /// Searching a spot while the player is unknown.
+    Searcher,
+    /// Taking one of the player's exits (encirclement).
+    Cutoff,
     /// Holds and pre-aims the angle the player keeps re-peeking.
     Anchor,
     /// Throwing utility (winding up a frag or flashbang).
@@ -391,6 +404,8 @@ impl Role {
             Role::Collapser => "collapser",
             Role::Bait => "bait",
             Role::Support => "support",
+            Role::Searcher => "searcher",
+            Role::Cutoff => "cutoff",
             Role::Anchor => "anchor",
             Role::Breacher => "breacher",
         }
@@ -412,6 +427,8 @@ pub struct Order {
     pub sticky: bool,
     /// Anchor only: fire a short burst at this spot now (he is due to re-peek it).
     pub prefire: Option<V2>,
+    /// Go through this waypoint first (a route that differs from the teammates'), then `dest`.
+    pub via: Option<V2>,
 }
 
 /// The coordinator wants member `thrower` to release a grenade at `target` now.
@@ -517,7 +534,22 @@ impl MemberView {
 }
 
 const REPLAN_S: f32 = 1.0;
-const SWEEP_DIST: f32 = 18.0;
+/// The encirclement hands over to the bandit's plays after this long at the latest (s).
+pub const ENCIRCLE_S: f32 = 14.0;
+/// During a bandit play, he counts as out of the ring this far (m) from where it was set.
+pub const RELOCATED_M: f32 = 8.0;
+/// After the synchronised peek the bandit's plays take over after this long (s).
+pub const GO_S: f32 = 4.0;
+/// Staging ends (everyone peeks) after this long at the latest (s).
+pub const STAGE_S: f32 = 7.0;
+/// A mover counts as in position this close (m) to its sector goal.
+pub const ARRIVED_M: f32 = 2.5;
+/// The sectors are re-planned when he has moved this far (m).
+pub const ENCIRCLE_REPLAN_M: f32 = 3.0;
+/// Encirclement assignments are kept at least this long (s) unless he moved.
+pub const ENCIRCLE_COMMIT_S: f32 = 2.5;
+/// Longest stagger (s) before a member reacts to a new play.
+pub const MAX_LAG_S: f32 = 0.5;
 const MIN_PLAY_S: f32 = 3.0;
 const KNOWN_S: f32 = 3.0;
 /// A member's own sighting this fresh counts as "contact" for the callout.
@@ -613,6 +645,30 @@ pub struct SquadCoordinator {
     flash_wanted: f32,
     /// Tests / control port: throw this as soon as anyone can.
     pub force_throw: Option<GrenadeKind>,
+
+    // --- Split search and encirclement.
+    rng: BrainRng,
+    /// Current search spots (debug / control port).
+    pub search_spots: Vec<Spot>,
+    /// Spots looked into: (position, time).
+    searched: Vec<(V2, f32)>,
+    /// Per member: (search target, time assigned).
+    search_target: Vec<Option<(V2, f32)>>,
+    /// Members checking the hot spot (last seen / heard).
+    pub investigators: Vec<usize>,
+    /// Encirclement: approach sectors around the player and each member's sector.
+    pub sectors: Vec<Sector>,
+    pub sector_of: Vec<Option<usize>>,
+    /// Per member: the via point of its route (cleared once passed).
+    pub vias: Vec<Option<V2>>,
+    encircle_at: V2,
+    encircle_t: f32,
+    /// When the staged cutoffs were told to peek together.
+    pub go_t: Option<f32>,
+    /// Members that were shooting when the encirclement was planned.
+    pub shooters: Vec<usize>,
+    /// Staggered reactions: a member's new order lands after this many seconds.
+    order_lag: Vec<f32>,
 }
 
 /// At most this many members hold attack tokens at once (fewer in small squads).
@@ -687,6 +743,19 @@ impl SquadCoordinator {
             throws: Vec::new(),
             flash_wanted: 0.0,
             force_throw: None,
+            rng: rng_from_seed(0x5ea2c4 ^ n as u64),
+            search_spots: Vec::new(),
+            searched: Vec::new(),
+            search_target: vec![None; n],
+            investigators: Vec::new(),
+            sectors: Vec::new(),
+            sector_of: vec![None; n],
+            vias: vec![None; n],
+            encircle_at: V2::ZERO,
+            encircle_t: -99.0,
+            go_t: None,
+            shooters: Vec::new(),
+            order_lag: vec![0.0; n],
         }
     }
 
@@ -881,6 +950,10 @@ impl SquadCoordinator {
         self.prev_heard.resize(n, None);
         self.prev_alive.resize(n, true);
         self.thrown.resize(n, (false, false));
+        self.search_target.resize(n, None);
+        self.sector_of.resize(n, None);
+        self.vias.resize(n, None);
+        self.order_lag.resize(n, 0.0);
         self.time += dt;
         self.throw_cd -= dt;
         self.flash_wanted -= dt;
@@ -1028,24 +1101,24 @@ impl SquadCoordinator {
         let known = self.board.age < KNOWN_S;
         if alive == 1 && self.force_play.is_none() {
             // A lone survivor still searches with the squad's belief.
-            return if known { Play::Free } else { Play::Sweep };
+            return if known { Play::Free } else { Play::Search };
         }
         if let Some(p) = self.force_play {
             return p;
         }
-        // Unaware with nothing to go on: everyone hunts on their own (faster than a sweep).
-        if !known && self.board.alert == Alert::Unaware && self.heard_t >= 2.0 {
-            return Play::Free;
-        }
-        // In a fight, a lost player is hunted down fast (collapse), not bounded toward.
-        if !known && (self.heard_t < 2.0 || self.board.alert == Alert::Combat) {
-            return Play::Collapse;
-        }
+        // Unknown (unaware, or lost him): split up over the search spots; at most two check
+        // where he was last seen or heard. Never one swarm toward one point.
         if !known {
-            // Bound with overwatch near where he probably is; sweep there quickly when far.
-            let peak = self.belief.peak();
-            let near = members.iter().filter(|m| m.alive).any(|m| m.pos.dist(peak) < SWEEP_DIST);
-            return if near { Play::Overwatch } else { Play::Sweep };
+            return Play::Search;
+        }
+        // A fresh contact is encircled first: the spotter shoots, the rest cut off his exits.
+        // Once they are in position (or it took too long) the bandit picks the play.
+        let fresh = !matches!(self.play, Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait | Play::Encircle);
+        // He broke out of the ring (moved well away from where it was set): encircle again.
+        let relocated = self.play != Play::Encircle && self.play_t > MIN_PLAY_S && self.board.pos.dist(self.encircle_at) > RELOCATED_M;
+        let fresh = fresh || relocated;
+        if fresh || (self.play == Play::Encircle && !self.encircled()) {
+            return Play::Encircle;
         }
         if self.play_t < MIN_PLAY_S && matches!(self.play, Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait) {
             return self.play;
@@ -1071,7 +1144,17 @@ impl SquadCoordinator {
         if play != self.play || expired {
             self.close_episode(Some(members));
         }
+        let before = self.orders.clone();
         self.plan_play(play, members, arena, model, full);
+        // A member still "reacting" keeps its previous order a little longer.
+        for (i, lag) in self.order_lag.iter_mut().enumerate() {
+            if *lag > 0.0 {
+                *lag -= RADIO_PERIOD_S;
+                if let (Some(o), Some(b)) = (self.orders.get_mut(i), before.get(i)) {
+                    *o = *b;
+                }
+            }
+        }
         if self.play == Play::Free {
             self.anchor = None;
             self.pending_throw = None;
@@ -1117,7 +1200,7 @@ impl SquadCoordinator {
         // Pre-fire a little before his usual re-peek delay; only once he has done it twice.
         let w0 = (spot.delay * 0.75).max(0.5);
         let prefire = (spot.count >= 2 && (w0..w0 + 0.7).contains(&self.unseen_t)).then_some(spot.pos);
-        self.orders[i] = Some(Order { role: Role::Anchor, goal: Goal::Hold, dest: None, watch: Some(spot.pos), threat: None, sticky: true, prefire });
+        self.orders[i] = Some(Order { role: Role::Anchor, goal: Goal::Hold, dest: None, watch: Some(spot.pos), threat: None, sticky: true, via: None, prefire });
         if spot.count >= 2
             && let Some(s) = self.peeks.iter_mut().find(|s| s.pos == spot.pos && !s.called)
         {
@@ -1135,7 +1218,7 @@ impl SquadCoordinator {
                 return;
             }
             self.orders[t.thrower] =
-                Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(t.target), threat: None, sticky: true, prefire: None });
+                Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(t.target), threat: None, sticky: true, via: None, prefire: None });
             let left = left - RADIO_PERIOD_S;
             if left > 0.0 {
                 self.pending_throw = Some((t, left));
@@ -1215,7 +1298,7 @@ impl SquadCoordinator {
         let Some((_, i, aim)) = best.filter(|b| forced.is_some() || b.0 >= 0.3) else { return };
         self.force_throw = None;
         self.pending_throw = Some((ThrowOrder { thrower: i, kind, target: aim }, grenade::WINDUP_S));
-        self.orders[i] = Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(aim), threat: None, sticky: true, prefire: None });
+        self.orders[i] = Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(aim), threat: None, sticky: true, via: None, prefire: None });
     }
 
     fn plan_play(&mut self, play: Play, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
@@ -1241,6 +1324,20 @@ impl SquadCoordinator {
             self.orders.iter_mut().for_each(|o| *o = None);
             return;
         }
+        if changed {
+            // Staggered reactions: nobody but the spotter turns on a dime with the rest.
+            for (i, m) in members.iter().enumerate() {
+                let lag = if m.last_seen < FRESH_CONTACT_S || self.force_play.is_some() { 0.0 } else { self.rng.random::<f32>() * MAX_LAG_S };
+                if let Some(l) = self.order_lag.get_mut(i) {
+                    *l = lag;
+                }
+            }
+        }
+        match play {
+            Play::Search => return self.plan_search(members, arena, full, changed),
+            Play::Encircle => return self.plan_encircle(members, arena, full, changed),
+            _ => {}
+        }
         let target = match play {
             Play::Overwatch | Play::Sweep => arena.nav.nearest_walkable(self.belief.peak()),
             // The freshest of the last sound and the last sighting.
@@ -1250,10 +1347,10 @@ impl SquadCoordinator {
         // Members closest to the target first.
         let mut by_dist = alive.clone();
         by_dist.sort_by(|&a, &b| members[a].pos.dist(target).total_cmp(&members[b].pos.dist(target)).then(a.cmp(&b)));
-        let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false, prefire: None };
+        let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false, via: None, prefire: None };
 
         match play {
-            Play::Free => {}
+            Play::Free | Play::Search | Play::Encircle => {}
             Play::Crossfire => {
                 if full || changed {
                     self.assign_positions(&by_dist, members, arena, model, target, None);
@@ -1274,7 +1371,7 @@ impl SquadCoordinator {
                 let second = self.second;
                 let ep = members[entry].pos;
                 let away = (ep - target).norm();
-                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: false, prefire: None });
+                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: false, via: None, prefire: None });
                 if let Some(tr) = second {
                     if self.trail.last().is_none_or(|l| l.dist(ep) > 0.5) {
                         self.trail.push(ep);
@@ -1287,7 +1384,7 @@ impl SquadCoordinator {
                             .find(|p| arena.nav.walkable_at(*p) && arena.nav.clear_line(ep, *p))
                             .unwrap_or_else(|| arena.nav.nearest_walkable(ep + away * 5.0))
                     });
-                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(follow), watch: Some(target), threat: None, sticky: true, prefire: None });
+                    self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(follow), watch: Some(target), threat: None, sticky: true, via: None, prefire: None });
                 }
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != entry && Some(i) != second).collect();
                 if full || changed {
@@ -1317,7 +1414,7 @@ impl SquadCoordinator {
                     }
                 }
                 self.orders[flanker] =
-                    Some(Order { role: Role::Flanker, goal: Goal::Flank, dest: self.claims[flanker], watch: Some(target), threat: Some(target), sticky: true, prefire: None });
+                    Some(Order { role: Role::Flanker, goal: Goal::Flank, dest: self.claims[flanker], watch: Some(target), threat: Some(target), sticky: true, via: None, prefire: None });
                 let pins: Vec<usize> = by_dist.iter().copied().filter(|&i| i != flanker).collect();
                 if full || changed {
                     self.assign_positions(&pins, members, arena, model, target, None);
@@ -1337,7 +1434,7 @@ impl SquadCoordinator {
                 for (r, &i) in by_bearing.iter().enumerate() {
                     let ang = (members[i].pos - target).angle() + (r as f32 - (k - 1.0) * 0.5) * 0.35;
                     let dest = arena.nav.nearest_walkable(target + V2::from_angle(ang) * 5.0);
-                    self.orders[i] = Some(Order { role: Role::Collapser, goal: Goal::Hunt, dest: Some(dest), watch: Some(target), threat: Some(target), sticky: false, prefire: None });
+                    self.orders[i] = Some(Order { role: Role::Collapser, goal: Goal::Hunt, dest: Some(dest), watch: Some(target), threat: Some(target), sticky: false, via: None, prefire: None });
                 }
                 if changed {
                     let z = arena.zone_of(target).map_or("there", |z| z.name);
@@ -1351,7 +1448,7 @@ impl SquadCoordinator {
                     .get_or_insert_with(|| *alive.iter().max_by(|&&a, &&b| members[a].hp.total_cmp(&members[b].hp).then(b.cmp(&a))).unwrap_or(&alive[0]));
                 let r = model.weakest_range().clamp(6.0, 28.0);
                 let dest = arena.nav.nearest_walkable(target + (members[bait].pos - target).norm() * r);
-                self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None, sticky: true, prefire: None });
+                self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None, sticky: true, via: None, prefire: None });
                 let rest: Vec<usize> = by_dist.iter().copied().filter(|&i| i != bait).collect();
                 if full || changed {
                     self.assign_positions(&rest, members, arena, model, target, Some(dest));
@@ -1385,13 +1482,307 @@ impl SquadCoordinator {
                         if let Some(c) = self.claims[i] {
                             mates.push(c);
                         }
-                        self.orders[i] = Some(Order { role: Role::Bound, goal: Goal::Hold, dest: self.claims[i], watch: Some(target), threat: Some(target), sticky: false, prefire: None });
+                        self.orders[i] = Some(Order { role: Role::Bound, goal: Goal::Hold, dest: self.claims[i], watch: Some(target), threat: Some(target), sticky: false, via: None, prefire: None });
                     } else {
                         self.claims[i] = None;
                         self.orders[i] = Some(hold(None, Role::Overwatch));
                     }
                 }
             }
+        }
+    }
+
+    /// Seed the coordinator's own choices (spot sampling, staggers); deterministic per seed.
+    pub fn seed(&mut self, seed: u64) {
+        self.rng = rng_from_seed(seed ^ 0x5ea2_c4d1);
+    }
+
+    /// Where he was last seen or heard, if recent enough to check (freshest of the two).
+    pub fn hot_spot(&self) -> Option<V2> {
+        let heard = self.heard_at.filter(|_| self.heard_t < 8.0).map(|h| (h, self.heard_t));
+        let seen = (self.board.age < 15.0).then_some((self.board.pos, self.board.age));
+        let hot = match (heard, seen) {
+            (Some(h), Some(s)) => Some(if h.1 < s.1 { h.0 } else { s.0 }),
+            (a, b) => a.or(b).map(|x| x.0),
+        };
+        hot.filter(|h| !self.searched.iter().any(|(p, t)| self.time - t < search::SEARCHED_S && p.dist(*h) < search::SEARCHED_R))
+    }
+
+    /// The synchronised peek has had its moment (or the encirclement has run its time).
+    fn encircled(&self) -> bool {
+        self.play_t > ENCIRCLE_S || self.go_t.is_some_and(|g| self.time - g > GO_S)
+    }
+
+    /// Every mover is at its staging cell.
+    fn staged(&self, members: &[MemberView]) -> bool {
+        let mut movers = 0;
+        for (i, m) in members.iter().enumerate().filter(|(_, m)| m.alive) {
+            if let Some(s) = self.sector_of.get(i).copied().flatten().and_then(|s| self.sectors.get(s)) {
+                movers += 1;
+                if m.pos.dist(s.goal) > ARRIVED_M {
+                    return false;
+                }
+            }
+        }
+        movers > 0
+    }
+
+    /// Clear via points that a member has reached or passed.
+    fn update_vias(&mut self, members: &[MemberView]) {
+        for (i, v) in self.vias.iter_mut().enumerate() {
+            let (Some(p), Some(m), Some(o)) = (*v, members.get(i), self.orders.get(i).copied().flatten()) else {
+                *v = None;
+                continue;
+            };
+            let past = o.dest.is_some_and(|d| m.pos.dist(d) < p.dist(d));
+            if !m.alive || m.pos.dist(p) < 3.0 || past {
+                *v = None;
+            }
+        }
+    }
+
+    /// Search: split up over the belief's spots; at most two check the hot spot.
+    fn plan_search(&mut self, members: &[MemberView], arena: &Arena, full: bool, changed: bool) {
+        let alive: Vec<usize> = (0..members.len()).filter(|&i| members[i].alive).collect();
+        let now = self.time;
+        if changed {
+            self.search_target.iter_mut().for_each(|t| *t = None);
+            self.investigators.clear();
+            self.vias.iter_mut().for_each(|v| *v = None);
+            self.sector_of.iter_mut().for_each(|s| *s = None);
+            if (self.was_known || self.board.alert == Alert::Combat)
+                && let Some(&s) = alive.first()
+            {
+                self.bark(s, "Lost him - spreading out".into(), false);
+            }
+        }
+        // Negative information: spots (and the hot spot) someone has looked into are done.
+        self.searched.retain(|(_, t)| now - t < search::SEARCHED_S);
+        let mut looked: Vec<V2> = Vec::new();
+        let hot_now = self.hot_spot();
+        for sp in self.search_spots.iter().map(|s| s.pos).chain(hot_now) {
+            let seen = alive.iter().any(|&i| {
+                let m = &members[i];
+                m.pos.dist(sp) < 3.0 || ((full || changed) && search::sees_spot(arena, m.pos, m.look, sp))
+            });
+            if seen {
+                looked.push(sp);
+            }
+        }
+        for p in looked {
+            self.searched.push((p, now));
+        }
+        self.update_vias(members);
+        let hot = self.hot_spot();
+        let dropped = self.search_target.iter().enumerate().any(|(i, t)| {
+            t.is_some_and(|(p, at)| {
+                now - at > search::COMMIT_MAX_S
+                    || self.searched.iter().any(|(q, _)| q.dist(p) < search::SEARCHED_R)
+                    || !members.get(i).is_some_and(|m| m.alive)
+            })
+        });
+        let lost_hot = !self.investigators.is_empty() && hot.is_none();
+        if !(full || changed || dropped || lost_hot) {
+            return;
+        }
+        let eyes: Vec<V2> = alive.iter().map(|&i| members[i].pos).collect();
+        let mut spots = search::spots(arena, &self.belief, hot, &eyes, &self.searched, now);
+        if spots.is_empty() {
+            // Everything searched recently: start over from the belief.
+            spots = search::spots(arena, &self.belief, hot, &eyes, &[], now);
+        }
+        self.search_spots = spots;
+        let fields: Vec<Vec<f32>> = (0..members.len())
+            .map(|i| if members[i].alive { arena.nav.distance_field(&[members[i].pos], f32::INFINITY) } else { Vec::new() })
+            .collect();
+        // Investigators: the closest (by path) one or two; they keep the job while it lasts.
+        self.investigators.retain(|&i| members.get(i).is_some_and(|m| m.alive));
+        let want = match (hot, alive.len()) {
+            (None, _) => 0,
+            (Some(_), 0..=3) => 1,
+            _ => 2,
+        };
+        if let Some(h) = hot {
+            let mut by_d: Vec<usize> = alive.iter().copied().filter(|i| !self.investigators.contains(i)).collect();
+            by_d.sort_by(|&a, &b| arena.nav.field_at(&fields[a], h).total_cmp(&arena.nav.field_at(&fields[b], h)).then(a.cmp(&b)));
+            for i in by_d {
+                if self.investigators.len() >= want {
+                    break;
+                }
+                self.investigators.push(i);
+            }
+        }
+        self.investigators.truncate(want);
+        let searchers: Vec<usize> = alive.iter().copied().filter(|i| !self.investigators.contains(i)).collect();
+        let picks = {
+            let who: Vec<Searcher> = searchers
+                .iter()
+                .map(|&i| Searcher { slot: i, pos: members[i].pos, field: &fields[i], current: self.search_target[i].map(|t| t.0) })
+                .collect();
+            let reserved: Vec<V2> = hot.into_iter().collect();
+            search::assign(arena, &self.search_spots, &who, &reserved, &mut self.rng)
+        };
+        // Investigators come in along different routes.
+        if let Some(h) = hot {
+            let routes: Vec<(V2, V2)> = self.investigators.iter().map(|&i| (members[i].pos, h)).collect();
+            let guns = (self.board.alert == Alert::Combat).then(|| Self::centroid(members));
+            let vias = encircle::diverse_vias(arena, h, guns, &routes);
+            for (k, i) in self.investigators.clone().into_iter().enumerate() {
+                if changed || self.search_target[i].is_none_or(|t| t.0.dist(h) > 2.0) {
+                    self.vias[i] = vias[k];
+                    self.search_target[i] = Some((h, now));
+                    let text = if self.heard_t < self.board.age { "Checking that noise" } else { "Checking his last position" };
+                    self.bark(i, text.into(), false);
+                }
+            }
+        }
+        for (k, &i) in searchers.iter().enumerate() {
+            let old = self.search_target[i].map(|t| t.0);
+            match picks[k] {
+                Some(p) if old.is_none_or(|o| o.dist(p) > 1.0) => {
+                    self.search_target[i] = Some((p, now));
+                    self.vias[i] = None;
+                    if let Some(z) = arena.zone_of(p) {
+                        self.bark(i, format!("Checking {}", z.name), false);
+                    }
+                }
+                Some(_) => {}
+                None => self.search_target[i] = None,
+            }
+        }
+        let combat = self.board.alert == Alert::Combat;
+        for &i in &alive {
+            let Some((dest, _)) = self.search_target[i] else {
+                self.orders[i] = None;
+                continue;
+            };
+            let inv = self.investigators.contains(&i);
+            self.orders[i] = Some(Order {
+                role: if inv { Role::Collapser } else { Role::Searcher },
+                goal: Goal::Hunt,
+                dest: Some(dest),
+                watch: if inv { Some(dest) } else { None },
+                // In a fight, route around his likely lines of fire.
+                threat: if combat { hot } else { None },
+                sticky: true,
+                via: self.vias[i],
+                prefire: None,
+            });
+        }
+    }
+
+    /// Encircle: the spotter keeps shooting; everyone else takes a distinct approach sector
+    /// (his exits) along a route the others are not using.
+    fn plan_encircle(&mut self, members: &[MemberView], arena: &Arena, full: bool, changed: bool) {
+        let alive: Vec<usize> = (0..members.len()).filter(|&i| members[i].alive).collect();
+        let p = arena.nav.nearest_walkable(self.board.pos);
+        let now = self.time;
+        let closest = |alive: &[usize]| alive.iter().copied().min_by(|&a, &b| members[a].pos.dist(p).total_cmp(&members[b].pos.dist(p)));
+        if changed {
+            self.sector_of.iter_mut().for_each(|s| *s = None);
+            self.vias.iter_mut().for_each(|v| *v = None);
+            self.search_target.iter_mut().for_each(|t| *t = None);
+            self.investigators.clear();
+            self.go_t = None;
+            // The shooters: whoever sees him (at most two), else the closest.
+            let mut contact: Vec<usize> = alive.iter().copied().filter(|&i| members[i].last_seen < 1.0).collect();
+            contact.sort_by(|&a, &b| members[a].last_seen.total_cmp(&members[b].last_seen).then(members[a].pos.dist(p).total_cmp(&members[b].pos.dist(p))));
+            contact.truncate(if alive.len() >= 4 { 2 } else { 1 });
+            self.shooters = contact;
+        }
+        self.shooters.retain(|&i| members.get(i).is_some_and(|m| m.alive));
+        if self.shooters.is_empty()
+            && let Some(c) = closest(&alive)
+        {
+            self.shooters.push(c);
+        }
+        self.update_vias(members);
+        let moved = p.dist(self.encircle_at) > ENCIRCLE_REPLAN_M;
+        let due = changed || (full && (moved || now - self.encircle_t > ENCIRCLE_COMMIT_S));
+        if due {
+            let old: Vec<Option<f32>> = self.sector_of.iter().map(|s| s.and_then(|s| self.sectors.get(s)).map(|s| s.bearing)).collect();
+            if changed || moved || self.sectors.is_empty() {
+                self.sectors = encircle::sectors(arena, p);
+                self.encircle_at = p;
+            }
+            let movers: Vec<usize> = alive.iter().copied().filter(|i| !self.shooters.contains(i)).collect();
+            let dist: Vec<Vec<f32>> = movers
+                .iter()
+                .map(|&i| {
+                    let f = arena.nav.distance_field(&[members[i].pos], f32::INFINITY);
+                    self.sectors.iter().map(|s| arena.nav.field_at(&f, s.goal)).collect()
+                })
+                .collect();
+            let fixed: Vec<f32> = self.shooters.iter().map(|&i| (members[i].pos - p).angle()).collect();
+            // Previous sectors, mapped onto the current set by nearest bearing.
+            let prev: Vec<Option<usize>> = movers
+                .iter()
+                .map(|&i| {
+                    old.get(i).copied().flatten().and_then(|b| {
+                        (0..self.sectors.len()).min_by(|&x, &y| angle_diff(self.sectors[x].bearing, b).abs().total_cmp(&angle_diff(self.sectors[y].bearing, b).abs()))
+                    })
+                })
+                .collect();
+            let mut taken: Vec<usize> = prev.iter().flatten().copied().collect();
+            taken.sort_unstable();
+            let unique = taken.windows(2).all(|w| w[0] != w[1]);
+            let keep = (!changed && unique && !taken.is_empty()).then_some(prev.as_slice());
+            let pick = encircle::assign(&self.sectors, &dist, &fixed, keep, &mut self.rng);
+            self.sector_of.iter_mut().for_each(|s| *s = None);
+            // Routes, nearest first (they commit their corridors first).
+            let mut order: Vec<usize> = (0..movers.len()).filter(|&k| pick[k].is_some()).collect();
+            let d_of = |k: usize| pick[k].map_or(f32::INFINITY, |s| dist[k][s]);
+            order.sort_by(|&a, &b| d_of(a).total_cmp(&d_of(b)));
+            let routes: Vec<(V2, V2)> = order.iter().filter_map(|&k| pick[k].map(|s| (members[movers[k]].pos, self.sectors[s].goal))).collect();
+            let guns: Vec<V2> = self.shooters.iter().map(|&i| members[i].pos).collect();
+            let guns = (!guns.is_empty()).then(|| guns.iter().fold(V2::ZERO, |a, q| a + *q) * (1.0 / guns.len() as f32));
+            let vias = encircle::diverse_vias(arena, p, guns, &routes);
+            for (r, &k) in order.iter().enumerate() {
+                let i = movers[k];
+                let Some(s) = pick[k] else { continue };
+                let bearing = self.sectors[s].bearing;
+                let new_sector = old.get(i).copied().flatten().is_none_or(|b| angle_diff(b, bearing).abs() > 0.3);
+                self.sector_of[i] = Some(s);
+                if new_sector || changed {
+                    self.vias[i] = vias[r];
+                    let dir = SECTORS[sector_of(bearing)];
+                    let text = if r == 0 { format!("Flanking {dir}") } else { format!("Cutting him off - {dir}") };
+                    self.bark(i, text, false);
+                }
+            }
+            self.encircle_t = now;
+        }
+        // Staged: everyone is a step from his line of fire (or it took too long). Then all
+        // peek at once from their sides, so he can't take them one at a time.
+        if self.go_t.is_none() && (self.staged(members) || self.play_t > STAGE_S) {
+            self.go_t = Some(now);
+            if let Some(&s) = self.shooters.first() {
+                self.bark(s, "All set - go go go".into(), true);
+            }
+        }
+        let go = self.go_t.is_some();
+        for &i in &alive {
+            if self.shooters.contains(&i) {
+                // The spotter fights on its own judgement (shoot, strafe, peek).
+                self.orders[i] = None;
+                continue;
+            }
+            let Some(s) = self.sector_of[i].and_then(|s| self.sectors.get(s)).copied() else {
+                self.orders[i] = None;
+                continue;
+            };
+            let dest = if go { s.peek } else { s.goal };
+            let arrived = members[i].pos.dist(dest) < ARRIVED_M;
+            self.orders[i] = Some(Order {
+                role: Role::Cutoff,
+                goal: if arrived { Goal::Hold } else if go { Goal::Push } else { Goal::Flank },
+                dest: Some(dest),
+                watch: Some(p),
+                threat: if go { None } else { Some(p) },
+                sticky: !arrived,
+                via: if arrived || go { None } else { self.vias[i] },
+                prefire: None,
+            });
         }
     }
 
