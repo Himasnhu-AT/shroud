@@ -132,7 +132,8 @@ fn attack_tokens_limit_shooters() {
             assert!(k <= 3);
         }
     }
-    // Without a token, a distant member holds fire even with a clean shot.
+    // Tokens no longer hold fire: a distant member without one shoots on sight too (with a
+    // wider, suppressive spread; see bot_tactics.rs).
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let shots = |denied: bool| {
         let mut m = BrainState::new(5).squad_minds(5).remove(0);
@@ -146,7 +147,7 @@ fn attack_tokens_limit_shooters() {
             .count()
     };
     assert!(shots(false) > 0, "token holder shoots");
-    assert_eq!(shots(true), 0, "no token: hold fire");
+    assert!(shots(true) > 0, "no token: still shoots on sight");
 }
 
 #[test]

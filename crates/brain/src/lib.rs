@@ -16,6 +16,7 @@ pub mod nav;
 pub mod perception;
 pub mod neat;
 pub mod player_model;
+pub mod posts;
 pub mod posture;
 pub mod sim;
 pub mod squad;

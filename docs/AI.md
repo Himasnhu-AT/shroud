@@ -117,3 +117,32 @@ not from raw stats.
 - **Difficulty**: squad size, limits, coordination, attack-token cap and grenades come from
   `Settings.difficulty` at each round spawn; more enemies than evolved slots reuse genomes.
 - The background trainer cycles over every map.
+
+## Individual bot tactics (shoot on sight, posts, toughness)
+
+- **Shoot on sight.** Any member with a clear shot fires once its reaction passes. The
+  reaction is latched when a sighting starts: in combat it is `0.6 × reaction_time`, caught
+  unaware `1.8 ×`, and never below `Limits::min_reaction_s`. Attack tokens no longer hold
+  fire. They decide who shoots at full accuracy: a member without one fires with
+  `SUPPRESS_SPREAD` (1.6×) wider spread unless it is under fire or within 12 m. Tokens still
+  damp Attack/Push in utility. First shots are 1.6× wider and narrow over 0.6 s on target.
+- **Posts (`posts.rs`), peek-shoot-hide.** A member is *isolated* when no living ally is within
+  `ISOLATION_M` (15 m, about 4 s on foot). An isolated member in contact works cover posts. A
+  post is a cover point within 8 m that hides it crouched, with a peek cell 0.8–1.2 m sideways
+  (or standing up, for low cover) that sees the player. Posts are penalised for walking toward
+  him, crossing his view, and being within 3 m of peeks from the last 10 s. The loop is: move,
+  hide 0.3–0.8 s, peek with a burst of 0.4–0.9 s (leaning, `Action.lean`), hide 1.2–3 s
+  (reloading behind cover), then move to a new post at least 2.5 m away. Reload or hurt
+  windows (`player_hp < 0.35`) drop the loop so it pushes. Members without a token, and any
+  member in TakeCover, run one cycle instead of standing in the open. Sticky orders are never
+  interrupted.
+- **No hive mind.** Radio updates to the player's position reach each member after its own
+  seeded 0.2–0.6 s delay, while its own sightings are instant. Burst lengths jitter ±30%.
+- **Toughness.** Strafes are biased toward the nearest cover. The net's crouch call holds for
+  0.5–1.1 s. A member reloads behind cover within 4 m instead of in the open. A badly hurt
+  player who breaks line of sight gets pushed ("finish").
+- Bench: `memgate -- cargo run -p brain --example toughness -- 40` (gen 0, ghost v2, grenades
+  off, all maps × difficulties). It reports how often the player kills the whole squad. Before
+  these changes: 0.542. After: 0.475. The sim also counts its 60 s timeouts as player wins;
+  by that measure it is 0.682 → 0.678, because hiding solo bots run the clock out more often.
+  The game itself has no round clock.

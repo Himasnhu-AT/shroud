@@ -71,6 +71,8 @@ fn enemy_list(world: &mut World, _: Value) -> Result<Value, String> {
                 "goal": m.0.goal().label(),
                 "role": m.0.order().map(|o| o.role.label()),
                 "lean": c.lean,
+                "post": m.0.post_phase().map(|p| p.label()),
+                "isolated": m.0.isolated(),
                 "alert": m.0.alert().label(),
                 "sees_player": c.sees_player,
                 "crouched": c.crouched,
