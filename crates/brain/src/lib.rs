@@ -4,6 +4,7 @@
 pub mod arena;
 pub mod bandit;
 pub mod difficulty;
+pub mod encircle;
 pub mod evolve;
 pub mod genome;
 pub mod grenade;
@@ -18,6 +19,7 @@ pub mod neat;
 pub mod player_model;
 pub mod posts;
 pub mod posture;
+pub mod search;
 pub mod sim;
 pub mod squad;
 pub mod trainer;
