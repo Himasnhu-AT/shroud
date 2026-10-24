@@ -1,0 +1,28 @@
+---
+import { nav } from '../data/site';
+import Ticks from './Ticks.astro';
+const path = Astro.url.pathname;
+const current = (href: string) => (href !== '/#get' && path.startsWith(href) ? 'page' : undefined);
+---
+<header class="frame" data-frame>
+  <a class="frame__mark target" href="/" aria-label="Shroud, home" aria-current={path === '/' ? 'page' : undefined}>
+    <span class="wordmark">Shroud</span><Ticks />
+  </a>
+  <nav class="frame__nav" aria-label="Main">
+    <ul>
+      {nav.map((n) => (
+        <li><a class="target" href={n.href} aria-current={current(n.href)}><span>{n.label}</span><Ticks /></a></li>
+      ))}
+    </ul>
+  </nav>
+  <button class="frame__menu target" type="button" aria-expanded="false" aria-controls="menu" data-menu-open><span>Menu</span><Ticks /></button>
+</header>
+<div class="menu" id="menu" hidden data-menu>
+  <nav aria-label="Menu">
+    <ul>
+      <li><a href="/" aria-current={path === '/' ? 'page' : undefined}><span>Home</span></a></li>
+      {nav.map((n) => (<li><a href={n.href} aria-current={current(n.href)}><span>{n.label}</span></a></li>))}
+    </ul>
+  </nav>
+  <button class="menu__close target" type="button" data-menu-close><span>Close</span><Ticks /></button>
+</div>

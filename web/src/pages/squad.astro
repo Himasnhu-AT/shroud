@@ -1,0 +1,140 @@
+---
+import Base from '../layouts/Base.astro';
+import Shot from '../components/Shot.astro';
+import Plan from '../components/Plan.astro';
+import Ticks from '../components/Ticks.astro';
+import Floors from '../components/Floors.astro';
+import { squadPage as p, home } from '../data/site';
+const s = p.sections;
+---
+<Base title={p.title} description="How Shroud's enemy squad hunts you: a shared belief grid, a LinUCB bandit that picks plays, split search, report and surround, and evolution between matches.">
+  <header class="page-head">
+    <p class="label" data-split="lines" data-intro>The squad brain</p>
+    <h1 class="page-title" data-split="chars" data-intro>{p.title}</h1>
+    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">{p.summary}</p>
+    <dl class="page-meta" data-reveal="fade" data-intro data-delay="0.4">
+      {p.meta.map((m) => (<div><dt>{m.k}</dt><dd>{m.v}</dd></div>))}
+    </dl>
+  </header>
+
+  <figure class="bleed" data-reveal="scale" data-intro>
+    <Shot src="flank_break" alt={p.heroAlt} eager sizes="(max-width: 767px) calc(100vw - 32px), 100vw" widths={[480, 720, 1080, 1600, 1920]} />
+    <figcaption>Foundry, crouched in the south yard and taking fire from the squad.</figcaption>
+  </figure>
+
+
+  <section class="mapplan mapplan--lead" data-belief-scope aria-labelledby="s-belief">
+    <div class="mapplan__map" data-belief data-map="depot" data-mode="live" data-squad="5" data-seed="21" data-warm="8">
+      <Plan map="depot" zones title="Plan of Depot with its named zones" />
+      <canvas aria-hidden="true"></canvas>
+    </div>
+    <div class="mapplan__side">
+      <h2 id="s-belief" class="sect__title">{s.belief.title}</h2>
+      {s.belief.paras.map((t) => <p class="mapplan__text">{t}</p>)}
+      <p class="label">Live on Depot, squad of five. Zone names are the ones they use on the radio.</p>
+      <dl class="readout">
+        <div><dt>Play</dt><dd data-readout="mode">Search</dd></div>
+        <div><dt>Hottest cell</dt><dd data-readout="peak">H8</dd></div>
+        <div><dt>Last seen</dt><dd data-readout="seen">now</dd></div>
+      </dl>
+      <ol class="radio" data-radio aria-hidden="true"></ol>
+    </div>
+  </section>
+
+  <section class="sect" aria-labelledby="s-bandit">
+    <h2 id="s-bandit" class="sect__title">{s.bandit.title}</h2>
+    <div class="sect__body">
+      {s.bandit.paras.map((t) => <p>{t}</p>)}
+      <p class="sublabel">The four plays it chooses between</p>
+      <ul class="chips chips--arms">{s.bandit.arms.map((a) => <li>{a}</li>)}</ul>
+      <p class="sublabel">What it reads before choosing</p>
+      <ul class="chips">{s.bandit.context.map((a) => <li>{a}</li>)}</ul>
+    </div>
+  </section>
+
+  <section class="sect" aria-labelledby="s-plays">
+    <h2 id="s-plays" class="sect__title">{s.plays.title}</h2>
+    <div class="sect__body" style="grid-column: 5 / span 8; max-width: none">
+      <p>{s.plays.lead}</p>
+      <ul class="playbook" style="grid-column: auto">
+        {(s.plays.list as readonly { name: string; note: string; arm?: boolean }[]).map((x) => (
+          <li class={x.arm ? 'arm' : ''}><b>{x.name}</b><span>{x.arm ? 'Chosen by the bandit when it pays off against you.' : x.note}</span></li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="sect sect--fig" data-belief-scope aria-labelledby="s-search">
+    <h2 id="s-search" class="sect__title">{s.search.title}</h2>
+    <div class="sect__body">
+      {s.search.paras.map((t) => <p>{t}</p>)}
+      <ul class="calls">{s.search.calls.map((c) => <li>“{c}”</li>)}</ul>
+    </div>
+    <figure class="sect__fig">
+      <div data-belief data-map="office" data-mode="search" data-squad="5" data-seed="9" data-warm="5">
+        <Plan map="office" title="Plan of Office with five members searching" />
+        <canvas aria-hidden="true"></canvas>
+      </div>
+      <figcaption>Office, nobody in sight: five members, five different spots.</figcaption>
+    </figure>
+  </section>
+
+  <section class="sect sect--fig" data-belief-scope aria-labelledby="s-encircle">
+    <h2 id="s-encircle" class="sect__title">{s.encircle.title}</h2>
+    <div class="sect__body">
+      {s.encircle.paras.map((t) => <p>{t}</p>)}
+      <ul class="calls">{s.encircle.calls.map((c) => <li>“{c}”</li>)}</ul>
+    </div>
+    <figure class="sect__fig">
+      <div data-belief data-map="foundry" data-mode="encircle" data-squad="4" data-seed="3" data-warm="3" data-interactive="false">
+        <Plan map="foundry" title="Plan of Foundry with the squad surrounding a camping player" />
+        <canvas aria-hidden="true"></canvas>
+      </div>
+      <figcaption>Foundry: a camper in the south yard, surrounded from three sides.</figcaption>
+    </figure>
+  </section>
+
+  <section class="shots shots--pair" aria-label="The squad in the game">
+    <figure data-reveal="clip"><Shot src="flank_fire" alt="On Foundry an enemy in red runs across the yard in front of a rust-green wall." sizes="(max-width: 767px) 100vw, 50vw" /><figcaption>A member crosses the open yard while the squad closes in.</figcaption></figure>
+    <figure data-reveal="clip"><Shot src="lean_peek" alt="An enemy in red leans out past a concrete wall with something in hand, close to the player." sizes="(max-width: 767px) 100vw, 50vw" /><figcaption>Leaning out past the wall instead of stepping into the open.</figcaption></figure>
+  </section>
+
+  <section class="sect" aria-labelledby="s-alone">
+    <h2 id="s-alone" class="sect__title">{s.alone.title}</h2>
+    <div class="sect__body">
+      {s.alone.paras.map((t) => <p>{t}</p>)}
+      <ul class="calls">{s.alone.calls.map((c) => <li>“{c}”</li>)}</ul>
+    </div>
+  </section>
+
+  <section class="sect sect--fig" aria-labelledby="s-between">
+    <h2 id="s-between" class="sect__title">{s.between.title}</h2>
+    <div class="sect__body">{s.between.paras.map((t) => <p>{t}</p>)}</div>
+    <div class="sect__fig"><Floors /></div>
+  </section>
+
+  <section class="facts" aria-labelledby="facts-title">
+    <div class="facts__head">
+      <h2 id="facts-title" class="facts__title">The numbers</h2>
+      <p class="facts__lead">{home.results.lead}</p>
+    </div>
+    {home.results.items.map((r) => (
+      <div class="fact" data-reveal="up">
+        <h3 class="fact__label">{r.label}</h3>
+        <p class="fact__after">{r.after}{r.unit && <span class="fact__unit">&nbsp;{r.unit}</span>}</p>
+        <p class="fact__before">was {r.before}{r.unit && <>&nbsp;{r.unit}</>}</p>
+      </div>
+    ))}
+    <div class="fact" data-reveal="up">
+      <h3 class="fact__label">{home.results.ghost.label}</h3>
+      <p class="fact__after">0.06</p>
+      <p class="fact__before">was 0.17, on Foundry</p>
+      <p class="fact__note">Depot went from 0.23 to 0.15 and Office from 0.25 to 0.11.</p>
+    </div>
+  </section>
+
+  <nav class="next" aria-label="Next">
+    <p class="label">Next</p>
+    <a class="next__link target" href="/maps/"><span>The maps</span><Ticks /></a>
+  </nav>
+</Base>

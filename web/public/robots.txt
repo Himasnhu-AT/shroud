@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://shroud.marlgames.com/sitemap-index.xml

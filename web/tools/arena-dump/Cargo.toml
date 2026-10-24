@@ -1,0 +1,13 @@
+[package]
+name = "arena-dump"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Exports the real map plans (blocks, zones, spawns) from the `brain` crate as JSON for the
+# website. Run: memgate -- cargo run --manifest-path tools/arena-dump/Cargo.toml > src/data/maps.json
+[workspace]
+
+[dependencies]
+brain = { path = "../../../crates/brain" }
+serde_json = "1"

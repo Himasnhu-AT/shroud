@@ -1,0 +1,29 @@
+---
+import Base from '../../layouts/Base.astro';
+import Shot from '../../components/Shot.astro';
+import Ticks from '../../components/Ticks.astro';
+import Plan from '../../components/Plan.astro';
+import { maps } from '../../data/site';
+---
+<Base title="Maps" description="Shroud's three maps, Foundry, Depot and Office. Each has seven enemy spawn points, and the map changes with every match.">
+  <header class="page-head">
+    <p class="label" data-split="lines" data-intro>Seven enemy spawns each</p>
+    <h1 class="page-title" data-split="chars" data-intro>Maps</h1>
+    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">Three arenas, all inside the same 64 metre square the squad brain reasons about. The map changes every match, so the squad has to learn you on all of them.</p>
+  </header>
+  <ul class="mapgrid">
+    {maps.map((m, i) => (
+      <li data-reveal="up" data-delay={String(i * 0.08)}>
+        <a class="mapcard target" href={`/maps/${m.id}/`}>
+          <span class="mapcard__media">
+            <span class="mapcard__plan"><Plan map={m.id} title={`Plan of ${m.name}`} /></span>
+            <Shot src={m.cover} alt={m.coverAlt} sizes="(max-width: 767px) 55vw, 32vw" eager={i === 0} />
+          </span>
+          <span class="mapcard__name">{m.name}</span>
+          <span class="mapcard__blurb">{m.blurb}</span>
+          <Ticks />
+        </a>
+      </li>
+    ))}
+  </ul>
+</Base>

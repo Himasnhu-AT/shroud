@@ -1,0 +1,12 @@
+---
+// A real in-game capture: AVIF/WebP at responsive widths from the WebP masters in src/assets/shots.
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+const all = import.meta.glob<{ default: ImageMetadata }>('../assets/shots/*.webp', { eager: true });
+interface Props { src: string; alt: string; sizes?: string; eager?: boolean; class?: string; widths?: number[] }
+const { src, alt, sizes = '100vw', eager = false, class: cls, widths = [480, 800, 1200, 1600, 1920] } = Astro.props;
+const img = all[`../assets/shots/${src}.webp`]?.default;
+if (!img) throw new Error(`missing shot ${src}`);
+---
+<Picture src={img} alt={alt} formats={['avif', 'webp']} fallbackFormat="webp" widths={widths} sizes={sizes} class={cls}
+  loading={eager ? 'eager' : 'lazy'} decoding="async" fetchpriority={eager ? 'high' : 'auto'} quality={72} />

@@ -1,0 +1,15 @@
+---
+// Home only, first visit per session (see src/motion/setup.ts): a radio check. Grid cells light
+// with real loading progress, then clear outward from the spawn point into the hero.
+// Inner pages never render it; the cell transition is their only gate.
+const home = Astro.url.pathname === '/';
+---
+{home && (
+  <div id="loader" role="status" aria-label="Loading">
+    <div class="cells" aria-hidden="true"></div>
+    <div class="loader__inner">
+      <span class="loader__name" data-loader-out>Radio check</span>
+      <span class="loader__count" data-loader-out data-loader-count>000</span>
+    </div>
+  </div>
+)}

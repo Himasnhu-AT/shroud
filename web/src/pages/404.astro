@@ -1,0 +1,21 @@
+---
+import Base from '../layouts/Base.astro';
+import Plan from '../components/Plan.astro';
+import Ticks from '../components/Ticks.astro';
+import { notFound } from '../data/site';
+---
+<Base title={notFound.title} description="This page does not exist. The Shroud squad is still looking for it.">
+  <section class="lost" data-belief-scope>
+    <div class="lost__text">
+      <p class="label">404</p>
+      <h1 class="lost__title" data-split="chars" data-intro>{notFound.title}</h1>
+      <p data-reveal="fade" data-intro data-delay="0.3">{notFound.text}</p>
+      <ol class="radio" data-radio aria-hidden="true"></ol>
+      <a class="btn target" href="/" data-reveal="fade" data-intro data-delay="0.45"><span>Back to base</span><Ticks /></a>
+    </div>
+    <div class="lost__map" data-belief data-map="office" data-mode="cold" data-squad="5" data-seed="404" data-warm="3" data-interactive="false">
+      <Plan map="office" title="Plan of Office with the squad searching" />
+      <canvas aria-hidden="true"></canvas>
+    </div>
+  </section>
+</Base>

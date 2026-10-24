@@ -1,0 +1,92 @@
+---
+import Base from '../../layouts/Base.astro';
+import Shot from '../../components/Shot.astro';
+import Plan from '../../components/Plan.astro';
+import Ticks from '../../components/Ticks.astro';
+import data from '../../data/maps.json';
+import { maps } from '../../data/site';
+export function getStaticPaths() {
+  return maps.map((m) => ({ params: { slug: m.id } }));
+}
+const { slug } = Astro.params;
+const i = maps.findIndex((m) => m.id === slug);
+const m = maps[i];
+const next = maps[(i + 1) % maps.length];
+const geo = data.maps.find((x) => x.id === slug)!;
+const zones = geo.zones.length;
+---
+<Base title={m.name} description={`${m.name}, a Shroud map. ${m.blurb} Seven enemy spawns, ${zones} named zones the squad calls out on the radio.`}>
+  <header class="page-head">
+    <p class="label" data-split="lines" data-intro>Map {i + 1} of {maps.length}</p>
+    <h1 class="page-title" data-split="chars" data-intro>{m.name}</h1>
+    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">{m.blurb}</p>
+    <dl class="page-meta" data-reveal="fade" data-intro data-delay="0.4">
+      <div><dt>Enemy spawns</dt><dd>{geo.enemySpawns.length}</dd></div>
+      <div><dt>Named zones</dt><dd>{zones}</dd></div>
+      <div><dt>Size</dt><dd>64 by 64 metres</dd></div>
+    </dl>
+  </header>
+
+  <figure class="bleed" data-reveal="scale" data-intro>
+    <Shot src={m.cover} alt={m.coverAlt} eager sizes="(max-width: 767px) calc(100vw - 32px), 100vw" widths={[480, 720, 1080, 1600, 1920]} />
+  </figure>
+
+  <section class="sect" aria-labelledby="about">
+    <h2 id="about" class="sect__title">The layout</h2>
+    <div class="sect__body"><p>{m.about}</p></div>
+  </section>
+
+  <section class="mapplan" data-belief-scope aria-label={`Plan of ${m.name}`}>
+    <div class="mapplan__map" data-belief data-map={m.id} data-mode="live" data-squad="4" data-seed={String(31 + i)} data-zones="true" data-spawns="true" data-warm="7">
+      <Plan map={m.id} zones spawns title={`Plan of ${m.name} with its zones and spawn points`} />
+      <canvas aria-hidden="true"></canvas>
+    </div>
+    <div class="mapplan__side">
+      <p class="label">The plan, from the game’s own map data</p>
+      <ul class="legend">
+        <li><i class="l-tall"></i>Tall cover and walls: blocks sight and bullets</li>
+        <li><i class="l-low"></i>Low cover: hides you when crouched</li>
+        <li><i class="l-spawn"></i>Enemy spawn points, numbered</li>
+        <li><i class="l-heat"></i>Belief: where the squad thinks you are</li>
+        <li><i class="l-squad"></i>Squad member and where it looks</li>
+        <li><i class="l-you"></i>You, or the ghost when you are away</li>
+      </ul>
+      <ol class="radio" data-radio aria-hidden="true"></ol>
+    </div>
+  </section>
+
+  {m.shots.length > 0 && (
+    <section class={m.shots.length === 2 ? "shots shots--pair" : "shots"} aria-label={`${m.name} in the game`}>
+      {m.shots.map((s) => (
+        <figure data-reveal="clip"><Shot src={s.src} alt={s.alt} sizes="(max-width: 767px) 100vw, 66vw" /><figcaption>{s.caption}</figcaption></figure>
+      ))}
+    </section>
+  )}
+
+  {m.compare && (
+    <section class="sect" aria-labelledby="quality">
+      <h2 id="quality" class="sect__title">Low and High</h2>
+      <div class="sect__body"><p>The Video tab has four quality presets. Drag across a frame, or focus it and use the arrow keys, to compare Low with High.</p></div>
+      <div class="comparelist">
+        {m.compare.map((c) => (
+          <figure>
+            <div class="compare">
+              <Shot src={c.low} alt={`${c.alt} at Low quality`} sizes="(max-width: 767px) 100vw, 75vw" />
+              <div class="compare__high"><Shot src={c.high} alt={`${c.alt} at High quality`} sizes="(max-width: 767px) 100vw, 75vw" /></div>
+              <span class="compare__line" aria-hidden="true"></span>
+              <span class="compare__tag compare__tag--low" aria-hidden="true">Low</span>
+              <span class="compare__tag compare__tag--high" aria-hidden="true">High</span>
+              <input type="range" min="0" max="100" value="50" aria-label={`Split between Low and High quality: ${c.caption}`} />
+            </div>
+            <figcaption>{c.caption}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <nav class="next" aria-label="Next map">
+    <p class="label">Next map</p>
+    <a class="next__link target" href={`/maps/${next.id}/`}><span>{next.name}</span><Ticks /></a>
+  </nav>
+</Base>
