@@ -4,7 +4,8 @@
 use bevy::prelude::*;
 
 use crate::audio::LOW_HP_FRAC;
-use crate::player::{Player, PlayerCamera, PlayerSet};
+use crate::player::{Player, PlayerSet};
+use engine::gfx::MainCamera;
 use crate::state::{GameState, has_visuals, not_paused};
 use crate::weapon::{Damage, Health};
 
@@ -240,7 +241,7 @@ fn update_indicators(
 fn camera_shake(
     time: Res<Time>,
     fb: Res<Feedback>,
-    mut cams: Query<&mut Transform, With<PlayerCamera>>,
+    mut cams: Query<&mut Transform, With<MainCamera>>,
 ) {
     if fb.trauma <= 0.0 {
         return;

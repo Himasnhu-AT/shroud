@@ -1,20 +1,27 @@
-//! The built-in control commands (`game.*`, `time.*`, `player.*`, `capture.*`, `debug.*`,
-//! `perf.*`). Enemy, AI and match-flow modules register their own.
+//! Shroud's own control commands: `game.state` (with the player), `game.start`, `game.menu`,
+//! `player.*` and `debug.overlay`. The engine provides the generic ones (`engine.*`, `time.*`,
+//! `screenshot`, `perf.*`, `metrics.*`, `ui.*`, `input.*`); enemy, AI and map commands live in
+//! `ai_commands` and `map`.
 //!
-//! Player commands go through the same path as a human: `player.move` and `player.fire` write
-//! [`PlayerIntent`] (with [`ExternalControl`] on) between `PlayerSet::Input` and `PlayerSet::Move`.
+//! Player commands go through the same path as a human: `player.move` writes the controller's
+//! `FpsInput` and `player.fire` the trigger ([`PlayerIntent`]) between `PlayerSet::Input` and
+//! `PlayerSet::Move`, with [`ExternalControl`] on.
 
-use std::collections::VecDeque;
 use std::time::Duration;
 
 use bevy::diagnostic::FrameCount;
+use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
+use engine::cli::GameSeed;
+use engine::devtools::{AddControlCommand, PendingReplies, ReplyId, params};
+use engine::fps::{FpsInput, FpsLook, FpsMotor};
+use engine::gfx::MainCamera;
+use engine::pause::PauseCtl;
 use serde_json::{Value, json};
 
-use super::control::{ControlAppExt, PendingReplies, ReplyId, params};
-use super::{DebugOverlay, GameSeed, data_dir};
-use crate::player::{ExternalControl, Player, PlayerCamera, PlayerIntent, PlayerLook, PlayerMotor, PlayerSet};
-use crate::state::{GameState, Headless};
+use crate::enemy::debug::DebugOverlay;
+use crate::player::{ExternalControl, Player, PlayerIntent, PlayerSet};
+use crate::state::{AppState, GameState};
 use crate::weapon::{Damage, Health, RELOAD_TIME, Rifle, ShotFired, WeaponSet};
 
 const MAX_PITCH: f32 = 1.54;
@@ -50,15 +57,6 @@ struct Fire {
     elapsed: Duration,
 }
 
-#[derive(Resource, Default)]
-struct StepJob(Option<Step>);
-
-struct Step {
-    reply: ReplyId,
-    left: u32,
-    started: u32,
-}
-
 /// `player.crouch` holds crouch until turned off.
 #[derive(Resource, Default)]
 struct HeldCrouch(bool);
@@ -67,71 +65,17 @@ struct HeldCrouch(bool);
 #[derive(Resource, Default)]
 pub struct GodMode(pub bool);
 
-/// Frames left before `game.quit` exits (so the reply reaches the client first).
-#[derive(Resource, Default)]
-struct QuitIn(Option<u32>);
-
-/// Recent real frame times, for `perf.stats`.
-#[derive(Resource, Default)]
-pub struct FrameStats {
-    times: VecDeque<f32>,
-}
-
-impl FrameStats {
-    const LEN: usize = 600;
-
-    /// `(fps, p50, p95, p99)` in milliseconds over the last ~10 s.
-    pub fn summary(&self) -> (f32, f32, f32, f32) {
-        if self.times.is_empty() {
-            return (0.0, 0.0, 0.0, 0.0);
-        }
-        let mut v: Vec<f32> = self.times.iter().copied().collect();
-        v.sort_by(f32::total_cmp);
-        let pct = |p: f32| v[((v.len() - 1) as f32 * p).round() as usize] * 1000.0;
-        let mean = v.iter().sum::<f32>() / v.len() as f32;
-        let fps = if mean > 0.0 { 1.0 / mean } else { 0.0 };
-        (fps, pct(0.5), pct(0.95), pct(0.99))
-    }
-}
-
 pub(super) fn register(app: &mut App) {
     app.init_resource::<MoveJob>()
         .init_resource::<FireJob>()
-        .init_resource::<StepJob>()
         .init_resource::<HeldCrouch>()
         .init_resource::<GodMode>()
-        .init_resource::<QuitIn>()
-        .init_resource::<FrameStats>()
-        .init_resource::<DebugOverlay>()
         .configure_sets(Update, ControlDrive.after(PlayerSet::Input).before(PlayerSet::Move))
-        .add_systems(
-            Update,
-            (
-                drive_player.in_set(ControlDrive),
-                (observe_fire, god_mode).after(WeaponSet),
-                quit_countdown,
-            ),
-        )
-        .add_systems(Last, (step_frames, record_frame));
+        .add_systems(Update, (drive_player.in_set(ControlDrive), (observe_fire, god_mode).after(WeaponSet)));
 
     let none = params(&[]);
-    app.add_control_command("game.state", "Game state", none.clone(), game_state)
-        .add_control_command("game.start", "Start playing", none.clone(), game_start)
-        .add_control_command("game.pause", "Pause game time", none.clone(), game_pause)
-        .add_control_command("game.resume", "Resume game time", none.clone(), game_resume)
-        .add_control_command("game.quit", "Quit the game", none.clone(), game_quit)
-        .add_control_command(
-            "time.scale",
-            "Set game speed",
-            params(&[("factor", "number", "0..8, 1 = normal")]),
-            time_scale,
-        )
-        .add_deferred_control_command(
-            "time.step",
-            "Run N frames while paused",
-            params(&[("frames", "integer", "frames to run (default 1)")]),
-            time_step,
-        )
+    app.add_control_command("game.state", "Game state and the player", none.clone(), game_state)
+        .add_control_command("game.start", "Start playing (restarts the round when already playing)", none.clone(), game_start)
         .add_control_command(
             "player.teleport",
             "Teleport the player",
@@ -184,38 +128,13 @@ pub(super) fn register(app: &mut App) {
             params(&[("on", "boolean", "default true")]),
             player_god,
         )
-        .add_deferred_control_command(
-            "capture.screenshot",
-            "Save a screenshot (windowed only)",
-            params(&[("path", "string", "PNG path (default: data dir)")]),
-            capture_screenshot,
-        )
         .add_control_command(
             "debug.overlay",
             "Debug overlay",
             params(&[("on", "boolean", "default true")]),
             debug_overlay,
         )
-        .add_control_command("perf.stats", "Frame-time statistics", none.clone(), perf_stats)
-        .add_control_command("game.menu", "Abandon the match and go to the main menu", none.clone(), game_menu)
-        .add_control_command(
-            "ui.screen",
-            "Open a menu screen (pause = pause menu in a round)",
-            params(&[("screen", "string", "main|setup|settings|pause|none"), ("tab", "integer", "settings tab 0..3")]),
-            ui_screen,
-        )
-        .add_control_command(
-            "ui.nav",
-            "Send a menu input",
-            params(&[("input", "string", "up|down|left|right|accept|back|next_tab|prev_tab")]),
-            ui_nav,
-        )
-        .add_control_command(
-            "ui.setting",
-            "Change a setting (no params: list them)",
-            params(&[("key", "string", "e.g. fov, quality, master_volume"), ("value", "number", "index for choices, 0/1 toggles")]),
-            ui_setting,
-        );
+        .add_control_command("game.menu", "Abandon the match and go to the main menu", none, game_menu);
 }
 
 // ---- params ----
@@ -245,19 +164,31 @@ fn player_entity(world: &mut World) -> Result<Entity, String> {
 }
 
 fn playing(world: &World) -> bool {
-    world
-        .get_resource::<State<GameState>>()
-        .is_some_and(|s| *s.get() == GameState::Playing)
+    world.get_resource::<State<GameState>>().is_some_and(|s| *s.get() == GameState::Playing)
 }
 
-// ---- game / time ----
+/// Old state names: `Menu` for the main menu, else the in-game sub-state.
+fn state_name(world: &World) -> Option<String> {
+    match world.get_resource::<State<AppState>>().map(|s| *s.get())? {
+        AppState::InGame => world.get_resource::<State<GameState>>().map(|s| format!("{:?}", s.get())),
+        AppState::MainMenu => Some("Menu".into()),
+        s => Some(format!("{s:?}")),
+    }
+}
+
+fn set_paused(world: &mut World, on: bool) {
+    let mut st = SystemState::<PauseCtl>::new(world);
+    if let Ok(mut ctl) = st.get_mut(world) {
+        ctl.set(on);
+    }
+}
+
+// ---- game ----
 
 fn game_state(world: &mut World, _: Value) -> Result<Value, String> {
-    let state = world
-        .get_resource::<State<GameState>>()
-        .map(|s| format!("{:?}", s.get()));
+    let state = state_name(world);
     let player = world
-        .query_filtered::<(&Transform, Option<&Health>, Option<&Rifle>, &PlayerLook, &PlayerMotor), With<Player>>()
+        .query_filtered::<(&Transform, Option<&Health>, Option<&Rifle>, &FpsLook, &FpsMotor), With<Player>>()
         .iter(world)
         .next()
         .map(|(tf, hp, rifle, look, motor)| {
@@ -284,89 +215,21 @@ fn game_state(world: &mut World, _: Value) -> Result<Value, String> {
 }
 
 fn game_start(world: &mut World, _: Value) -> Result<Value, String> {
-    world.resource_mut::<NextState<GameState>>().set(GameState::Playing);
-    world.resource_mut::<Time<Virtual>>().unpause();
+    let in_game = world.get_resource::<State<AppState>>().is_some_and(|s| *s.get() == AppState::InGame);
+    if in_game {
+        world.resource_mut::<NextState<GameState>>().set(GameState::Playing);
+    } else {
+        world.resource_mut::<NextState<AppState>>().set(AppState::InGame);
+    }
+    set_paused(world, false);
     Ok(json!({}))
 }
 
-fn game_pause(world: &mut World, _: Value) -> Result<Value, String> {
-    world.resource_mut::<Time<Virtual>>().pause();
+fn game_menu(world: &mut World, _: Value) -> Result<Value, String> {
+    world.resource_mut::<crate::match_flow::MatchFlow>().abandon();
+    world.resource_mut::<NextState<AppState>>().set(AppState::MainMenu);
+    set_paused(world, false);
     Ok(json!({}))
-}
-
-fn game_resume(world: &mut World, _: Value) -> Result<Value, String> {
-    world.resource_mut::<Time<Virtual>>().unpause();
-    Ok(json!({}))
-}
-
-fn game_quit(world: &mut World, _: Value) -> Result<Value, String> {
-    world.resource_mut::<QuitIn>().0 = Some(3);
-    Ok(json!({}))
-}
-
-fn quit_countdown(mut quit: ResMut<QuitIn>, mut exit: MessageWriter<AppExit>) {
-    if let Some(n) = quit.0 {
-        if n == 0 {
-            exit.write(AppExit::Success);
-            quit.0 = None;
-        } else {
-            quit.0 = Some(n - 1);
-        }
-    }
-}
-
-fn time_scale(world: &mut World, p: Value) -> Result<Value, String> {
-    let f = need(&p, "factor")?;
-    if !(0.0..=8.0).contains(&f) {
-        return Err("`factor` must be in 0..8".into());
-    }
-    world.resource_mut::<Time<Virtual>>().set_relative_speed_f64(f);
-    Ok(json!({}))
-}
-
-fn time_step(world: &mut World, p: Value, reply: ReplyId) -> Result<(), String> {
-    let frames = p.get("frames").and_then(Value::as_u64).unwrap_or(1).clamp(1, 100_000) as u32;
-    if !world.resource::<Time<Virtual>>().is_paused() {
-        return Err("time.step needs a paused game (game.pause first)".into());
-    }
-    if world.resource::<StepJob>().0.is_some() {
-        return Err("a time.step is already running".into());
-    }
-    world.resource_mut::<Time<Virtual>>().unpause();
-    let started = world.get_resource::<FrameCount>().map_or(0, |f| f.0);
-    world.resource_mut::<StepJob>().0 = Some(Step { reply, left: frames, started });
-    Ok(())
-}
-
-/// Last: count stepped frames (from the next frame on: this frame's virtual delta was 0) and
-/// pause again when done.
-fn step_frames(
-    mut job: ResMut<StepJob>,
-    frame: Res<FrameCount>,
-    mut time: ResMut<Time<Virtual>>,
-    mut pending: ResMut<PendingReplies>,
-) {
-    let Some(step) = job.0.as_mut() else { return };
-    if frame.0 == step.started {
-        return;
-    }
-    step.left -= 1;
-    if step.left == 0 {
-        time.pause();
-        let reply = step.reply;
-        job.0 = None;
-        pending.reply(reply, Ok(json!({"frame": frame.0})));
-    }
-}
-
-fn record_frame(time: Res<Time<Real>>, mut stats: ResMut<FrameStats>) {
-    let dt = time.delta_secs();
-    if dt > 0.0 {
-        if stats.times.len() == FrameStats::LEN {
-            stats.times.pop_front();
-        }
-        stats.times.push_back(dt);
-    }
 }
 
 // ---- player ----
@@ -382,11 +245,11 @@ fn player_teleport(world: &mut World, p: Value) -> Result<Value, String> {
             tf.translation.y = y as f32;
         }
     }
-    if let Some(mut motor) = ent.get_mut::<PlayerMotor>() {
+    if let Some(mut motor) = ent.get_mut::<FpsMotor>() {
         motor.velocity = Vec3::ZERO;
     }
     if let Some(yaw) = num(&p, "yaw")
-        && let Some(mut look) = ent.get_mut::<PlayerLook>()
+        && let Some(mut look) = ent.get_mut::<FpsLook>()
     {
         look.yaw = yaw as f32;
     }
@@ -402,7 +265,7 @@ fn player_look(world: &mut World, p: Value) -> Result<Value, String> {
         };
         let body = world.get::<Transform>(e).map_or(Vec3::ZERO, |t| t.translation);
         let eye_local = world
-            .query_filtered::<&Transform, With<PlayerCamera>>()
+            .query_filtered::<&Transform, With<MainCamera>>()
             .iter(world)
             .next()
             .map_or(Vec3::Y * 0.8, |t| t.translation);
@@ -414,13 +277,13 @@ fn player_look(world: &mut World, p: Value) -> Result<Value, String> {
         let pitch = d.y.atan2(Vec2::new(d.x, d.z).length());
         (yaw, pitch)
     } else {
-        let look = world.get::<PlayerLook>(e).ok_or("no PlayerLook")?;
+        let look = world.get::<FpsLook>(e).ok_or("no FpsLook")?;
         (
             num(&p, "yaw").map_or(look.yaw, |v| v as f32),
             num(&p, "pitch").map_or(look.pitch, |v| v as f32),
         )
     };
-    let mut look = world.get_mut::<PlayerLook>(e).ok_or("no PlayerLook")?;
+    let mut look = world.get_mut::<FpsLook>(e).ok_or("no FpsLook")?;
     look.yaw = yaw;
     look.pitch = pitch.clamp(-MAX_PITCH, MAX_PITCH);
     Ok(json!({"yaw": look.yaw, "pitch": look.pitch}))
@@ -465,44 +328,52 @@ fn player_fire(world: &mut World, p: Value, reply: ReplyId) -> Result<(), String
     Ok(())
 }
 
-/// Between `PlayerSet::Input` and `PlayerSet::Move`: write the intent for running jobs and
-/// answer finished ones.
+/// Between `PlayerSet::Input` and `PlayerSet::Move`: write the controller input and trigger for
+/// running jobs and answer finished ones.
 fn drive_player(
     time: Res<Time>,
     real: Res<Time<Real>>,
-    state: Res<State<GameState>>,
+    state: Option<Res<State<GameState>>>,
     held: Res<HeldCrouch>,
     mut moves: ResMut<MoveJob>,
     mut fires: ResMut<FireJob>,
     mut intent: ResMut<PlayerIntent>,
     mut external: ResMut<ExternalControl>,
     mut pending: ResMut<PendingReplies>,
-    players: Query<&Transform, With<Player>>,
+    mut players: Query<(&Transform, &mut FpsInput), With<Player>>,
 ) {
-    let is_playing = *state.get() == GameState::Playing;
-    let pos = players.single().map(|t| v3(t.translation)).unwrap_or(Value::Null);
+    let is_playing = state.is_some_and(|s| *s.get() == GameState::Playing);
+    let Ok((tf, mut input)) = players.single_mut() else { return };
+    let pos = v3(tf.translation);
+    let driving = moves.0.is_some() || fires.0.is_some() || held.0;
 
     if let Some(m) = moves.0.as_mut() {
         if !is_playing {
             pending.reply(m.reply, Err("left Playing before the move finished".into()));
             moves.0 = None;
-            intent.move_axis = Vec2::ZERO;
+            input.move_axis = Vec2::ZERO;
         } else if m.left.is_zero() {
             pending.reply(m.reply, Ok(json!({"pos": pos})));
             moves.0 = None;
-            intent.move_axis = Vec2::ZERO;
-            intent.sprint = false;
+            input.move_axis = Vec2::ZERO;
+            input.sprint = false;
             if !held.0 {
-                intent.crouch = false;
+                input.crouch = false;
             }
         } else {
-            intent.move_axis = m.axis;
-            intent.sprint = m.sprint;
+            input.move_axis = m.axis;
+            input.sprint = m.sprint;
+            input.jump = false;
             if let Some(c) = m.crouch {
-                intent.crouch = c;
+                input.crouch = c;
             }
             m.left = m.left.saturating_sub(time.delta());
         }
+    } else if driving {
+        // Firing or holding crouch: the keyboard doesn't move the player meanwhile.
+        input.move_axis = Vec2::ZERO;
+        input.sprint = false;
+        input.jump = false;
     }
 
     if let Some(f) = fires.0.as_mut() {
@@ -519,7 +390,7 @@ fn drive_player(
     }
 
     if held.0 {
-        intent.crouch = true;
+        input.crouch = true;
     }
     let driving = moves.0.is_some() || fires.0.is_some() || held.0;
     if external.0 != driving {
@@ -571,7 +442,10 @@ fn player_reload(world: &mut World, _: Value) -> Result<Value, String> {
 fn player_crouch(world: &mut World, p: Value) -> Result<Value, String> {
     let on = flag(&p, "on").unwrap_or(true);
     world.resource_mut::<HeldCrouch>().0 = on;
-    world.resource_mut::<PlayerIntent>().crouch = on;
+    let e = player_entity(world)?;
+    if let Some(mut input) = world.get_mut::<FpsInput>(e) {
+        input.crouch = on;
+    }
     Ok(json!({}))
 }
 
@@ -580,83 +454,9 @@ fn player_god(world: &mut World, p: Value) -> Result<Value, String> {
     Ok(json!({}))
 }
 
-// ---- capture / debug / perf ----
-
-fn capture_screenshot(world: &mut World, p: Value, reply: ReplyId) -> Result<(), String> {
-    use bevy::render::view::window::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
-    if world.resource::<Headless>().0 {
-        return Err("capture.screenshot needs a window (not --headless)".into());
-    }
-    let path = match p.get("path").and_then(Value::as_str) {
-        Some(s) => std::path::PathBuf::from(s),
-        None => {
-            let frame = world.get_resource::<FrameCount>().map_or(0, |f| f.0);
-            data_dir().join("screenshots").join(format!("shot-{frame}.png"))
-        }
-    };
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let shown = path.display().to_string();
-    let shot = match world.get_resource::<super::offscreen::OffscreenTarget>() {
-        Some(t) => Screenshot::image(t.0.clone()),
-        None => Screenshot::primary_window(),
-    };
-    world
-        .spawn(shot)
-        .observe(save_to_disk(path))
-        .observe(move |_: On<ScreenshotCaptured>, mut pending: ResMut<PendingReplies>| {
-            pending.reply(reply, Ok(json!({"path": shown})));
-        });
-    Ok(())
-}
+// ---- debug ----
 
 fn debug_overlay(world: &mut World, p: Value) -> Result<Value, String> {
     world.resource_mut::<DebugOverlay>().0 = flag(&p, "on").unwrap_or(true);
     Ok(json!({}))
-}
-
-fn perf_stats(world: &mut World, _: Value) -> Result<Value, String> {
-    let (fps, p50, p95, p99) = world.resource::<FrameStats>().summary();
-    Ok(json!({
-        "fps": fps,
-        "frame_ms": {"p50": p50, "p95": p95, "p99": p99},
-        "entities": world.entities().count_spawned(),
-        "perf": super::perf::stats_json(world),
-    }))
-}
-
-// ---- ui ----
-
-fn game_menu(world: &mut World, _: Value) -> Result<Value, String> {
-    world.resource_mut::<crate::match_flow::MatchFlow>().abandon();
-    world.resource_mut::<NextState<GameState>>().set(GameState::Menu);
-    Ok(json!({}))
-}
-
-fn ui_screen(world: &mut World, p: Value) -> Result<Value, String> {
-    use crate::ui::screens::{Screen, open_screen};
-    let name = p.get("screen").and_then(Value::as_str).unwrap_or("none");
-    let screen = if name == "none" { None } else { Some(Screen::parse(name).ok_or_else(|| format!("unknown screen `{name}`"))?) };
-    let tab = p.get("tab").and_then(Value::as_u64).map(|t| t as usize);
-    open_screen(world, screen, tab)?;
-    Ok(json!({}))
-}
-
-fn ui_nav(world: &mut World, p: Value) -> Result<Value, String> {
-    use crate::ui::widgets::{NavInput, NavQueue};
-    let s = p.get("input").and_then(Value::as_str).ok_or("`input` (string) is required")?;
-    let n = NavInput::parse(s).ok_or_else(|| format!("unknown input `{s}`"))?;
-    world.resource_mut::<NavQueue>().0.push(n);
-    Ok(json!({}))
-}
-
-fn ui_setting(world: &mut World, p: Value) -> Result<Value, String> {
-    use crate::ui::widgets::Field;
-    if let Some(k) = p.get("key").and_then(Value::as_str) {
-        let f = Field::from_key(k).ok_or_else(|| format!("unknown setting `{k}`"))?;
-        let v = need(&p, "value")? as f32;
-        f.set(&mut world.resource_mut::<crate::settings::Settings>(), v);
-    }
-    serde_json::to_value(world.resource::<crate::settings::Settings>()).map_err(|e| e.to_string())
 }

@@ -20,6 +20,15 @@ memgate status          # running + queued jobs, free memory
 - Profiles: deps at `opt-level = 3` without debug info; our crates at `opt-level = 1` with line tables only.
 - No `--release` builds unless needed (it doubles disk use).
 
+## Features and ship builds
+- `game` depends on the engine with `default-features = false`; its `dev` feature (default)
+  turns on `engine/devtools` + `engine/trace` (control port, MCP, offscreen, perf overlay,
+  metrics window, crash/perf trace).
+- Ship builds: `--no-default-features`. Check without building: `cargo tree -p game
+  --no-default-features -e normal | grep ashlar` must print nothing.
+- `[profile.release]`: thin LTO, `codegen-units = 1`, stripped, no debug info.
+- The engine is a path dependency (`~/codes/game/engine`); its build shares this target dir.
+
 ## Testing in batches
 Write a coherent chunk, then test it. Don't rebuild after every small edit.
 1. `cargo test -p brain` for AI logic (fast, no Bevy).

@@ -5,7 +5,7 @@ use bevy::prelude::*;
 
 use super::theme::*;
 use crate::enemy::Callout;
-use crate::settings::Settings;
+use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
 
 const LIFE_S: f32 = 2.5;
@@ -51,15 +51,13 @@ fn add_lines(
     mut msgs: MessageReader<Callout>,
     root: Query<Entity, With<CalloutRoot>>,
     lines: Query<(Entity, &CalloutLine)>,
-    settings: Res<Settings>,
-    log: Option<Res<crate::ops::session_log::SessionLog>>,
+    settings: Res<ShroudSettings>,
+    log: crate::dev::Dev,
 ) {
     let root = root.single().ok().filter(|_| settings.show_callouts);
     let Some(root) = root else {
         for m in msgs.read() {
-            if let Some(log) = &log {
-                log.event("callout", serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": false }));
-            }
+            log.log("callout", || serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": false }));
         }
         return;
     };
@@ -74,9 +72,7 @@ fn add_lines(
             oldest.remove(0);
             count -= 1;
         }
-        if let Some(log) = &log {
-            log.event("callout", serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": true }));
-        }
+        log.log("callout", || serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": true }));
         // Callouts are ASCII by contract; keep it that way for the font.
         let clean = |t: &str| t.chars().filter(|c| c.is_ascii()).collect::<String>();
         commands

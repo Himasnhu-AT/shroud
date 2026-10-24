@@ -22,9 +22,10 @@ use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, MAG, RELOAD_S, SPRINT, VISION_HALF
 
 use crate::assets::{AssetsDir, ENEMY_MODEL};
 use crate::map::{ArenaRes, to_ground, to_world};
-use crate::player::{Player, PlayerMotor, PlayerSet, collide_and_slide};
+use crate::player::{Player, PlayerSet, collide_and_slide};
+use engine::fps::FpsMotor;
 use crate::save::Brain;
-use crate::settings::Settings;
+use crate::settings::ShroudSettings;
 use crate::state::{GameState, Headless, not_paused};
 use crate::weapon::{Damage, Health, Hitbox, Rifle, ShotFired, WeaponSet};
 use grenade::ThrowGrenade;
@@ -35,7 +36,7 @@ const EYE: f32 = 1.6;
 const CROUCH_EYE: f32 = 1.0;
 const HEAD_Y: f32 = 1.62;
 const CROUCH_HEAD_Y: f32 = 1.0;
-const ENGAGE_MEMORY: f32 = 1.5;
+pub(crate) const ENGAGE_MEMORY: f32 = 1.5;
 /// After first spotting the player, an enemy glints and holds fire this long (fairness telegraph).
 const TELEGRAPH_S: f32 = 0.25;
 /// Pre-fire aims at chest height of a standing player at the predicted spot.
@@ -61,7 +62,11 @@ impl Plugin for EnemyPlugin {
                 EnemySet.after(PlayerSet::Move).before(WeaponSet).run_if(in_state(GameState::Playing).and_then(not_paused)),
             )
             .init_resource::<Inbox>()
-            .add_systems(Update, (collect_inbox, think_and_act, sync_pose).chain().in_set(EnemySet))
+            .init_resource::<AiTimings>()
+            .add_systems(
+                Update,
+                (collect_inbox, start_ai_clock, think_and_act, stop_ai_clock, sync_pose).chain().in_set(EnemySet),
+            )
             .add_systems(Update, enemy_deaths.after(WeaponSet).run_if(in_state(GameState::Playing)))
             .add_systems(Update, despawn_corpses.run_if(not_paused))
             // Round over: score the bandit's last engagement window and keep what it learned.
@@ -80,6 +85,29 @@ pub struct Callout {
 /// Enemy AI runs here: after player movement, before weapons apply damage.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EnemySet;
+
+/// What the AI cost this frame (metrics in dev builds): the whole think step and the squad
+/// coordinator's tick inside it.
+#[derive(Resource, Default, Debug)]
+pub struct AiTimings {
+    /// The AI ran this frame (not paused, a round is live).
+    pub ran: bool,
+    pub think_ms: f32,
+    pub squad_ms: f32,
+    started: Option<std::time::Instant>,
+}
+
+fn start_ai_clock(mut t: ResMut<AiTimings>) {
+    t.started = Some(std::time::Instant::now());
+    t.squad_ms = 0.0;
+}
+
+fn stop_ai_clock(mut t: ResMut<AiTimings>) {
+    if let Some(s) = t.started.take() {
+        t.think_ms = s.elapsed().as_secs_f32() * 1000.0;
+        t.ran = true;
+    }
+}
 
 /// Test hook: frozen enemies still perceive but don't move or shoot.
 #[derive(Resource, Default)]
@@ -126,6 +154,14 @@ pub struct EnemyCombat {
     pub prefiring: bool,
 }
 
+impl EnemyCombat {
+    /// Fighting the player: saw them within the last [`ENGAGE_MEMORY`] seconds (metrics).
+    #[cfg(feature = "dev")]
+    pub fn engaged(&self) -> bool {
+        !self.dead && self.last_seen < ENGAGE_MEMORY
+    }
+}
+
 /// The glTF model under an enemy root (leans with the body).
 #[derive(Component)]
 pub struct ModelRoot;
@@ -168,7 +204,7 @@ pub fn spawn_squad(
     materials: Option<ResMut<Assets<StandardMaterial>>>,
     mut squad: ResMut<Squad>,
     flow: Res<crate::match_flow::MatchFlow>,
-    settings: Option<Res<Settings>>,
+    settings: Option<Res<ShroudSettings>>,
     telemetry: Option<Res<crate::telemetry::Telemetry>>,
 ) {
     for e in &old {
@@ -226,6 +262,7 @@ pub fn spawn_squad(
             .spawn((
                 Name::new(format!("Enemy {slot}")),
                 Enemy { slot },
+                engine::render_budget::Actor,
                 Mind(mind),
                 EnemyCombat {
                     ammo: MAG,
@@ -332,7 +369,7 @@ fn think_and_act(
     spatial: SpatialQuery,
     arena: Res<ArenaRes>,
     brain: Res<Brain>,
-    players: Query<(Entity, &Transform, &PlayerMotor, &Health, Option<&Rifle>), With<Player>>,
+    players: Query<(Entity, &Transform, &FpsMotor, &Health, Option<&Rifle>), With<Player>>,
     mut squad: ResMut<Squad>,
     mut enemies: Query<
         (Entity, &mut Transform, &mut Mind, &mut EnemyCombat, &Children, &Health, Option<&GunLink>),
@@ -345,6 +382,7 @@ fn think_and_act(
     mut out: AiOut,
     slots: Query<&Enemy>,
     mut hurt: Local<(f32, f32)>,
+    mut timings: ResMut<AiTimings>,
 ) {
     let AiOut { damage: damage_out, shots: shots_out, fx, callouts, throws: throws_out } = &mut out;
     let dt = time.delta_secs();
@@ -434,7 +472,9 @@ fn think_and_act(
     for (slot, h) in &heard_events {
         coord.hear(*slot, h, &arena.0);
     }
+    let squad_t = std::time::Instant::now();
     let orders = coord.tick(dt, &views, &arena.0, &brain.state.player_model).to_vec();
+    timings.squad_ms = squad_t.elapsed().as_secs_f32() * 1000.0;
     // Always drain (a frozen squad's queued callouts would play stale later); speak if live.
     let calls = coord.drain_callouts();
     if !freeze.0 {

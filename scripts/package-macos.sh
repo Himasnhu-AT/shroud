@@ -21,7 +21,10 @@ export MACOSX_DEPLOYMENT_TARGET=12.0
 
 step() { printf '\n==> %s\n' "$*"; }
 
-step "Build release (no test control port) for arm64 and x86_64"
+step "Check: no dev tooling (ashlar-*) in the ship build"
+if cargo tree -p game --no-default-features -e normal | grep ashlar; then echo "ashlar crates in the ship build" >&2; exit 1; fi
+
+step "Build release (no dev tooling) for arm64 and x86_64"
 for t in aarch64-apple-darwin x86_64-apple-darwin; do
   memgate --profile release -- cargo build --release -p game --no-default-features --target "$t"
 done

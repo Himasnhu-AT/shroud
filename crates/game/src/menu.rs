@@ -1,31 +1,94 @@
-//! Front end: main menu (Play / Settings / Quit) and match setup (difficulty + map cards).
-//! Drawn over the live 3D scene, which slowly pans behind a dark scrim.
-//! Screens are built by `ui::screens`; `--play` and `--headless` still skip straight to a match.
+//! Shroud's menus on the engine UI kit: main menu items + "Enemy brain" card, the match setup
+//! screen (difficulty + map cards), the pause menu's match line and score, the crosshair
+//! preview on the Gameplay settings tab, and what the game-specific buttons do. Drawn over the
+//! live 3D scene, which slowly pans behind the main menu.
 
 use bevy::prelude::*;
-use brain::arena::MapId;
-use brain::difficulty::Difficulty;
+use engine::gfx::MainCamera;
+use engine::settings::{SaveSettings, SettingsRegistry};
+use engine::ui::prelude::*;
+use engine::ui::screens::ScreenRequest;
 
-use crate::player::{Player, PlayerCamera};
-use crate::state::{GameState, has_visuals};
-use crate::ui::screens::ScreenCtx;
-use crate::ui::theme::*;
-use crate::ui::widgets::{Field, UiAction, action_button, card_row, nav_button};
+use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
+use crate::player::Player;
+use crate::save::Brain;
+use crate::settings::ShroudSettings;
+use crate::state::{AppState, GameState, Paused, has_visuals};
+use crate::ui::hud::spawn_crosshair;
 
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, pan_camera.run_if(in_state(GameState::Menu).and_then(has_visuals)))
-            .add_systems(Update, viewmodel_only_in_rounds.run_if(has_visuals));
+        if let Some(mut b) = app.world_mut().get_resource_mut::<engine::input::Bindings>() {
+            for (action, keys) in [("Fire", "Left mouse"), ("Reload", "R"), ("Perf overlay", "F2"), ("Enemy debug view", "F3")] {
+                b.set(action, keys);
+            }
+        }
+        app.insert_resource(MenuConfig {
+            eyebrow: "Adaptive squad shooter",
+            main_items: vec![("Play", MenuAction::Open("setup")), ("Settings", MenuAction::Settings), ("Quit", MenuAction::Quit)],
+            pause_items: vec![
+                ("Resume", MenuAction::Resume),
+                ("Settings", MenuAction::Settings),
+                ("Restart match", MenuAction::Custom("restart")),
+                ("Main menu", MenuAction::MainMenu),
+                ("Quit game", MenuAction::Quit),
+            ],
+            pause_note: "Restarting or leaving abandons this match; the squad does not train on it.",
+            main_panel: Some(brain_card),
+            pause_header: Some(pause_score),
+            pause_eyebrow: Some(pause_eyebrow),
+        })
+        .register_screen("setup", build_setup)
+        .settings_panel("Gameplay", crosshair_preview)
+        .add_systems(OnEnter(GameState::Playing), close_screens)
+        .add_systems(Update, menu_events)
+        .add_systems(Update, pan_camera.run_if(in_state(AppState::MainMenu).and_then(has_visuals)))
+        .add_systems(Update, viewmodel_only_in_rounds.run_if(has_visuals));
     }
 }
 
-/// Slow cinematic yaw while the menu is up.
+/// Every round starts with no menu open (Restart from the pause menu re-enters `Playing`).
+fn close_screens(mut requests: MessageWriter<ScreenRequest>, mut pause: engine::pause::PauseCtl) {
+    requests.write(ScreenRequest::Replace(None));
+    pause.set(false);
+}
+
+/// Game-specific menu buttons.
+fn menu_events(
+    mut events: MessageReader<MenuEvent>,
+    mut flow: ResMut<MatchFlow>,
+    mut app_state: ResMut<NextState<AppState>>,
+    game_state: Option<ResMut<NextState<GameState>>>,
+    mut save: MessageWriter<SaveSettings>,
+) {
+    let mut game_state = game_state;
+    for MenuEvent(id) in events.read() {
+        match *id {
+            "start_match" => {
+                save.write(SaveSettings);
+                flow.abandon();
+                app_state.set(AppState::InGame);
+            }
+            "restart" => {
+                flow.abandon();
+                if let Some(n) = game_state.as_mut() {
+                    n.set(GameState::Playing);
+                }
+            }
+            // The engine goes to the main menu itself.
+            "main_menu" => flow.abandon(),
+            _ => {}
+        }
+    }
+}
+
+/// Slow cinematic yaw while the main menu is up.
 fn pan_camera(
     time: Res<Time<Real>>,
-    mut player: Query<&mut Transform, (With<Player>, Without<PlayerCamera>)>,
-    mut cam: Query<&mut Transform, With<PlayerCamera>>,
+    mut player: Query<&mut Transform, (With<Player>, Without<MainCamera>)>,
+    mut cam: Query<&mut Transform, With<MainCamera>>,
 ) {
     let t = time.elapsed_secs();
     for mut tf in &mut player {
@@ -38,12 +101,12 @@ fn pan_camera(
 
 /// The rifle only shows in a live round (not behind menus, pause, evolution or debrief).
 fn viewmodel_only_in_rounds(
-    state: Res<State<GameState>>,
-    paused: Res<crate::state::Paused>,
+    state: Option<Res<State<GameState>>>,
+    paused: Res<Paused>,
     mut q: Query<(&Name, &mut Visibility)>,
     mut done: Local<Option<bool>>,
 ) {
-    let show = *state.get() == GameState::Playing && !paused.0;
+    let show = state.is_some_and(|s| *s.get() == GameState::Playing) && !paused.0;
     if *done == Some(show) {
         return;
     }
@@ -61,155 +124,121 @@ fn viewmodel_only_in_rounds(
     }
 }
 
-fn scrim(c: &mut Commands, root: Entity) {
-    c.spawn((fullscreen(), menu_scrim(1.0), Pickable::IGNORE, ChildOf(root)));
-    // Bottom fade so the footer reads.
-    c.spawn((
-        Node { position_type: PositionType::Absolute, left: px(0), right: px(0), bottom: px(0), height: percent(30), ..default() },
-        BackgroundGradient::from(LinearGradient::new(
-            0.0,
-            vec![ColorStop::new(BG.with_alpha(0.85), percent(0)), ColorStop::new(BG.with_alpha(0.0), percent(100))],
-        )),
-        Pickable::IGNORE,
-        ChildOf(root),
-    ));
-}
+// ---- screens and panels ----
 
-/// Brand block: eyebrow, logotype, tagline.
-fn brand(p: &mut ChildSpawnerCommands, hero: f32) {
-    p.spawn((Node { column_gap: px(GAP_S + 4.0), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE))
-        .with_children(|r| {
-            r.spawn((Node { width: px(36), height: px(3), ..default() }, BackgroundColor(ACCENT), Pickable::IGNORE));
-            r.spawn(eyebrow("Adaptive squad shooter", ACCENT));
-        });
-    p.spawn((text("SHROUD", display(hero), TEXT), Node { margin: UiRect::new(px(-6), px(0), px(-8), px(-14)), ..default() }));
-    p.spawn(text("They learn from you.", body(24.0), TEXT_MUTED));
-}
-
-pub fn spawn_main(c: &mut Commands, root: Entity, ctx: &ScreenCtx) {
-    scrim(c, root);
-    c.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(EDGE),
-            top: px(0),
-            bottom: px(0),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            ..default()
-        },
-        Pickable::IGNORE,
-        ChildOf(root),
-    ))
-    .with_children(|col| {
-        brand(col, SIZE_HERO);
-        col.spawn((Node { height: px(64), ..default() }, Pickable::IGNORE));
-        col.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(4), margin: UiRect::left(px(-26)), ..default() }, Pickable::IGNORE))
-            .with_children(|nav| {
-                nav_button(nav, "Play", UiAction::Play, 1);
-                nav_button(nav, "Settings", UiAction::Settings, 2);
-                nav_button(nav, "Quit", UiAction::Quit, 3);
+/// "setup": difficulty + map cards, then into the match.
+fn build_setup(world: &mut World, root: Entity) {
+    let t = world.resource::<Theme>().clone();
+    let reg = world.resource::<SettingsRegistry>();
+    let (Some(diff), Some(map)) = (reg.field("difficulty").cloned(), reg.field("map").cloned()) else { return };
+    world.commands().entity(root).with_children(|p| {
+        menu_backdrop(p, &t, 0.0, 1.0);
+        p.spawn(menu_column(GAP_M)).with_children(|col| {
+            col.spawn(eyebrow("Play", t.accent));
+            col.spawn(title("Match setup", SIZE_H1, t.text));
+            col.spawn(text("Best of three rounds. Afterwards the squad trains against your ghost.", body(SIZE_BODY), t.text_muted));
+            col.spawn(spacer(GAP_L - GAP_M));
+            col.spawn(eyebrow("Difficulty", t.text_muted));
+            card_row(col, &t, &diff, 1, 272.0);
+            col.spawn(spacer(0.0));
+            col.spawn(eyebrow("Map", t.text_muted));
+            card_row(col, &t, &map, 2, 368.0);
+            col.spawn(spacer(GAP_L - GAP_M));
+            col.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|r| {
+                action_button(r, &t, "Start match", MenuAction::Custom("start_match"), Some(3), true, 320.0);
+                action_button(r, &t, "Back", UiAction::Back, Some(4), false, 160.0);
             });
-    });
-    brain_card(c, root, ctx);
-    c.spawn((Node::default(), Pickable::IGNORE, ChildOf(root))).with_children(|f| {
-        spawn_footer(f, &[("W / S", "Navigate"), ("ENTER", "Select")]);
+        });
+        spawn_footer(p, &t, &[("W / S", "Row"), ("A / D", "Choose"), ("Enter", "Start"), ("Esc", "Back")]);
     });
 }
 
-/// "Enemy brain" summary: generation and your record against it.
-fn brain_card(c: &mut Commands, root: Entity, ctx: &ScreenCtx) {
-    let st = &ctx.brain.state;
+/// Main menu side card: generation and your record against it.
+fn brain_card(world: &mut World, slot: Entity) {
+    let t = world.resource::<Theme>().clone();
+    let st = &world.resource::<Brain>().state;
     let wins = st.history.iter().filter(|h| h.player_won).count();
-    let losses = st.history.len() - wins;
-    let last = st.history.last().map(|h| {
-        format!("Last match: you {} {}-{}", if h.player_won { "won" } else { "lost" }, h.player_rounds, h.enemy_rounds)
-    });
-    c.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            right: px(EDGE),
-            bottom: px(44),
-            width: px(380),
-            flex_direction: FlexDirection::Column,
-            row_gap: px(GAP_S),
-            padding: UiRect::all(px(22)),
-            border: UiRect::left(px(3)),
-            border_radius: BorderRadius::all(px(RADIUS)),
-            ..default()
-        },
-        BackgroundColor(PANEL),
-        BorderColor::all(INTEL),
-        Pickable::IGNORE,
-        ChildOf(root),
-    ))
-    .with_children(|p| {
-        p.spawn(eyebrow("Enemy brain", INTEL));
-        p.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_M), ..default() }, Pickable::IGNORE))
-            .with_children(|r| {
-                r.spawn(text(format!("GEN {}", st.generation + 1), display(52.0), TEXT));
-                r.spawn(text(format!("{} sim rounds", st.sim_rounds), body(SIZE_SMALL), TEXT_MUTED));
+    let (generation, sim_rounds, matches) = (st.generation + 1, st.sim_rounds, st.history.len());
+    let last = match st.history.last() {
+        Some(h) => format!("Last match: you {} {}-{}", if h.player_won { "won" } else { "lost" }, h.player_rounds, h.enemy_rounds),
+        None => "No matches yet. They are watching.".into(),
+    };
+    world.commands().entity(slot).with_children(|s| {
+        s.spawn(accent_panel(&t, t.info, 22.0, GAP_S)).with_children(|p| {
+            p.spawn(eyebrow("Enemy brain", t.info));
+            p.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                r.spawn(text(format!("GEN {generation}"), display(52.0), t.text));
+                r.spawn(text(format!("{sim_rounds} sim rounds"), body(SIZE_SMALL), t.text_muted));
             });
-        p.spawn(rule(LINE));
-        p.spawn((Node { column_gap: px(GAP_L), ..default() }, Pickable::IGNORE)).with_children(|r| {
-            stat(r, "Your wins", wins.to_string(), FRIENDLY);
-            stat(r, "Their wins", losses.to_string(), ENEMY);
-            stat(r, "Matches", st.history.len().to_string(), TEXT);
+            p.spawn(rule(t.line));
+            p.spawn((Node { column_gap: px(GAP_L), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                for (name, v, c) in [("Your wins", wins, t.good), ("Their wins", matches - wins, t.bad), ("Matches", matches, t.text)] {
+                    r.spawn((Node { flex_direction: FlexDirection::Column, ..default() }, Pickable::IGNORE)).with_children(|st| {
+                        st.spawn(text(v.to_string(), display(34.0), c));
+                        st.spawn(text(name.to_uppercase(), label(SIZE_TINY), t.text_dim));
+                    });
+                }
+            });
+            p.spawn(text(last, body(SIZE_SMALL), t.text_muted));
         });
-        if let Some(l) = last {
-            p.spawn(text(l, body(SIZE_SMALL), TEXT_MUTED));
-        } else {
-            p.spawn(text("No matches yet. They are watching.", body(SIZE_SMALL), TEXT_MUTED));
-        }
     });
 }
 
-fn stat(p: &mut ChildSpawnerCommands, name: &str, value: String, color: Color) {
-    p.spawn((Node { flex_direction: FlexDirection::Column, ..default() }, Pickable::IGNORE)).with_children(|s| {
-        s.spawn(text(value, display(34.0), color));
-        s.spawn(text(name.to_uppercase(), label(SIZE_TINY), TEXT_DIM));
+/// "Match 2 · Round 3" above "PAUSED".
+fn pause_eyebrow(world: &World) -> String {
+    let f = world.resource::<MatchFlow>();
+    format!("Match {} \u{b7} Round {}", f.match_no.max(1), f.round.max(1))
+}
+
+/// Score line under "PAUSED".
+fn pause_score(world: &mut World, slot: Entity) {
+    let t = world.resource::<Theme>().clone();
+    let f = world.resource::<MatchFlow>();
+    let (you, squad) = (f.player_rounds, f.enemy_rounds);
+    let line = format!(
+        "First to {ROUNDS_TO_WIN} \u{b7} {} \u{b7} Gen {}",
+        world.resource::<ShroudSettings>().difficulty.label(),
+        world.resource::<Brain>().state.generation + 1
+    );
+    world.commands().entity(slot).with_children(|s| {
+        s.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::Baseline, ..default() }, Pickable::IGNORE)).with_children(|r| {
+            r.spawn(text("YOU", label(SIZE_LABEL), t.text_muted));
+            r.spawn(text(you.to_string(), display(34.0), t.good));
+            r.spawn(text("\u{2013}", display(34.0), t.text_dim));
+            r.spawn(text(squad.to_string(), display(34.0), t.bad));
+            r.spawn(text("SQUAD", label(SIZE_LABEL), t.text_muted));
+            r.spawn(text(line, body(SIZE_SMALL), t.text_muted));
+        });
     });
 }
 
-pub fn spawn_setup(c: &mut Commands, root: Entity, _ctx: &ScreenCtx) {
-    scrim(c, root);
-    c.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: px(EDGE),
-            top: px(0),
-            bottom: px(0),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            row_gap: px(GAP_M),
-            ..default()
-        },
-        Pickable::IGNORE,
-        ChildOf(root),
-    ))
-    .with_children(|col| {
-        col.spawn(eyebrow("Play", ACCENT));
-        col.spawn((text("MATCH SETUP", display(SIZE_H1), TEXT), Node { margin: UiRect::top(px(-10)), ..default() }));
-        col.spawn(text("Best of three rounds. Afterwards the squad trains against your ghost.", body(SIZE_BODY), TEXT_MUTED));
-
-        col.spawn((Node { height: px(GAP_L), ..default() }, Pickable::IGNORE));
-        col.spawn(eyebrow("Difficulty", TEXT_MUTED));
-        let diffs: Vec<(&str, &str)> = Difficulty::ALL.iter().map(|d| (d.label(), d.blurb())).collect();
-        card_row(col, Field::Difficulty, 1, &diffs, 272.0);
-
-        col.spawn((Node { height: px(GAP_M), ..default() }, Pickable::IGNORE));
-        col.spawn(eyebrow("Map", TEXT_MUTED));
-        let maps: Vec<(&str, &str)> = MapId::ALL.iter().map(|m| (m.label(), m.blurb())).collect();
-        card_row(col, Field::Map, 2, &maps, 368.0);
-
-        col.spawn((Node { height: px(GAP_L), ..default() }, Pickable::IGNORE));
-        col.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE))
-            .with_children(|r| {
-                action_button(r, "Start match", UiAction::StartMatch, Some(3), true, 320.0);
-                action_button(r, "Back", UiAction::Back, Some(4), false, 160.0);
-            });
-    });
-    c.spawn((Node::default(), Pickable::IGNORE, ChildOf(root))).with_children(|f| {
-        spawn_footer(f, &[("W / S", "Row"), ("A / D", "Choose"), ("ENTER", "Start"), ("ESC", "Back")]);
+/// Gameplay tab: the real crosshair (kept in sync by `ui::hud`) on a sky-to-concrete strip.
+fn crosshair_preview(world: &mut World, slot: Entity) {
+    let t = world.resource::<Theme>().clone();
+    let settings = world.resource::<ShroudSettings>().clone();
+    world.commands().entity(slot).with_children(|s| {
+        s.spawn(panel(&t, 22.0, GAP_M)).with_children(|card| {
+            card.spawn(eyebrow("Crosshair preview", t.text_muted));
+            card.spawn((
+                Node {
+                    width: percent(100),
+                    height: px(220),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(px(3)),
+                    ..default()
+                },
+                BackgroundGradient::from(LinearGradient::new(
+                    std::f32::consts::PI,
+                    vec![
+                        ColorStop::new(Color::srgb(0.62, 0.66, 0.72), percent(0)),
+                        ColorStop::new(Color::srgb(0.46, 0.47, 0.48), percent(50)),
+                        ColorStop::new(Color::srgb(0.2, 0.21, 0.22), percent(100)),
+                    ],
+                )),
+                Pickable::IGNORE,
+            ))
+            .with_children(|bx| spawn_crosshair(bx, &settings));
+        });
     });
 }

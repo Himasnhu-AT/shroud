@@ -8,7 +8,8 @@ use brain::player_model::{DuelOutcome, DuelRecord, MatchTelemetry, ShotRecord, T
 
 use crate::enemy::{Enemy, EnemyCombat, EnemySet};
 use crate::map::{ArenaRes, to_ground};
-use crate::player::{Player, PlayerIntent, PlayerLook, PlayerMotor};
+use crate::player::{Player, PlayerIntent};
+use engine::fps::{FpsLook, FpsMotor};
 use crate::state::GameState;
 use crate::weapon::{Damage, Health, Rifle, ShotFired, WeaponSet};
 
@@ -88,7 +89,7 @@ fn record(
     intent: Res<PlayerIntent>,
     mut t: ResMut<Telemetry>,
     mut s: ResMut<Sampler>,
-    players: Query<(Entity, &Transform, &PlayerMotor, &PlayerLook, &Health, &Rifle), With<Player>>,
+    players: Query<(Entity, &Transform, &FpsMotor, &FpsLook, &Health, &Rifle), With<Player>>,
     enemies: Query<(Entity, &Transform, &EnemyCombat), With<Enemy>>,
     mut shots: MessageReader<ShotFired>,
     mut damage: MessageReader<Damage>,

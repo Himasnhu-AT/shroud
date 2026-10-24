@@ -1,5 +1,5 @@
 //! Drives a headless `shroud` through its control port.
-#![cfg(feature = "control")]
+#![cfg(feature = "dev")]
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;

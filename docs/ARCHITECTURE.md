@@ -4,13 +4,14 @@
 | Piece | Choice | Why |
 |---|---|---|
 | Engine | **Bevy =0.19.1** | Bevy 0.20 (Oct 2026) is out, but Avian doesn't support it yet |
+| Game shell | **`engine` crate** (`~/codes/game/engine`) | window/headless bootstrap, settings, menus, pause, UI kit, input, audio, FPS controller, render budget, devtools |
 | Physics | **avian3d =0.7.0** | ECS-native; v0.7 targets Bevy 0.19 |
-| Character controller | in-house kinematic (Avian shape casts) | FPS controller crates lag behind Bevy versions |
+| Character controller | the engine's `FpsController` (kinematic, Avian shape casts) | FPS controller crates lag behind Bevy versions |
 | NEAT | in-house (~600 lines) | Rust NEAT crates are alpha or stale |
 | RNG | rand 0.9 + rand_chacha (seeded) | deterministic sims and tests |
 | Save | serde + serde_json | human-readable `brain.json` |
-| Test control port | `ashlar-control` + `ashlar-command` + `ashlar-mcp` (cargo feature `control`, dev/test only) | tests and agents drive the game |
-| Crash/perf reporting | `ashlar-trace` (self-hosted server) | panics, hangs, frame times, match events |
+| Test control port | the engine's devtools (`ashlar-control`/`-command`/`-mcp`), cargo feature `dev` only | tests and agents drive the game |
+| Crash/perf reporting | the engine's trace (`ashlar-trace`, self-hosted server), feature `dev` only | panics, hangs, frame times, match events |
 
 Upgrade path: once Avian releases support for Bevy 0.20, bump both crates together.
 
@@ -41,10 +42,22 @@ shroud/
 | `sim` | 2D top-down trainer world + ghost player | todo |
 | `evolve` | between-match pipeline, `BrainState`, save/load | todo |
 
-### `game` (Bevy)
-`main`, `state` (Menu → Playing → Evolving → Debrief), `map`, `player`, `weapon`,
-`telemetry` (player habits for the AI), `match_flow`, `enemy/{spawn, perception, brain_bridge, animation}`, `ui/{hud, debrief, debug}`,
-`ops/{control, commands, trace}` (control port + crash/perf reporting, see [CONTROL_AND_TELEMETRY.md](CONTROL_AND_TELEMETRY.md)).
+### `game` (Bevy, on the `engine` crate)
+The engine owns the shell: `AppState` (Boot → MainMenu → InGame), pause (Esc, focus loss),
+`CoreSettings` (controls/video/audio) + the generated settings screen, the main/pause menus and
+UI kit, mouse look + cursor capture, the FPS controller, audio volumes and the sound library,
+quality presets, data/assets folders, the render budget and (feature `dev`) the control port,
+offscreen capture, perf overlay, metrics window, session log and crash/perf trace.
+
+Shroud keeps only the game: `main` (`engine::app(..)` + plugins), `state` (`GameState` sub-state of
+`InGame`: Playing → Evolving → Debrief), `settings` (`ShroudSettings`: difficulty, map, crosshair,
+callouts, and their settings rows), `menu` (menu items, match setup screen, Enemy-brain card,
+pause score line, crosshair preview), `map`, `player` (controller tuning, health, trigger),
+`weapon`, `telemetry` (player habits for the AI), `match_flow`, `evolving`, `trainer_task`,
+`enemy/{mod, animation, gun, grenade, debug}`, `ui/{hud, feedback, callouts, debrief}`, `gfx`
+(Shroud's look: exposure, fog, sky, FX textures), `audio` (which sounds play when), and `dev`
+(feature `dev`: Shroud's control commands, perf spans, metrics keys, session-log events; see
+[CONTROL_AND_TELEMETRY.md](CONTROL_AND_TELEMETRY.md)).
 
 ## Key design rule: one mind, two worlds
 Enemy decisions live only in `brain::mind::EnemyMind`. Both worlds feed it the same

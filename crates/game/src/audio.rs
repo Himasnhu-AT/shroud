@@ -1,85 +1,39 @@
 //! Sound: gunshots (player flat, enemies spatial), hit/headshot/kill feedback, hurt, low-HP
 //! heartbeat, footsteps (player and enemies), reload foley, round stingers and an ambient bed.
 //!
-//! Everything is driven by existing messages and state; nothing here touches gameplay.
-//! Disabled in `--headless`, with `--mute`, and in test runs (`--control`/`--mcp`/`--offscreen`) unless `--sound`. Missing files are skipped silently.
-//! Volumes: [`Volumes`] follows `Settings` (master × effects for one-shots, master × ambience
-//! for the ambient bed, applied live). `--volume 0.5` overrides the master volume.
+//! Everything is driven by existing messages and state; nothing here touches gameplay. Loading,
+//! volumes (master x effects / ambience, live), muting (`--headless`, `--mute`, test runs unless
+//! `--sound`) and `--volume` are the engine's (`engine::audio`). Missing files are skipped.
 
 use std::collections::HashMap;
 
-use bevy::audio::{AudioSinkPlayback, PlaybackSettings, SpatialListener, Volume};
 use bevy::prelude::*;
+use engine::audio::{AudioCategory, SoundLibrary, Volumes, play_loop};
+use engine::fps::FpsMotor;
 use rand::Rng;
 
 use crate::assets::AssetsDir;
 use crate::enemy::{Enemy, EnemyCombat};
 use crate::match_flow::MatchFlow;
-use crate::player::{Player, PlayerCamera, PlayerMotor};
-use crate::state::{GameState, Headless};
+use crate::player::Player;
+use crate::state::GameState;
 use crate::weapon::{Damage, Dummy, Health, Rifle, ShotFired, Tracer, WeaponSet};
 
-/// Linear gains (0..=1). Effects = everything except the ambient bed.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct Volumes {
-    pub master: f32,
-    pub sfx: f32,
-    pub ambience: f32,
-    /// `--volume` on the command line wins over the saved master volume.
-    cli_master: Option<f32>,
-}
+/// Shroud's sounds live in the engine's library.
+pub(crate) type Sfx = SoundLibrary;
 
-impl Default for Volumes {
-    fn default() -> Self {
-        Self { master: 0.8, sfx: 1.0, ambience: 0.6, cli_master: None }
-    }
-}
-
-impl Volumes {
-    pub fn sfx_gain(&self) -> f32 {
-        self.master * self.sfx
-    }
-    /// The ambient file is mixed hot; 0.35 keeps the default (0.6) where it used to sit.
-    pub fn ambience_gain(&self) -> f32 {
-        0.35 * self.master * self.ambience / 0.6
-    }
-}
-
-fn sync_volumes(settings: Res<crate::settings::Settings>, mut v: ResMut<Volumes>) {
-    let want = Volumes {
-        master: v.cli_master.unwrap_or(settings.master_volume),
-        sfx: settings.sfx_volume,
-        ambience: settings.ambience_volume,
-        cli_master: v.cli_master,
-    };
-    if (want.master, want.sfx, want.ambience) != (v.master, v.sfx, v.ambience) {
-        *v = want;
-    }
-}
-
-fn ambient_volume(v: Res<Volumes>, mut sinks: Query<&mut AudioSink, With<Ambient>>) {
-    if !v.is_changed() {
-        return;
-    }
-    for mut s in &mut sinks {
-        s.set_volume(Volume::Linear(v.ambience_gain()));
-    }
-}
-
-/// Loaded sound groups, keyed by base name (`step` holds `step_0..`).
-#[derive(Resource, Default)]
-pub(crate) struct Sfx(HashMap<&'static str, Vec<Handle<AudioSource>>>);
-
-impl Sfx {
-    /// At least one file of this group loaded.
-    pub(crate) fn has(&self, name: &str) -> bool {
-        self.0.get(name).is_some_and(|l| !l.is_empty())
-    }
-}
+/// The ambient file is mixed hot: 0.35 at the default ambience volume (0.6).
+const AMBIENT_GAIN: f32 = 0.35 / 0.6;
 
 /// Spatial one-shot for other modules (enemy grenades). Silent if the group has no files.
 pub(crate) fn play_at(commands: &mut Commands, sfx: &Sfx, master: &Volumes, name: &str, volume: f32, at: Vec3) {
     play(commands, sfx, master, name, volume, Some(at));
+}
+
+/// Play `name` (random variant, slight pitch/volume jitter) at the effects volume.
+/// `at = Some(pos)` makes it a spatial emitter.
+fn play(commands: &mut Commands, sfx: &Sfx, master: &Volumes, name: &str, volume: f32, at: Option<Vec3>) {
+    engine::audio::play(commands, sfx, master, name, AudioCategory::Sfx, volume, at);
 }
 
 /// (group name, number of variations). Files are `audio/<name>.ogg` or `audio/<name>_<i>.ogg`.
@@ -115,26 +69,12 @@ pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
-        let args: Vec<String> = std::env::args().collect();
-        let headless = app.world().get_resource::<Headless>().is_some_and(|h| h.0);
-        // Test runs (control port / MCP / offscreen) are silent unless `--sound` is given.
-        let test_run = args.iter().any(|a| a == "--control" || a == "--mcp" || a == "--offscreen");
-        let mute = args.iter().any(|a| a == "--mute") || (test_run && !args.iter().any(|a| a == "--sound"));
-        let mut volumes = Volumes::default();
-        if let Some(v) = args.iter().position(|a| a == "--volume").and_then(|i| args.get(i + 1))
-            && let Ok(v) = v.parse::<f32>()
-        {
-            volumes.cli_master = Some(v.clamp(0.0, 1.0));
-        }
-        app.insert_resource(volumes).add_systems(PreUpdate, sync_volumes);
-        if headless || mute {
+        if app.world().resource::<Volumes>().muted {
             return;
         }
-        app.init_resource::<Sfx>()
-            .add_systems(Startup, load_sfx)
+        app.add_systems(Startup, load_sfx)
             .add_systems(OnEnter(GameState::Playing), (start_ambient, play_round_start))
             .add_systems(OnExit(GameState::Playing), stop_ambient)
-            .add_systems(Update, (attach_listener, ambient_volume))
             .add_systems(
                 Update,
                 (
@@ -156,65 +96,18 @@ impl Plugin for AudioPlugin {
 
 fn load_sfx(mut sfx: ResMut<Sfx>, server: Res<AssetServer>, dir: Res<AssetsDir>) {
     for &(name, n) in SOUNDS {
-        let mut v = Vec::new();
-        for i in 0..n {
-            let rel = if n == 1 { format!("audio/{name}.ogg") } else { format!("audio/{name}_{i}.ogg") };
-            if dir.has(&rel) {
-                v.push(server.load(rel));
-            }
-        }
-        sfx.0.insert(name, v);
+        sfx.load_variants(&server, &dir, name, &format!("audio/{name}"), n);
     }
 }
 
-fn attach_listener(mut commands: Commands, cams: Query<Entity, (With<PlayerCamera>, Without<SpatialListener>)>) {
-    for e in &cams {
-        // Narrow ear gap: world units are metres, so the default 4.0 would over-pan.
-        commands.entity(e).insert(SpatialListener::new(0.4));
-    }
-}
-
-/// Play `name` with randomised pitch/volume. `at = Some(pos)` makes it a spatial emitter.
-fn play(
-    commands: &mut Commands,
-    sfx: &Sfx,
-    master: &Volumes,
-    name: &str,
-    volume: f32,
-    at: Option<Vec3>,
-) {
-    let Some(list) = sfx.0.get(name).filter(|l| !l.is_empty()) else { return };
-    let mut rng = rand::rng();
-    let handle = list[rng.random_range(0..list.len())].clone();
-    let speed = rng.random_range(0.93..1.07);
-    let vol = volume * rng.random_range(0.88..1.0) * master.sfx_gain();
-    let mut settings = PlaybackSettings::DESPAWN.with_volume(Volume::Linear(vol)).with_speed(speed);
-    match at {
-        Some(p) => {
-            settings = settings.with_spatial(true);
-            commands.spawn((AudioPlayer::new(handle), settings, Transform::from_translation(p)));
-        }
-        None => {
-            commands.spawn((AudioPlayer::new(handle), settings));
-        }
-    }
-}
-
-fn start_ambient(
-    mut commands: Commands,
-    sfx: Res<Sfx>,
-    master: Res<Volumes>,
-    existing: Query<(), With<Ambient>>,
-) {
+fn start_ambient(mut commands: Commands, sfx: Res<Sfx>, master: Res<Volumes>, existing: Query<(), With<Ambient>>) {
     if !existing.is_empty() {
         return;
     }
-    if let Some(h) = sfx.0.get("ambient").and_then(|l| l.first()) {
-        commands.spawn((
-            Ambient,
-            AudioPlayer::new(h.clone()),
-            PlaybackSettings::LOOP.with_volume(Volume::Linear(master.ambience_gain())),
-        ));
+    if let Some(h) = sfx.0.get("ambient").and_then(|l| l.first())
+        && let Some(e) = play_loop(&mut commands, &master, h.clone(), AudioCategory::Ambience, AMBIENT_GAIN)
+    {
+        commands.entity(e).insert(Ambient);
     }
 }
 
@@ -333,7 +226,7 @@ fn player_footsteps(
     time: Res<Time>,
     sfx: Res<Sfx>,
     master: Res<Volumes>,
-    player: Query<&PlayerMotor, With<Player>>,
+    player: Query<&FpsMotor, With<Player>>,
     mut dist: Local<f32>,
     mut was_grounded: Local<bool>,
 ) {

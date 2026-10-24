@@ -10,7 +10,7 @@ use super::theme::*;
 use crate::enemy::{Enemy, EnemyCombat, Squad};
 use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
-use crate::settings::Settings;
+use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
 use crate::weapon::{Damage, Health, HitMarker, MAG_SIZE, RELOAD_TIME, Rifle, WeaponSet};
 
@@ -100,7 +100,7 @@ struct KillFeed;
 #[derive(Component)]
 struct RoundStartBanner;
 
-/// A crosshair (HUD or the settings preview), styled from [`Settings`].
+/// A crosshair (HUD or the settings preview), styled from [`ShroudSettings`].
 #[derive(Component)]
 pub struct CrosshairUi;
 #[derive(Component)]
@@ -143,7 +143,7 @@ fn hide_when_paused(paused: Res<crate::state::Paused>, mut q: Query<&mut Visibil
     }
 }
 
-pub fn spawn_crosshair(p: &mut ChildSpawnerCommands, settings: &Settings) {
+pub fn spawn_crosshair(p: &mut ChildSpawnerCommands, settings: &ShroudSettings) {
     let bar = |w: f32, h: f32, left: f32, top: f32| {
         (
             CrosshairBar,
@@ -170,7 +170,7 @@ pub fn spawn_crosshair(p: &mut ChildSpawnerCommands, settings: &Settings) {
 }
 
 fn style_crosshairs(
-    settings: Res<Settings>,
+    settings: Res<ShroudSettings>,
     added: Query<(), Added<CrosshairUi>>,
     mut xs: Query<(&mut UiTransform, &Children), With<CrosshairUi>>,
     mut bars: Query<&mut BackgroundColor, With<CrosshairBar>>,
@@ -189,7 +189,7 @@ fn style_crosshairs(
     }
 }
 
-fn spawn_hud(mut commands: Commands, settings: Res<Settings>, squad: Res<Squad>) {
+fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<Squad>) {
     let root = commands.spawn((Name::new("Hud"), hud_root())).id();
 
     // Crosshair + hit marker, centred.
@@ -429,7 +429,7 @@ fn update_hud(
     info: Res<HudInfo>,
     flow: Res<MatchFlow>,
     clock: Res<RoundClock>,
-    settings: Res<Settings>,
+    settings: Res<ShroudSettings>,
     marker: Res<HitMarker>,
     player: Query<(&Health, Option<&Rifle>), With<Player>>,
     mut texts: ParamSet<(
@@ -655,7 +655,7 @@ fn banner_root(c: &mut Commands, life: Option<f32>, top_pct: f32) -> Entity {
     .id()
 }
 
-fn round_start_banner(mut commands: Commands, flow: Res<MatchFlow>, settings: Res<Settings>) {
+fn round_start_banner(mut commands: Commands, flow: Res<MatchFlow>, settings: Res<ShroudSettings>) {
     let root = banner_root(&mut commands, Some(2.6), 22.0);
     commands.entity(root).insert(RoundStartBanner);
     let mp = flow.round > 1 && (flow.player_rounds + 1 >= ROUNDS_TO_WIN || flow.enemy_rounds + 1 >= ROUNDS_TO_WIN);
