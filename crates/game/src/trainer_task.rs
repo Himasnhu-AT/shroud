@@ -10,16 +10,17 @@ use brain::trainer::{Trainer, TrainerConfig, TrainerHandle};
 use serde_json::json;
 use std::path::PathBuf;
 
-use crate::ops::session_log::SessionLog;
-use crate::save::{Brain, data_dir};
-use crate::state::{GameState, Headless};
+use crate::dev::Dev;
+use crate::save::Brain;
+use crate::state::{AppState, GameState, Headless};
 
 pub struct TrainerTaskPlugin;
 
 impl Plugin for TrainerTaskPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<BackgroundTrainer>()
-            .add_systems(OnEnter(GameState::Menu), start)
+        let checkpoint = app.world().resource::<engine::paths::DataDir>().file("trainer.json");
+        app.insert_resource(BackgroundTrainer { checkpoint, ..default() })
+            .add_systems(OnEnter(AppState::MainMenu), start)
             .add_systems(OnEnter(GameState::Debrief), start)
             .add_systems(OnEnter(GameState::Playing), stop);
     }
@@ -33,6 +34,8 @@ pub struct BackgroundTrainer {
     parked: Option<Trainer>,
     /// Rounds simulated in background sessions since the last merge (for the UI).
     pub rounds_unmerged: u64,
+    /// `<data dir>/trainer.json`: the session checkpoint.
+    checkpoint: PathBuf,
 }
 
 impl BackgroundTrainer {
@@ -47,33 +50,25 @@ impl BackgroundTrainer {
 
     /// Stop training and hand over its brain if it is a continuation of `live`.
     /// Call only between matches.
-    pub fn take_for_merge(&mut self, live: &BrainState, log: Option<&SessionLog>) -> Option<BrainState> {
+    pub fn take_for_merge(&mut self, live: &BrainState, log: &Dev) -> Option<BrainState> {
         self.halt(log);
         let t = self.parked.take()?;
-        let _ = std::fs::remove_file(checkpoint_path());
+        let _ = std::fs::remove_file(&self.checkpoint);
         self.rounds_unmerged = 0;
         let ok = t.matches(live) && t.state.evaluated && t.steps > 0;
-        if let Some(l) = log {
-            l.event("trainer", json!({ "action": if ok { "merge" } else { "discard" }, "steps": t.steps, "rounds": t.session_rounds }));
-        }
+        log.log("trainer", || json!({ "action": if ok { "merge" } else { "discard" }, "steps": t.steps, "rounds": t.session_rounds }));
         ok.then_some(t.state)
     }
 
-    fn halt(&mut self, log: Option<&SessionLog>) {
+    fn halt(&mut self, log: &Dev) {
         let Some(h) = self.running.take() else { return };
         if let Some(t) = h.finish() {
-            if let Some(l) = log {
-                let win = t.last.map_or(0.0, |s| s.champion_win);
-                l.event("trainer", json!({ "action": "stop", "steps": t.steps, "rounds": t.session_rounds, "champion_win": win }));
-            }
+            let win = t.last.map_or(0.0, |s| s.champion_win);
+            log.log("trainer", || json!({ "action": "stop", "steps": t.steps, "rounds": t.session_rounds, "champion_win": win }));
             self.rounds_unmerged = t.session_rounds;
             self.parked = Some(t);
         }
     }
-}
-
-fn checkpoint_path() -> PathBuf {
-    data_dir().join("trainer.json")
 }
 
 /// Lower the calling thread's scheduling priority so rendering always wins.
@@ -89,30 +84,28 @@ fn lower_priority() {
     }
 }
 
-fn start(mut bg: ResMut<BackgroundTrainer>, brain: Res<Brain>, headless: Res<Headless>, log: Option<Res<SessionLog>>) {
-    if headless.0 || crate::ops::has_flag("no-trainer") || bg.running.is_some() || !brain.state.evaluated {
+fn start(mut bg: ResMut<BackgroundTrainer>, brain: Res<Brain>, headless: Res<Headless>, log: Dev) {
+    if headless.0 || engine::cli::dev_flag("no-trainer") || bg.running.is_some() || !brain.state.evaluated {
         return;
     }
     // Resume the parked session, or a checkpoint from an earlier run, if still valid.
     let trainer = bg
         .parked
         .take()
-        .or_else(|| Trainer::load(&checkpoint_path()))
+        .or_else(|| Trainer::load(&bg.checkpoint))
         .filter(|t| t.matches(&brain.state))
         .unwrap_or_else(|| Trainer::new(brain.state.clone()));
     let cfg = TrainerConfig { threads: 2, worker_init: Some(lower_priority), ..Default::default() };
     let (steps, rounds) = (trainer.steps, trainer.session_rounds);
-    match TrainerHandle::spawn(trainer, cfg, Some(checkpoint_path())) {
+    match TrainerHandle::spawn(trainer, cfg, Some(bg.checkpoint.clone())) {
         Ok(h) => {
             bg.running = Some(h);
-            if let Some(l) = &log {
-                l.event("trainer", json!({ "action": "start", "generation": brain.state.generation, "resumed_steps": steps, "rounds": rounds }));
-            }
+            log.log("trainer", || json!({ "action": "start", "generation": brain.state.generation, "resumed_steps": steps, "rounds": rounds }));
         }
         Err(e) => warn!("trainer: could not start: {e}"),
     }
 }
 
-fn stop(mut bg: ResMut<BackgroundTrainer>, log: Option<Res<SessionLog>>) {
-    bg.halt(log.as_deref());
+fn stop(mut bg: ResMut<BackgroundTrainer>, log: Dev) {
+    bg.halt(&log);
 }

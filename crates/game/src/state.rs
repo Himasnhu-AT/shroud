@@ -1,60 +1,37 @@
-//! Top-level game state machine: `Menu → Playing → Evolving → Debrief → Playing …`.
+//! Shroud's flow inside the engine's `AppState::InGame`: `Playing → Evolving → Debrief →
+//! Playing …`. The main menu is the engine's `AppState::MainMenu`; pause is the engine's.
 
 use bevy::prelude::*;
+pub use engine::flow::{AppState, Headless, has_visuals};
+use engine::flow::PauseAllowed;
+use engine::input::CaptureCursor;
+pub use engine::pause::{Paused, not_paused};
 
-#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(SubStates, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[source(AppState = AppState::InGame)]
 pub enum GameState {
     #[default]
-    Menu,
     Playing,
     Evolving,
     Debrief,
-}
-
-/// `true` when running with `--headless` (no window, renderer, input or UI).
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct Headless(pub bool);
-
-/// In-match pause (Esc menu). CONTRACT: owned by the UI stream; gameplay input and AI should
-/// not advance while `Paused(true)`. Pausing does NOT leave `GameState::Playing` (that would
-/// restart the round), it pauses virtual + physics time instead.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Paused(pub bool);
-
-/// Run condition: the match is not paused.
-pub fn not_paused(p: Res<Paused>) -> bool {
-    !p.0
-}
-
-/// Run condition: rendering/UI/input exist.
-pub fn has_visuals(h: Res<Headless>) -> bool {
-    !h.0
 }
 
 pub struct StatePlugin;
 
 impl Plugin for StatePlugin {
     fn build(&self, app: &mut App) {
-        app.init_state::<GameState>()
-            .init_resource::<Paused>()
-            .add_systems(Startup, skip_menu_when_headless)
-            .add_systems(Last, quit_after);
+        app.add_sub_state::<GameState>().add_systems(Update, rounds_only);
     }
 }
 
-/// Headless runs have no menu to click, so go straight to `Playing`.
-/// `--play` does the same in a window (dev shortcut).
-fn skip_menu_when_headless(h: Res<Headless>, mut next: ResMut<NextState<GameState>>) {
-    if h.0 || std::env::args().any(|a| a == "--play") {
-        next.set(GameState::Playing);
+/// Esc pauses and the cursor is captured only during a round; the evolving and debrief screens
+/// keep the pointer free and handle Esc themselves.
+fn rounds_only(state: Option<Res<State<GameState>>>, mut pause: ResMut<PauseAllowed>, mut cursor: ResMut<CaptureCursor>) {
+    let playing = state.is_some_and(|s| *s.get() == GameState::Playing);
+    if pause.0 != playing {
+        pause.0 = playing;
     }
-}
-
-/// `--quit-after <seconds>`: exit after that much real time (soak/smoke runs).
-fn quit_after(time: Res<Time<Real>>, mut exit: MessageWriter<AppExit>, mut limit: Local<Option<Option<f32>>>) {
-    let limit = *limit.get_or_insert_with(|| crate::ops::arg_value("quit-after").and_then(|s| s.parse().ok()));
-    if limit.is_some_and(|l| time.elapsed_secs() > l) {
-        info!("quit-after reached");
-        exit.write(AppExit::Success);
+    if cursor.0 != playing {
+        cursor.0 = playing;
     }
 }

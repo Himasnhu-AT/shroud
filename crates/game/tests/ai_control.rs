@@ -1,6 +1,6 @@
 //! Squad AI through the control port (headless): difficulty applied at spawn, grenades thrown,
 //! flashbang whiteout computed.
-#![cfg(feature = "control")]
+#![cfg(feature = "dev")]
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;

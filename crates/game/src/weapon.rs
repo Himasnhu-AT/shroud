@@ -13,7 +13,9 @@ use crate::map::{ArenaRes, to_world};
 use bevy::light::NotShadowCaster;
 
 use crate::gfx::{FaceCamera, FxAssets};
-use crate::player::{Player, PlayerCamera, PlayerIntent, PlayerLook, PlayerMotor, PlayerSet, ViewKick};
+use crate::player::{Player, PlayerIntent, PlayerSet};
+use engine::fps::{FpsLook, FpsMotor, FpsViewKick};
+use engine::gfx::MainCamera;
 use crate::state::{GameState, has_visuals};
 
 pub const RIFLE_DAMAGE: f32 = 25.0;
@@ -230,8 +232,8 @@ fn fire_rifle(
     time: Res<Time>,
     spatial: SpatialQuery,
     intent: Res<PlayerIntent>,
-    mut players: Query<(Entity, &Transform, &mut Rifle, &mut ViewKick), With<Player>>,
-    cams: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
+    mut players: Query<(Entity, &Transform, &mut Rifle, &mut FpsViewKick), With<Player>>,
+    cams: Query<&Transform, (With<MainCamera>, Without<Player>)>,
     hitboxes: Query<&Hitbox>,
     healths: Query<(), With<Health>>,
     mut marker: ResMut<HitMarker>,
@@ -425,7 +427,7 @@ fn spawn_dummies(
 
 fn spawn_viewmodel(
     mut commands: Commands,
-    cams: Query<Entity, With<PlayerCamera>>,
+    cams: Query<Entity, With<MainCamera>>,
     assets_dir: Res<AssetsDir>,
     asset_server: Res<AssetServer>,
     fx: Option<Res<FxAssets>>,
@@ -676,8 +678,8 @@ fn spawn_shot_fx(
 fn animate_viewmodel(
     time: Res<Time>,
     spatial: SpatialQuery,
-    players: Query<(Entity, &PlayerLook, &PlayerMotor, Option<&Rifle>), With<Player>>,
-    cams: Query<&GlobalTransform, With<PlayerCamera>>,
+    players: Query<(Entity, &FpsLook, &FpsMotor, Option<&Rifle>), With<Player>>,
+    cams: Query<&GlobalTransform, With<MainCamera>>,
     mut vms: Query<(&mut ViewModel, &mut Transform)>,
     mut flashes: Query<
         (&mut Visibility, &mut Transform, Option<&mut PointLight>),

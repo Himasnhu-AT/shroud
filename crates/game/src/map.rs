@@ -1,4 +1,4 @@
-//! Builds the active map (`brain::arena::Arena::build(Settings.map)`) as meshes + colliders,
+//! Builds the active map (`brain::arena::Arena::build(ShroudSettings.map)`) as meshes + colliders,
 //! and swaps it when a new match starts on a different map.
 //!
 //! Ground plane mapping: `V2 { x, y }` ↔ world `(x, h, y)`.
@@ -16,20 +16,25 @@ use brain::math::V2;
 use crate::assets::AssetsDir;
 use crate::gfx::PendingMips;
 use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
-use crate::settings::{GraphicsQuality, Settings};
-use crate::state::{GameState, Headless, has_visuals};
-
+use crate::settings::ShroudSettings;
+use engine::settings::{CoreSettings, GraphicsQuality};
+use engine::render_budget::Scenery;
+use crate::state::{AppState, GameState, Headless, has_visuals};
 
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         // SettingsPlugin is added before us, so the saved map is known at startup.
-        let id = app.world().get_resource::<Settings>().map(|s| s.map).unwrap_or_default();
+        let id = app.world().get_resource::<ShroudSettings>().map(|s| s.map).unwrap_or_default();
         app.insert_resource(ArenaRes(Arena::build(id)))
             .init_resource::<MapRequest>()
             .add_systems(Startup, spawn_current_map)
-            .add_systems(OnExit(GameState::Menu), |mut r: ResMut<MapRequest>| r.from_menu = true)
+            .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
+            // Map pieces are static scenery for the engine's render budget.
+            .add_observer(|add: On<Add, ArenaPiece>, mut c: Commands| {
+                c.entity(add.entity).insert(Scenery);
+            })
             // Before the round resets anything that reads `ArenaRes` (player, squad).
             .add_systems(
                 OnEnter(GameState::Playing),
@@ -39,9 +44,9 @@ impl Plugin for MapPlugin {
                     .before(crate::enemy::spawn_squad),
             )
             .add_systems(Update, (look::apply_look, look::apply_light_budget).run_if(has_visuals));
-        #[cfg(feature = "control")]
+        #[cfg(feature = "dev")]
         {
-            use crate::ops::control::{ControlAppExt, params};
+            use engine::devtools::{AddControlCommand, params};
             app.add_control_command(
                 "map.load",
                 "Switch map now (restarts the round)",
@@ -65,10 +70,6 @@ pub struct ArenaRes(pub Arena);
 /// Despawned when the map changes.
 #[derive(Component)]
 pub struct ArenaPiece;
-
-/// Which block of `ArenaRes.0.blocks` this entity is.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct BlockIndex(pub usize);
 
 /// Pending map switch requests.
 #[derive(Resource, Default)]
@@ -104,13 +105,13 @@ fn spawn_current_map(
     arena: Res<ArenaRes>,
     headless: Res<Headless>,
     assets_dir: Res<AssetsDir>,
-    settings: Option<Res<Settings>>,
+    core: Res<CoreSettings>,
     server: Option<Res<AssetServer>>,
     pending: Option<ResMut<PendingMips>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
-    let quality = settings.map(|s| s.quality).unwrap_or_default();
+    let quality = core.quality;
     match (headless.0, meshes, materials, server, pending) {
         (false, Some(mut m), Some(mut s), Some(a), Some(mut p)) => {
             let mut gfx = Gfx { meshes: &mut m, mats: &mut s, server: &a, pending: &mut p, dir: &assets_dir, quality };
@@ -130,7 +131,8 @@ fn sync_map(
     pieces: Query<Entity, With<ArenaPiece>>,
     headless: Res<Headless>,
     assets_dir: Res<AssetsDir>,
-    settings: Option<Res<Settings>>,
+    settings: Res<ShroudSettings>,
+    core: Res<CoreSettings>,
     server: Option<Res<AssetServer>>,
     pending: Option<ResMut<PendingMips>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
@@ -140,7 +142,7 @@ fn sync_map(
     let from_menu = std::mem::take(&mut request.from_menu);
     let wanted = match request.force.take() {
         Some(id) => id,
-        None if new_match || from_menu => settings.as_ref().map_or(arena.0.id, |s| s.map),
+        None if new_match || from_menu => settings.map,
         None => return,
     };
     if wanted == arena.0.id {
@@ -151,7 +153,7 @@ fn sync_map(
         commands.entity(e).despawn();
     }
     arena.0 = Arena::build(wanted);
-    let quality = settings.map(|s| s.quality).unwrap_or_default();
+    let quality = core.quality;
     match (headless.0, meshes, materials, server, pending) {
         (false, Some(mut m), Some(mut s), Some(a), Some(mut p)) => {
             let mut gfx = Gfx { meshes: &mut m, mats: &mut s, server: &a, pending: &mut p, dir: &assets_dir, quality };
@@ -196,7 +198,6 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
             .spawn((
                 Name::new(format!("{kind_name} block {i}")),
                 ArenaPiece,
-                BlockIndex(i),
                 RigidBody::Static,
                 look::block_collider(b),
                 Transform::from_translation(center),
@@ -248,15 +249,16 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
 
 // ---------------------------------------------------------------- control port
 
+#[cfg(any(feature = "dev", test))]
 fn parse_map(name: &str) -> Option<MapId> {
     MapId::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(name.trim()))
 }
 
-#[cfg(feature = "control")]
+#[cfg(feature = "dev")]
 fn map_load_command(world: &mut World, p: serde_json::Value) -> Result<serde_json::Value, String> {
     let name = p.get("name").and_then(serde_json::Value::as_str).ok_or("`name` (string) is required")?;
     let id = parse_map(name).ok_or_else(|| format!("unknown map `{name}` (Foundry, Depot, Office)"))?;
-    if let Some(mut s) = world.get_resource_mut::<Settings>() {
+    if let Some(mut s) = world.get_resource_mut::<ShroudSettings>() {
         s.map = id;
     }
     world.resource_mut::<MapRequest>().force = Some(id);
@@ -265,7 +267,7 @@ fn map_load_command(world: &mut World, p: serde_json::Value) -> Result<serde_jso
     Ok(serde_json::json!({ "map": id.label() }))
 }
 
-#[cfg(feature = "control")]
+#[cfg(feature = "dev")]
 fn map_info_command(world: &mut World, _: serde_json::Value) -> Result<serde_json::Value, String> {
     let a = &world.resource::<ArenaRes>().0;
     Ok(serde_json::json!({

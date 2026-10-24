@@ -5,8 +5,11 @@ use brain::utility::Goal;
 
 use super::{Enemy, EnemyCombat, Mind};
 use crate::map::to_world;
-use crate::ops::DebugOverlay;
 use crate::state::has_visuals;
+
+/// Enemy debug view on/off (F3, or `debug.overlay` on the control port).
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DebugOverlay(pub bool);
 
 pub struct EnemyDebugPlugin;
 

@@ -8,7 +8,7 @@ use brain::arena::{Arena, FloorSkin, MapId};
 use super::look::{MapLamp, Palette};
 use super::{ArenaPiece, Gfx};
 use crate::gfx::world_uv_cuboid;
-use crate::settings::GraphicsQuality;
+use engine::settings::GraphicsQuality;
 
 /// Floor patches sit this far above the ground slab (no coplanar faces with it).
 const PATCH_THICKNESS: f32 = 0.012;

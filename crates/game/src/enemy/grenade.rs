@@ -9,7 +9,8 @@ use brain::grenade::{self as g, GrenadeKind};
 
 use super::{EnemyCombat, EnemySet, Squad};
 use crate::map::to_ground;
-use crate::player::{Player, PlayerMotor};
+use crate::player::Player;
+use engine::fps::FpsMotor;
 use crate::state::{GameState, has_visuals, not_paused};
 use crate::weapon::{Damage, WeaponSet};
 
@@ -207,14 +208,14 @@ fn detonate(
     mut commands: Commands,
     spatial: SpatialQuery,
     q: Query<(Entity, &Grenade, &Transform)>,
-    players: Query<(Entity, &Transform, &PlayerMotor), With<Player>>,
+    players: Query<(Entity, &Transform, &FpsMotor), With<Player>>,
     mut enemies: Query<&mut EnemyCombat>,
     hitboxes: Query<Entity, With<super::BodyPart>>,
     mut squad: ResMut<Squad>,
     mut flashed: ResMut<Flashed>,
     mut damage: MessageWriter<Damage>,
     sfx: Option<Res<crate::audio::Sfx>>,
-    master: Option<Res<crate::audio::Volumes>>,
+    master: Option<Res<engine::audio::Volumes>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {

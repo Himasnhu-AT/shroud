@@ -8,7 +8,7 @@ use brain::evolve::{EvolveConfig, MatchReport};
 use brain::grenade::GrenadeKind;
 use serde_json::{Value, json};
 
-use super::control::{ControlAppExt, params};
+use engine::devtools::{AddControlCommand, params};
 use crate::enemy::grenade::{Flashed, Grenade, ThrowGrenade};
 use crate::enemy::{Enemy, EnemyCombat, EnemyFreeze, Mind, Squad};
 use crate::map::{ArenaRes, to_ground};
@@ -45,7 +45,7 @@ pub fn register(app: &mut App) {
         )
         .add_control_command(
             "ai.difficulty",
-            "Set the difficulty for the next round (in memory; not saved)",
+            "Set the difficulty for the next round",
             params(&[("level", "string", "recruit | regular | veteran | elite")]),
             ai_difficulty,
         )
@@ -162,11 +162,7 @@ fn ai_evolve(world: &mut World, _: Value) -> Result<Value, String> {
 }
 
 fn ai_reset(world: &mut World, _: Value) -> Result<Value, String> {
-    let tracer = world.remove_resource::<crate::ops::trace::GameTracer>();
-    world.resource_mut::<Brain>().reset(tracer.as_ref());
-    if let Some(t) = tracer {
-        world.insert_resource(t);
-    }
+    crate::save::reset_brain(world);
     Ok(json!({ "generation": 0 }))
 }
 
@@ -271,10 +267,7 @@ fn enemy_lean(world: &mut World, p: Value) -> Result<Value, String> {
 fn ai_difficulty(world: &mut World, p: Value) -> Result<Value, String> {
     let want = p.get("level").and_then(Value::as_str).unwrap_or("regular").to_lowercase();
     let d = Difficulty::ALL.into_iter().find(|d| d.label().to_lowercase() == want).ok_or_else(|| format!("unknown difficulty {want:?}"))?;
-    match world.get_resource_mut::<crate::settings::Settings>() {
-        Some(mut s) => s.difficulty = d,
-        None => world.insert_resource(crate::settings::Settings { difficulty: d, ..Default::default() }),
-    }
+    world.resource_mut::<crate::settings::ShroudSettings>().difficulty = d;
     let p = d.params();
     Ok(json!({ "difficulty": d.label(), "squad_size": p.squad_size, "utility": p.utility, "coordination": p.coordination, "max_attackers": p.max_attackers, "applies": "next round" }))
 }

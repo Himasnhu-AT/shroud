@@ -6,8 +6,8 @@ use bevy::prelude::*;
 use crate::match_flow::MatchFlow;
 use crate::save::{Brain, LastEvolve};
 use super::theme::*;
-use super::widgets::{UiAction, action_button};
-use crate::state::{GameState, Headless};
+use crate::state::{AppState, GameState, Headless};
+use engine::ui::prelude::{MenuAction, MenuEvent, NavBack, action_button};
 
 pub struct DebriefPlugin;
 
@@ -20,7 +20,6 @@ impl Plugin for DebriefPlugin {
 
 #[derive(Resource)]
 struct HeadlessAdvance(Timer);
-
 
 fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<MatchFlow>, last: Res<LastEvolve>, brain: Res<Brain>) {
     if headless.0 {
@@ -171,13 +170,14 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                         });
                     root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), align_items: AlignItems::Center, margin: UiRect::top(px(GAP_S)), ..default() }, Pickable::IGNORE))
                         .with_children(|b| {
-                            action_button(b, "Next match", UiAction::NextMatch, Some(1), true, 300.0);
-                            action_button(b, "Main menu", UiAction::MainMenu, Some(2), false, 200.0);
-                            action_button(b, "Reset AI", UiAction::ResetAi, Some(3), false, 200.0);
+                            let t = Theme::default();
+                            action_button(b, &t, "Next match", MenuAction::Custom("next_match"), Some(1), true, 300.0);
+                            action_button(b, &t, "Main menu", MenuAction::MainMenu, Some(2), false, 200.0);
+                            action_button(b, &t, "Reset AI", MenuAction::Custom("reset_ai"), Some(3), false, 200.0);
                         });
                 });
             screen.spawn((Node::default(), Pickable::IGNORE)).with_children(|f| {
-                spawn_footer(f, &[("ENTER", "Next match"), ("ESC", "Main menu"), ("R", "Reset the AI")]);
+                spawn_footer(f, &Theme::default(), &[("ENTER", "Next match"), ("ESC", "Main menu"), ("R", "Reset the AI")]);
             });
         });
 }
@@ -202,13 +202,16 @@ fn card_panel() -> impl Bundle {
 }
 
 fn input(
+    mut commands: Commands,
     time: Res<Time>,
     headless: Res<Headless>,
     mut auto: Option<ResMut<HeadlessAdvance>>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
-    mut brain: ResMut<Brain>,
-    tracer: Option<Res<crate::ops::trace::GameTracer>>,
+    mut events: MessageReader<MenuEvent>,
+    mut backs: MessageReader<NavBack>,
+    mut flow: ResMut<MatchFlow>,
     mut next: ResMut<NextState<GameState>>,
+    mut app_state: ResMut<NextState<AppState>>,
 ) {
     if headless.0 {
         if let Some(t) = auto.as_mut()
@@ -218,10 +221,21 @@ fn input(
         }
         return;
     }
-    // Enter / Esc / clicks go through the buttons (`ui::widgets`); R is a shortcut.
-    let Some(keys) = keys else { return };
-    if keys.just_pressed(KeyCode::KeyR) {
-        brain.reset(tracer.as_deref());
-        next.set(GameState::Menu);
+    // Enter / clicks go through the buttons (engine UI kit); Esc and R are shortcuts.
+    let mut reset = keys.is_some_and(|k| k.just_pressed(KeyCode::KeyR));
+    let to_menu = backs.read().count() > 0;
+    for MenuEvent(id) in events.read() {
+        match *id {
+            "next_match" => next.set(GameState::Playing),
+            "reset_ai" => reset = true,
+            _ => {}
+        }
+    }
+    if reset {
+        commands.queue(crate::save::reset_brain);
+        app_state.set(AppState::MainMenu);
+    } else if to_menu {
+        flow.abandon();
+        app_state.set(AppState::MainMenu);
     }
 }

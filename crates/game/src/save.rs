@@ -1,12 +1,13 @@
-//! The persisted enemy brain (`brain.json`) and where it lives.
+//! The persisted enemy brain (`<data dir>/brain.json`).
 
 use bevy::prelude::*;
+use brain::arena::MapId;
 use brain::evolve::{BrainState, EvolveSummary};
+use engine::cli::GameSeed;
+use engine::paths::DataDir;
 use std::path::PathBuf;
 
-use crate::ops::trace::{GameEvent, GameTracer, trace_event};
-
-pub use crate::ops::data_dir;
+use crate::settings::ShroudSettings;
 
 #[derive(Resource)]
 pub struct Brain {
@@ -15,13 +16,12 @@ pub struct Brain {
 }
 
 impl Brain {
-    pub fn load() -> Self {
-        let path = data_dir().join("brain.json");
-        let seed = crate::ops::arg_value("seed").and_then(|s| s.parse().ok()).unwrap_or_else(rand::random);
+    pub fn load(dir: &DataDir, seed: u64, map: MapId) -> Self {
+        let path = dir.file("brain.json");
         let mut state = BrainState::load_or_new(&path, seed);
         if state.generation == 0 && !state.evaluated {
             let t = std::time::Instant::now();
-            state.bootstrap(&brain::arena::Arena::build(crate::settings::Settings::load().map), &brain::evolve::EvolveConfig::default());
+            state.bootstrap(&brain::arena::Arena::build(map), &brain::evolve::EvolveConfig::default());
             info!("brain: bootstrap training took {} ms", t.elapsed().as_millis());
         }
         info!("brain: generation {} from {}", state.generation, path.display());
@@ -34,16 +34,23 @@ impl Brain {
         }
     }
 
-    /// Back up the current brain and start over.
-    pub fn reset(&mut self, tracer: Option<&GameTracer>) {
-        if let Some(t) = tracer {
-            trace_event(t, GameEvent::AiReset, &[("from_generation", ashlar_trace::Prop::Int(self.state.generation as i64))]);
-        }
+    /// Back up the current brain and start over (bootstrapped on `map`). Returns the
+    /// generation that was dropped.
+    pub fn reset(&mut self, map: MapId) -> u32 {
+        let old = self.state.generation;
         let _ = std::fs::copy(&self.path, self.path.with_extension("json.bak"));
         self.state = BrainState::new(rand::random());
-        self.state.bootstrap(&brain::arena::Arena::build(crate::settings::Settings::load().map), &brain::evolve::EvolveConfig::default());
+        self.state.bootstrap(&brain::arena::Arena::build(map), &brain::evolve::EvolveConfig::default());
         self.save();
+        old
     }
+}
+
+/// Reset the brain and report it (`ai.reset` trace event).
+pub fn reset_brain(world: &mut World) {
+    let map = world.resource::<ShroudSettings>().map;
+    let from = world.resource_mut::<Brain>().reset(map);
+    crate::dev::trace(world, "ai.reset", &[("from_generation", crate::dev::Prop::Int(from as i64))]);
 }
 
 /// Result of the last evolution, shown on the debrief.
@@ -54,6 +61,8 @@ pub struct SavePlugin;
 
 impl Plugin for SavePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Brain::load()).init_resource::<LastEvolve>();
+        let w = app.world();
+        let brain = Brain::load(w.resource::<DataDir>(), w.resource::<GameSeed>().0, w.resource::<ShroudSettings>().map);
+        app.insert_resource(brain).init_resource::<LastEvolve>();
     }
 }

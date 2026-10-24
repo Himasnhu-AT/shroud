@@ -5,7 +5,7 @@ Plan: ~/.claude/plans/make-game-in-rust-peppy-snail.md
 
 ## Layout
 - `crates/brain` — pure Rust AI (no Bevy): arena/nav, trait genome GA, NEAT, player model, utility AI, 2D trainer sim.
-- `crates/game` — Bevy app (binary `shroud`).
+- `crates/game` — Bevy app (binary `shroud`) on the `engine` crate (`~/codes/game/engine`: window, settings, menus, pause, UI kit, input, audio, FPS controller, render budget, devtools). Shroud keeps only game code; `dev` feature (default) = engine devtools + trace, ship builds use `--no-default-features`.
 - `assets/` — CC0 models; game must fall back to primitives if any are missing.
 
 ## Rules

@@ -2714,6 +2714,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "ashlar-command",
+ "ashlar-control",
+ "ashlar-mcp",
+ "ashlar-trace",
+ "avian3d",
+ "bevy",
+ "directories",
+ "libc",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "sysinfo",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2958,19 +2976,15 @@ dependencies = [
 name = "game"
 version = "0.1.0"
 dependencies = [
- "ashlar-command",
  "ashlar-control",
- "ashlar-mcp",
- "ashlar-trace",
  "avian3d",
  "bevy",
  "brain",
- "directories",
+ "engine",
  "libc",
  "rand 0.9.5",
  "serde",
  "serde_json",
- "sysinfo",
 ]
 
 [[package]]

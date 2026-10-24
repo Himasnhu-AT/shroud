@@ -12,7 +12,7 @@ use brain::arena::{Block, BlockKind, MapId, Skin};
 
 use super::{ArenaRes, Gfx};
 use crate::gfx::{FOG_COLOR, Sun, load_pbr, world_uv_cuboid};
-use crate::settings::{GraphicsQuality, Settings};
+use engine::settings::{CoreSettings as Settings, GraphicsQuality};
 
 /// A material recipe: texture set under `assets/textures/<tex>/`, tint, flat fallback
 /// colour and roughness (used when the textures are missing), UV repeat in metres.
