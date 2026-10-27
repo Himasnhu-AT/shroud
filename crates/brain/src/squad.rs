@@ -1845,7 +1845,7 @@ impl SquadCoordinator {
                 watch: Some(h),
                 threat: None,
                 sticky: true,
-                via: Some(b.inside).filter(|_| b.door.side(members[i].pos) == b.door.side(b.from)),
+                via: (b.door.side(members[i].pos) == b.door.side(b.from)).then_some(b.inside),
                 prefire: None,
             });
         }
