@@ -21,8 +21,8 @@ use crate::weapon::viewmodel;
 const HAND_BONE: &str = "hand_r";
 /// Enemy guns are the arsenal's own models (`weapon::viewmodel::fit`: per-gun path, hand point,
 /// muzzle; barrel toward model -Z), this much bigger than the first-person scale so they read
-/// at third-person size in the mannequin's hand.
-const THIRD_PERSON: f32 = 1.35;
+/// from the front at 10–20 m in the mannequin's hand (a bit over life size, on purpose).
+const THIRD_PERSON: f32 = 1.9;
 /// Gun pitch while not engaged (low ready), radians.
 const LOW_READY: f32 = 0.45;
 
@@ -34,7 +34,7 @@ const LIGHTS: usize = 4;
 const LIGHT_INTENSITY: f32 = 60_000.0;
 
 /// What the enemy FX layer should draw. Written by the AI every shot (headless too; unread there).
-// `shooter` is for listeners (audio, tests); the pooled FX place flashes at `from`.
+// The pooled FX flash at `shooter`'s drawn muzzle (else at `from`); `Glint.shooter` is for listeners.
 #[allow(dead_code)]
 #[derive(Message, Clone, Copy, Debug)]
 pub enum EnemyFx {
@@ -333,12 +333,15 @@ fn drop_guns(mut commands: Commands, enemies: Query<(Entity, &EnemyCombat, &GunL
     }
 }
 
-/// Light up pooled FX for this frame's shots and glints.
+/// Light up pooled FX for this frame's shots and glints. A shooter with a gun in hand flashes
+/// at that gun's muzzle (its last drawn pose), along its barrel; the tracer starts there too.
 fn spawn_fx(
     mut fx: MessageReader<EnemyFx>,
     mut pool: ResMut<FxPool>,
     mut q: Query<(&mut PooledFx, &mut Transform, &mut Visibility)>,
     mut lights: Query<&mut PointLight>,
+    links: Query<&GunLink>,
+    globals: Query<&GlobalTransform>,
 ) {
     let mut show = |pool: &mut FxPool, kind: FxKind, ttl: f32, tf: Transform| {
         let e = pool.take(kind)?;
@@ -353,10 +356,14 @@ fn spawn_fx(
     };
     for f in fx.read() {
         match *f {
-            EnemyFx::Shot { from, to, .. } => {
-                let aim = to.filter(|t| t.distance(from) > 0.05).map_or(Vec3::NEG_Z, |t| (t - from).normalize());
-                // Muzzle flash: a stretched glowing blob along the barrel plus a brief light.
-                let flash = Transform::from_translation(from + aim * 0.06).looking_to(aim, Vec3::Y).with_scale(Vec3::new(0.05, 0.05, 0.12));
+            EnemyFx::Shot { shooter, from, to } => {
+                let drawn = links.get(shooter).ok().and_then(|l| globals.get(l.muzzle).ok()).filter(|m| m.translation().distance(from) < 1.5);
+                let from = drawn.map_or(from, |m| m.translation());
+                let to_dir = to.filter(|t| t.distance(from) > 0.05).map(|t| (t - from).normalize());
+                let barrel = drawn.and_then(|m| m.forward().as_vec3().try_normalize());
+                let aim = barrel.or(to_dir).unwrap_or(Vec3::NEG_Z);
+                // Muzzle flash: a stretched glowing blob just past the barrel plus a brief light.
+                let flash = Transform::from_translation(from + aim * 0.07).looking_to(aim, Vec3::Y).with_scale(Vec3::new(0.06, 0.06, 0.15));
                 show(&mut pool, FxKind::Flash, 0.05, flash);
                 if let Some(l) = show(&mut pool, FxKind::Light, 0.05, Transform::from_translation(from))
                     && let Ok(mut pl) = lights.get_mut(l)
