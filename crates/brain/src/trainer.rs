@@ -108,8 +108,13 @@ impl Trainer {
         std::fs::rename(tmp, path)
     }
 
+    /// Load a checkpoint. Like `BrainState::load_or_new`, it migrates old saves: weapon genes
+    /// get seeded and player-model grids saved at an older map size are reset to the current size.
     pub fn load(path: &Path) -> Option<Self> {
-        serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+        let mut t: Trainer = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+        t.state.migrate();
+        t.state.player_model.fit_grids();
+        Some(t)
     }
 }
 

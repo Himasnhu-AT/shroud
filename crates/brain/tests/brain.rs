@@ -175,3 +175,21 @@ fn ghost_calibrates_toward_real_outcomes() {
         assert!(after <= before + 0.05, "ghost should not get stronger after the player lost: {before} -> {after}");
     }
 }
+
+/// A trainer checkpoint saved before the maps grew (8x8 route grid) must load with grids
+/// resized, or the trainer's ghost sims index past the end of the route table and panic.
+#[test]
+fn old_trainer_checkpoint_loads_with_current_grids() {
+    use brain::trainer::Trainer;
+    let mut t = Trainer::new(BrainState::new(7));
+    t.state.player_model.routes = vec![0.0; 8 * 8 * 8 * 8];
+    t.state.player_model.heat = vec![0.0; 32 * 32];
+    let dir = std::env::temp_dir().join(format!("shroud-trainer-{}", std::process::id()));
+    let path = dir.join("trainer.json");
+    t.save(&path).unwrap();
+    let back = Trainer::load(&path).expect("checkpoint loads");
+    let fresh = PlayerModel::default();
+    assert_eq!(back.state.player_model.routes.len(), fresh.routes.len());
+    assert_eq!(back.state.player_model.heat.len(), fresh.heat.len());
+    let _ = std::fs::remove_dir_all(dir);
+}
