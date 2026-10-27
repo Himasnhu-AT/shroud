@@ -8,7 +8,7 @@ use avian3d::prelude::*;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use brain::arena::{Arena, Block, BlockKind, BuildingUse, MapId, Skin};
-use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SunLook, ToneMap};
+use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SkyLook, SkyMode, SunLook, ToneMap};
 use engine::render_budget::SceneryRanges;
 
 use super::{ArenaRes, Gfx};
@@ -506,42 +506,54 @@ pub fn look_of(id: MapId) -> Look {
             grading: GradingLook { temperature: 0.03, ..neutral },
             ..base
         },
-        // Indoors: no sun, ceiling lamps do the work, exposure set for interiors.
+        // Indoors: no sun, ceiling lamps do the work. Exposure and fill are set for a lit
+        // office (bright ceiling, light walls) without clipping the lamp panels.
         MapId::Office => Look {
             name: "office".into(),
             sun: SunLook { enabled: false, shadows: false, ..arena_sun },
-            ambient: AmbientLook { color: Rgb::new(0.95, 0.93, 0.90), brightness: 150.0, env_intensity: 0.08 },
+            ambient: AmbientLook { color: Rgb::new(0.97, 0.95, 0.92), brightness: 400.0, env_intensity: 0.14 },
             fog: fog([0.30, 0.30, 0.32], 60.0, fog_end(id)),
-            exposure: ExposureLook { ev100: 8.6, ..ExposureLook::default() },
+            exposure: ExposureLook { ev100: 7.8, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: neutral,
+            grading: GradingLook { midtones: GradeSection { contrast: 1.08, ..GradeSection::default() }, ..neutral },
             ..base
         },
-        // Golden hour: low warm sun from the west-south-west raking across Main Street, long
-        // shadows, warm haze down the streets, lamps just coming on.
+        // Clear late afternoon: a warm sun from the west-south-west, low enough for long
+        // shadows down Main Street, under a blue gradient sky (Foundry keeps the physical
+        // atmosphere and a high white sun). Cool, slightly blue distance haze; a neutral fill
+        // so plaster keeps its colour in shade.
         MapId::Township => Look {
-            name: "township_golden_hour".into(),
+            name: "township_afternoon".into(),
             sun: SunLook {
                 azimuth_deg: 248.0,
-                elevation_deg: 18.0,
-                illuminance: 70_000.0,
-                color: Rgb::new(1.0, 0.77, 0.54),
+                elevation_deg: 24.0,
+                illuminance: 95_000.0,
+                color: Rgb::new(1.0, 0.84, 0.64),
                 shadow_distance: 80.0,
                 cascades: 3,
                 first_cascade: 10.0,
                 ..SunLook::default()
             },
-            // Warm-neutral fill: interiors get it too, and a sky-blue fill turns plaster lilac.
-            ambient: AmbientLook { color: Rgb::new(0.84, 0.80, 0.80), brightness: 600.0, env_intensity: 1.0 },
-            fog: FogLook {
-                sun_color: Rgb::new(1.0, 0.68, 0.38),
-                sun_amount: 0.6,
-                sun_exponent: 14.0,
-                ..fog([0.80, 0.70, 0.60], 60.0, fog_end(id))
+            sky: SkyLook {
+                mode: SkyMode::Gradient,
+                zenith: Rgb::new(0.06, 0.30, 0.85),
+                horizon: Rgb::new(0.66, 0.80, 0.94),
+                ground: Rgb::new(0.30, 0.28, 0.25),
+                brightness: 7000.0,
+                sun_glow: 0.8,
+                ..SkyLook::default()
             },
-            exposure: ExposureLook { ev100: 12.4, ..ExposureLook::default() },
+            ambient: AmbientLook { color: Rgb::new(0.92, 0.90, 0.90), brightness: 900.0, env_intensity: 1.0 },
+            fog: FogLook {
+                sun_color: Rgb::new(1.0, 0.84, 0.62),
+                sun_amount: 0.3,
+                sun_exponent: 16.0,
+                ..fog([0.66, 0.76, 0.88], 50.0, fog_end(id))
+            },
+            exposure: ExposureLook { ev100: 13.0, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: GradingLook { temperature: 0.07, post_saturation: 1.1, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
+            // AgX pushes saturated blues towards lavender: extra saturation keeps the sky blue.
+            grading: GradingLook { post_saturation: 1.15, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
             ..base
         },
     }

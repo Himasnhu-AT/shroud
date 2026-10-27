@@ -176,7 +176,7 @@ impl MapId {
             MapId::Foundry => "Open industrial yard around a central tower.",
             MapId::Depot => "Three lanes, long sightlines, one contested middle.",
             MapId::Office => "Tight corridors and rooms. Every corner is a fight.",
-            MapId::Township => "A town block at golden hour: long streets, alleys, houses with windows.",
+            MapId::Township => "A town block on a clear late afternoon: long streets, alleys, houses with windows.",
         }
     }
 }

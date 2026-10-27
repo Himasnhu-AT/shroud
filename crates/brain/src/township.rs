@@ -1,4 +1,4 @@
-//! "Township": a 90 × 90 m town block at golden hour, built with the [building kit](crate::building).
+//! "Township": a 90 × 90 m town block on a clear late afternoon, built with the [building kit](crate::building).
 //!
 //! Main Street runs north–south through the middle (the long sniper lane, broken up by cars,
 //! a checkpoint and a bus at the south end), the cross street runs east–west, and four blocks
