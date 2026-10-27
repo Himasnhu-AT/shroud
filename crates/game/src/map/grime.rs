@@ -209,10 +209,7 @@ impl Seq {
 
 /// Blocks that read as walls (get edge grime and streaks); props don't.
 fn is_wall(b: &Block) -> bool {
-    match b.skin {
-        Skin::Auto | Skin::Concrete | Skin::Stucco | Skin::Drywall | Skin::Brick | Skin::Plaster | Skin::Siding | Skin::Sandbag | Skin::Container => true,
-        _ => false,
-    }
+    matches!(b.skin, Skin::Auto | Skin::Concrete | Skin::Stucco | Skin::Drywall | Skin::Brick | Skin::Plaster | Skin::Siding | Skin::Sandbag | Skin::Container)
 }
 
 /// A vertical block face: centre on the ground, outward normal, length along it, the block.
