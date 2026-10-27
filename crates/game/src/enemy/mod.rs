@@ -20,7 +20,6 @@ use brain::utility::Goal;
 use brain::perception::{self, Heard, RELOAD_RANGE, Sound};
 use brain::sim::{CROUCH_SPEED, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
 pub use brain::loadout::{GunState, Role};
-use brain::weapons::WeaponKind;
 
 use crate::armed::Armed;
 use crate::assets::{AssetsDir, ENEMY_MODEL};
@@ -341,7 +340,8 @@ pub fn spawn_squad(
 #[derive(Resource, Default)]
 struct Inbox {
     /// (muzzle, direction) of each player shot.
-    player_shots: Vec<(Vec3, Vec3)>,
+    /// (muzzle, direction, heard within m) of each player shot.
+    player_shots: Vec<(Vec3, Vec3, f32)>,
     hits: Vec<(Entity, bool)>,
 }
 
@@ -352,7 +352,7 @@ fn collect_inbox(
     mut damage: MessageReader<Damage>,
 ) {
     let player = players.single().ok();
-    inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| (s.origin, s.dir)).collect();
+    inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| (s.origin, s.dir, s.loudness_m)).collect();
     inbox.hits = damage.read().filter(|d| Some(d.source) == player).map(|d| (d.target, d.headshot)).collect();
 }
 
@@ -384,7 +384,7 @@ fn think_and_act(
     spatial: SpatialQuery,
     arena: Res<ArenaRes>,
     brain: Res<Brain>,
-    players: Query<(Entity, &Transform, &FpsMotor, &Health, Option<&Rifle>, Option<&Armed>), With<Player>>,
+    players: Query<(Entity, &Transform, &FpsMotor, &Health, Option<&Rifle>), With<Player>>,
     mut squad: ResMut<Squad>,
     mut enemies: Query<
         (Entity, &mut Transform, &mut Mind, &mut EnemyCombat, &Children, &Health, Option<&GunLink>),
@@ -405,9 +405,7 @@ fn think_and_act(
     if dt <= 0.0 {
         return;
     }
-    let Ok((player, ptf, motor, php, rifle, player_gun)) = players.single() else { return };
-    // The player's gun decides how far his shots carry (`perception::gunshot_range`).
-    let shot_range = perception::gunshot_range(player_gun.map_or(WeaponKind::Rifle, |a| a.0));
+    let Ok((player, ptf, motor, php, rifle)) = players.single() else { return };
     let AiScratch { sounds, heard_events, reveals, snapshot, allies_buf, rng } = &mut *scratch;
     let rng = rng.get_or_insert_with(|| brain::math::rng_from_seed(0x5407));
     let player_reloading = rifle.is_some_and(|r| r.reloading.is_some());
@@ -430,7 +428,8 @@ fn think_and_act(
     let hits = &inbox.hits;
     // Stimuli the player makes this frame (perception.rs): gunshots, footsteps, reload.
     sounds.clear();
-    sounds.extend(player_shots.iter().map(|(o, _)| (Sound::Gunshot, to_ground(*o), shot_range)));
+    // Each shot carries as far as its gun is loud (`ShotFired::loudness_m`, scaled like the sim).
+    sounds.extend(player_shots.iter().map(|(o, _, l)| (Sound::Gunshot, to_ground(*o), perception::gunshot_range_m(*l))));
     let steps = if motor.grounded { perception::footstep_range(p_vel.len(), motor.crouched) } else { 0.0 };
     if steps > 0.0 {
         sounds.push((Sound::Footstep, p_ground, steps));
@@ -463,7 +462,7 @@ fn think_and_act(
             if hits.iter().any(|h| h.0 == e) {
                 reveals.push(slot);
             }
-            let near_miss = player_shots.iter().any(|(o, d)| perception::near_miss(&arena.0, to_ground(*o), V2::new(d.x, d.z).norm(), pos));
+            let near_miss = player_shots.iter().any(|(o, d, _)| perception::near_miss(&arena.0, to_ground(*o), V2::new(d.x, d.z).norm(), pos));
             let h = if near_miss { Some(Heard { sound: Sound::Gunshot, pos: p_ground, loud: 1.0 }) } else { perception::listen(&arena.0, sounds, pos) };
             if let Some(h) = h {
                 c.heard = Some(h.pos);

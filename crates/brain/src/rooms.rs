@@ -1,6 +1,6 @@
 //! Rooms and doorways for room clearing (stack and breach, corner checks). Map-agnostic: a
-//! doorway is a lintel (`Decor::headers`) over walkable floor; a lintel over a low block is a
-//! window, not a way in.
+//! doorway is a lintel (`Decor::headers`, doors only) over walkable floor; windows are
+//! `Decor::windows` (a low sill block under the opening), never a way in.
 
 use crate::arena::{Arena, BlockKind};
 use crate::math::V2;
@@ -63,15 +63,16 @@ pub fn doorways(arena: &Arena) -> Vec<Doorway> {
     out
 }
 
-/// Window sills: low blocks with a lintel above them.
+/// Window sills: the low block under a window opening (`Decor::windows`).
 pub fn is_window_sill(arena: &Arena, block: usize) -> bool {
     let Some(b) = arena.blocks.get(block) else { return false };
     b.kind == BlockKind::Low
-        && arena.decor.headers.iter().any(|h| {
-            let c = (h.min + h.max) * 0.5;
-            (c.x - b.center.x).abs() < b.half.x + 0.3 && (c.y - b.center.y).abs() < b.half.y + 0.3
+        && arena.decor.windows.iter().any(|w| {
+            let c = (w.min + w.max) * 0.5;
+            (c.x - b.center.x).abs() < 0.3 && (c.y - b.center.y).abs() < 0.3
         })
 }
+
 
 /// Distance from `p` to the segment `a`-`b`.
 fn seg_dist(p: V2, a: V2, b: V2) -> f32 {

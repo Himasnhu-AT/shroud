@@ -18,6 +18,17 @@ pub const ROUNDS_TO_WIN: u32 = 2;
 /// Round time limit (s). Time up: the side with more of its health left wins — the player's
 /// HP share against the squad's total remaining HP share; a tie goes to the squad (they held).
 pub const ROUND_TIME_S: f32 = 150.0;
+
+/// The round time limit in force (s); `None` = no limit. Headless runs (tests, tools) have none,
+/// so long scripted rounds aren't cut short; `match.time_limit` sets it over the control port.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct RoundLimit(pub Option<f32>);
+
+impl Default for RoundLimit {
+    fn default() -> Self {
+        RoundLimit(Some(ROUND_TIME_S))
+    }
+}
 const ROUND_END_PAUSE: f32 = 2.5;
 
 #[derive(Resource, Debug, Default)]
@@ -60,6 +71,7 @@ pub struct MatchFlowPlugin;
 impl Plugin for MatchFlowPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MatchFlow>()
+            .init_resource::<RoundLimit>()
             .init_resource::<PendingReport>()
             .add_plugins(crate::armor::ArmorPlugin)
 
@@ -100,6 +112,8 @@ pub(crate) fn check_round_end(
     mut flow: ResMut<MatchFlow>,
     squad: Res<Squad>,
     clock: Res<RoundClock>,
+    limit: Res<RoundLimit>,
+    headless: Res<crate::state::Headless>,
     players: Query<(&Health, &Transform), With<Player>>,
     enemies: Query<(&EnemyCombat, &Health), With<Enemy>>,
     mut telemetry: ResMut<Telemetry>,
@@ -111,7 +125,7 @@ pub(crate) fn check_round_end(
     let Ok((php, ptf)) = players.single() else { return };
     let alive = enemies.iter().filter(|(c, _)| !c.dead).count();
     let player_dead = php.is_dead();
-    let time_up = clock.0 >= ROUND_TIME_S;
+    let time_up = !headless.0 && limit.0.is_some_and(|l| clock.0 >= l);
     if !player_dead && alive > 0 && !time_up {
         return;
     }

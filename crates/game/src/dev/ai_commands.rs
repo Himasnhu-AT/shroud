@@ -51,6 +51,12 @@ pub fn register(app: &mut App) {
             enemy_loadout,
         )
         .add_control_command(
+            "match.time_limit",
+            "Round time limit in seconds (omit or null: no limit). Headless runs never time out.",
+            params(&[("seconds", "number", "limit; omit for none")]),
+            match_time_limit,
+        )
+        .add_control_command(
             "ai.play",
             "Force the squad's play (test hook; omit `name` to hand it back to the bandit)",
             params(&[("name", "string", "trade | crossfire | pinflank | bait | overwatch | collapse | sweep | search | encircle | free")]),
@@ -164,7 +170,14 @@ fn enemy_loadout(world: &mut World, p: Value) -> Result<Value, String> {
     Ok(json!(out))
 }
 
+fn match_time_limit(world: &mut World, p: Value) -> Result<Value, String> {
+    let secs = p.get("seconds").and_then(Value::as_f64).map(|s| s as f32);
+    world.resource_mut::<crate::match_flow::RoundLimit>().0 = secs;
+    Ok(json!({ "seconds": secs }))
+}
+
 fn ai_play(world: &mut World, p: Value) -> Result<Value, String> {
+
     use brain::squad::Play;
     let want = p.get("name").and_then(Value::as_str).map(|s| s.to_lowercase().replace([' ', '-', '_'], ""));
     let all = [Play::Free, Play::Overwatch, Play::Crossfire, Play::Trade, Play::PinFlank, Play::Collapse, Play::Bait, Play::Sweep, Play::Search, Play::Encircle];

@@ -1,6 +1,6 @@
 //! Enemy gun presentation: the gun in the mannequin's right hand (shaped per weapon kind) that
 //! points where the enemy aims, muzzle flashes, short tracers, a glint before an enemy opens
-//! fire, a team tint, and the gun dropping when its owner dies. Gameplay only reads
+//! fire and a team tint. (A dead enemy's gun becomes the arsenal's pickup, `weapon::pickups`.) Gameplay only reads
 //! [`muzzle_point`]; everything else here runs only with visuals.
 //!
 //! Cost: every flash, tracer, glint and muzzle light comes from a small fixed pool spawned once
@@ -12,36 +12,19 @@ use std::f32::consts::PI;
 use bevy::prelude::*;
 use brain::weapons::WeaponKind;
 
-use super::{Corpse, Enemy, EnemyCombat};
+use super::{Enemy, EnemyCombat};
 use crate::assets::AssetsDir;
 use crate::state::has_visuals;
+use crate::weapon::viewmodel;
 
-pub const ENEMY_RIFLE_MODEL: &str = "models/enemy_rifle.glb";
 /// Right-hand bone of the Quaternius mannequin (fingers point along its +Y).
 const HAND_BONE: &str = "hand_r";
-/// In gun model space (Kenney blasters: muzzle toward -Z at z ~ -0.37, grip/stock toward +Z).
-const GRIP: Vec3 = Vec3::new(0.0, -0.15, 0.2);
-const MUZZLE: Vec3 = Vec3::new(0.0, 0.05, -0.39);
+/// Enemy guns are the arsenal's own models (`weapon::viewmodel::fit`: per-gun path, hand point,
+/// muzzle; barrel toward model -Z), this much bigger than the first-person scale so they read
+/// at third-person size in the mannequin's hand.
+const THIRD_PERSON: f32 = 1.35;
 /// Gun pitch while not engaged (low ready), radians.
 const LOW_READY: f32 = 0.45;
-
-/// How each gun looks in an enemy's hand: the one blaster model, scaled per kind (x/y bulk,
-/// z length), plus a scope on the marksman rifle.
-#[derive(Clone, Copy)]
-struct GunLook {
-    scale: Vec3,
-    scope: bool,
-}
-
-fn look(k: WeaponKind) -> GunLook {
-    match k {
-        WeaponKind::Pistol => GunLook { scale: Vec3::new(0.6, 0.6, 0.42), scope: false },
-        WeaponKind::Smg => GunLook { scale: Vec3::new(0.72, 0.75, 0.62), scope: false },
-        WeaponKind::Rifle => GunLook { scale: Vec3::splat(0.85), scope: false },
-        WeaponKind::Shotgun => GunLook { scale: Vec3::new(1.1, 1.0, 0.9), scope: false },
-        WeaponKind::Marksman => GunLook { scale: Vec3::new(0.78, 0.8, 1.3), scope: true },
-    }
-}
 
 /// Pool sizes.
 const FLASHES: usize = 12;
@@ -72,15 +55,10 @@ pub struct GunLink {
 struct EnemyGun {
     owner: Entity,
     rot: Option<Quat>,
-    /// The kind it is currently shaped as, its scale and its scope child.
+    /// The kind it is currently showing, and that model's entity.
     kind: Option<WeaponKind>,
-    scale: Vec3,
-    scope: Entity,
-}
-
-#[derive(Component)]
-struct DroppedGun {
-    vel: Vec3,
+    model: Option<Entity>,
+    muzzle: Entity,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -125,11 +103,10 @@ impl FxPool {
     }
 }
 
-/// Shared primitive meshes/materials for guns without the glTF model and for scopes.
+/// Shared primitive mesh/material for guns whose model file is missing.
 #[derive(Resource)]
 struct GunParts {
     body: Handle<Mesh>,
-    scope: Handle<Mesh>,
     mat: Handle<StandardMaterial>,
 }
 
@@ -150,7 +127,7 @@ impl Plugin for EnemyGunPlugin {
             .add_systems(Startup, setup.run_if(has_visuals))
             .add_systems(
                 Update,
-                (attach_guns, restyle_guns, tint_enemies, drop_guns, fall_dropped, spawn_fx, tick_fx).run_if(has_visuals).run_if(resource_exists::<GunParts>),
+                (attach_guns, restyle_guns, tint_enemies, drop_guns, spawn_fx, tick_fx).run_if(has_visuals).run_if(resource_exists::<GunParts>),
             );
         app.add_systems(
             PostUpdate,
@@ -162,8 +139,7 @@ impl Plugin for EnemyGunPlugin {
 /// Shared gun parts and the FX pool, once.
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>, mut pool: ResMut<FxPool>) {
     commands.insert_resource(GunParts {
-        body: meshes.add(Cuboid::new(0.08, 0.12, 0.75)),
-        scope: meshes.add(Cuboid::new(0.055, 0.06, 0.3)),
+        body: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
         mat: materials.add(StandardMaterial { base_color: Color::srgb(0.1, 0.1, 0.12), perceptual_roughness: 0.5, ..default() }),
     });
     // Unlit ignores emissive, so the HDR colour goes in base_color (bloom picks up > 1).
@@ -214,64 +190,72 @@ fn owner_enemy(mut e: Entity, parents: &Query<&ChildOf>, enemies: &Query<(), Wit
     None
 }
 
-/// When an enemy's hand bone appears, put a gun in it.
-fn attach_guns(
-    mut commands: Commands,
-    names: Query<(Entity, &Name), Added<Name>>,
-    parents: Query<&ChildOf>,
-    enemies: Query<(), With<Enemy>>,
-    dir: Res<AssetsDir>,
-    server: Res<AssetServer>,
-    parts: Res<GunParts>,
-) {
+/// When an enemy's hand bone appears, give it a gun pivot (the model comes in `restyle_guns`).
+fn attach_guns(mut commands: Commands, names: Query<(Entity, &Name), Added<Name>>, parents: Query<&ChildOf>, enemies: Query<(), With<Enemy>>) {
     for (hand, name) in &names {
         if name.as_str() != HAND_BONE {
             continue;
         }
         let Some(owner) = owner_enemy(hand, &parents, &enemies) else { continue };
-        let gun = commands.spawn((Name::new("enemy gun"), Transform::from_scale(Vec3::splat(0.85)), Visibility::default(), ChildOf(hand))).id();
-        if dir.has(ENEMY_RIFLE_MODEL) {
-            let scene = server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(ENEMY_RIFLE_MODEL));
-            commands.entity(gun).insert(bevy::world_serialization::WorldAssetRoot(scene));
-        } else {
-            commands.spawn((Mesh3d(parts.body.clone()), MeshMaterial3d(parts.mat.clone()), Transform::from_xyz(0.0, 0.0, -0.02), ChildOf(gun)));
-        }
-        let scope = commands
-            .spawn((
-                Mesh3d(parts.scope.clone()),
-                MeshMaterial3d(parts.mat.clone()),
-                Transform::from_xyz(0.0, 0.2, 0.02),
-                Visibility::Hidden,
-                ChildOf(gun),
-            ))
-            .id();
-        let muzzle = commands.spawn((Transform::from_translation(MUZZLE), Visibility::default(), ChildOf(gun))).id();
-        commands.entity(gun).insert(EnemyGun { owner, rot: None, kind: None, scale: Vec3::splat(0.85), scope });
+        let gun = commands.spawn((Name::new("enemy gun"), Transform::default(), Visibility::default(), ChildOf(hand))).id();
+        let muzzle = commands.spawn((Transform::default(), Visibility::default(), ChildOf(gun))).id();
+        commands.entity(gun).insert(EnemyGun { owner, rot: None, kind: None, model: None, muzzle });
         commands.entity(owner).insert(GunLink { gun, muzzle });
     }
 }
 
-/// Shape the gun after what its owner holds (the primary, or the sidearm after a switch).
-fn restyle_guns(mut guns: Query<&mut EnemyGun>, owners: Query<&EnemyCombat>, mut vis: Query<&mut Visibility>) {
-    for mut g in &mut guns {
+/// Show the gun its owner holds (the primary, or the sidearm after a switch): the arsenal's
+/// model for that kind, the hand point on the pivot, the muzzle where that model's barrel ends.
+fn restyle_guns(
+    mut commands: Commands,
+    mut guns: Query<(Entity, &mut EnemyGun)>,
+    owners: Query<&EnemyCombat>,
+    mut transforms: Query<&mut Transform>,
+    dir: Res<AssetsDir>,
+    server: Res<AssetServer>,
+    parts: Res<GunParts>,
+) {
+    for (gun, mut g) in &mut guns {
         let Ok(c) = owners.get(g.owner) else { continue };
         let kind = c.gun.held;
         if g.kind == Some(kind) {
             continue;
         }
-        let l = look(kind);
         g.kind = Some(kind);
-        g.scale = l.scale;
-        if let Ok(mut v) = vis.get_mut(g.scope) {
-            let want = if l.scope { Visibility::Inherited } else { Visibility::Hidden };
-            if *v != want {
-                *v = want;
-            }
+        if let Some(old) = g.model.take() {
+            commands.entity(old).despawn();
+        }
+        let fit = viewmodel::fit(kind);
+        let k = THIRD_PERSON;
+        let model = if dir.has(fit.path) {
+            let scene = server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(fit.path));
+            commands
+                .spawn((
+                    bevy::world_serialization::WorldAssetRoot(scene),
+                    Transform::from_translation(fit.offset * k).with_scale(Vec3::splat(fit.scale * k)),
+                    Visibility::default(),
+                    ChildOf(gun),
+                ))
+                .id()
+        } else {
+            let size = fit.body * k;
+            commands
+                .spawn((
+                    Mesh3d(parts.body.clone()),
+                    MeshMaterial3d(parts.mat.clone()),
+                    Transform::from_xyz(0.0, 0.0, -size.z * 0.4).with_scale(size),
+                    ChildOf(gun),
+                ))
+                .id()
+        };
+        g.model = Some(model);
+        if let Ok(mut m) = transforms.get_mut(g.muzzle) {
+            m.translation = fit.muzzle * k;
         }
     }
 }
 
-/// Point each held gun at the enemy's aim target (or low ready), grip in the palm.
+/// Point each held gun at the enemy's aim target (or low ready), hand point in the palm.
 /// Runs after transform propagation so it sees this frame's animated hand.
 fn aim_guns(time: Res<Time>, mut guns: Query<(&mut EnemyGun, &mut Transform, &ChildOf)>, globals: Query<&GlobalTransform>, enemies: Query<&EnemyCombat>) {
     let k = 1.0 - (-16.0 * time.delta_secs()).exp();
@@ -283,11 +267,11 @@ fn aim_guns(time: Res<Time>, mut guns: Query<(&mut EnemyGun, &mut Transform, &Ch
         let fwd = root.forward().as_vec3();
         let low = (fwd * LOW_READY.cos() - Vec3::Y * LOW_READY.sin()).normalize();
         let dir = c.aim_at.map_or(low, |p| (p - palm).try_normalize().unwrap_or(fwd));
-        // The muzzle is at model -Z: point -Z (Transform forward) at the target.
+        // The barrel is model -Z (Transform forward): point it at the target.
         let want = Transform::IDENTITY.looking_to(dir, Vec3::Y).rotation;
         let rot = g.rot.map_or(want, |r| r.slerp(want, k));
         g.rot = Some(rot);
-        let world = Transform { translation: palm - rot * (GRIP * g.scale), rotation: rot, scale: g.scale };
+        let world = Transform { translation: palm, rotation: rot, scale: Vec3::ONE };
         let local = GlobalTransform::from(world).reparented_to(hand);
         if *tf != local {
             *tf = local;
@@ -339,38 +323,12 @@ fn tint_enemies(
     }
 }
 
-/// A dead enemy lets go of its gun.
-fn drop_guns(mut commands: Commands, enemies: Query<(Entity, &EnemyCombat, &GunLink, &Transform)>, globals: Query<&GlobalTransform>) {
-    for (e, c, link, tf) in &enemies {
-        if !c.dead {
-            continue;
-        }
-        commands.entity(e).remove::<GunLink>();
-        let Ok(g) = globals.get(link.gun) else { continue };
-        let side = tf.rotation * Vec3::X;
-        commands
-            .entity(link.gun)
-            .remove::<(ChildOf, EnemyGun)>()
-            .insert((g.compute_transform(), DroppedGun { vel: side * 1.2 + Vec3::Y * 1.5 }, Corpse(3.0)));
-    }
-}
-
-fn fall_dropped(time: Res<Time>, mut q: Query<(&mut DroppedGun, &mut Transform)>) {
-    let dt = time.delta_secs();
-    for (mut d, mut tf) in &mut q {
-        if d.vel == Vec3::ZERO {
-            continue;
-        }
-        d.vel.y -= 9.81 * dt;
-        tf.translation += d.vel * dt;
-        // Settle on its side.
-        let (yaw, _, _) = tf.rotation.to_euler(EulerRot::YXZ);
-        let flat = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, PI * 0.5);
-        tf.rotation = tf.rotation.slerp(flat, 1.0 - (-8.0 * dt).exp());
-        if tf.translation.y <= 0.07 {
-            tf.translation.y = 0.07;
-            tf.rotation = flat;
-            d.vel = Vec3::ZERO;
+/// A dead enemy's gun leaves its hand: the arsenal drops a pickup of its `Armed` gun in its place.
+fn drop_guns(mut commands: Commands, enemies: Query<(Entity, &EnemyCombat, &GunLink)>) {
+    for (e, c, link) in &enemies {
+        if c.dead {
+            commands.entity(e).remove::<GunLink>();
+            commands.entity(link.gun).despawn();
         }
     }
 }

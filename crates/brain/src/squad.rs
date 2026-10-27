@@ -678,6 +678,9 @@ pub struct SquadCoordinator {
     pub breach: Option<Breach>,
     /// A grenade wanted through the breach door (lands here).
     breach_throw: Option<V2>,
+    /// Map size vs the 64 m maps (`search::map_scale`): big maps give staging and the
+    /// encirclement proportionally longer, since everyone has further to walk.
+    map_scale: f32,
 }
 
 /// Stack and breach: the entry and its trader stack beside the door frame, utility goes in,
@@ -799,6 +802,7 @@ impl SquadCoordinator {
             doors: None,
             breach: None,
             breach_throw: None,
+            map_scale: search::map_scale(arena),
         }
     }
 
@@ -1639,7 +1643,7 @@ impl SquadCoordinator {
 
     /// The synchronised peek has had its moment (or the encirclement has run its time).
     fn encircled(&self) -> bool {
-        self.play_t > ENCIRCLE_S || self.go_t.is_some_and(|g| self.time - g > GO_S)
+        self.play_t > ENCIRCLE_S * self.map_scale || self.go_t.is_some_and(|g| self.time - g > GO_S)
     }
 
     /// Every mover is at its staging cell.
@@ -1883,7 +1887,7 @@ impl SquadCoordinator {
         }
         // Staged: everyone is a step from his line of fire (or it took too long). Then all
         // peek at once from their sides, so he can't take them one at a time.
-        if self.go_t.is_none() && (self.staged(members) || self.play_t > STAGE_S) {
+        if self.go_t.is_none() && (self.staged(members) || self.play_t > STAGE_S * self.map_scale) {
             self.go_t = Some(now);
             if let Some(&s) = self.shooters.first() {
                 self.bark(s, "All set - go go go".into(), true);

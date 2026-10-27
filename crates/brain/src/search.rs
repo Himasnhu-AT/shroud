@@ -95,18 +95,25 @@ pub fn spots(arena: &Arena, belief: &Belief, hot: Option<V2>, eyes: &[V2], done:
     }
     cand.retain(|(m, q)| *m > 1e-4 && !searched(*q, done, now));
     cand.sort_by(|a, b| b.0.total_cmp(&a.0));
+    // Big maps spread spots (and searchers, below) in proportion to their size.
+    let scale = map_scale(arena);
     let mut out: Vec<Spot> = Vec::new();
     for (m, q) in cand {
         if out.len() >= MAX_SPOTS {
             break;
         }
-        if out.iter().all(|s| s.pos.dist(q) >= SPOT_SEP) {
+        if out.iter().all(|s| s.pos.dist(q) >= SPOT_SEP * scale) {
             out.push(Spot { pos: q, mass: m });
         }
     }
     let top = out.first().map_or(1.0, |s| s.mass.max(1e-9));
     out.iter_mut().for_each(|s| s.mass /= top);
     out
+}
+
+/// Map size relative to the 64 m maps the weights were tuned on (Township: ~1.4).
+pub fn map_scale(arena: &Arena) -> f32 {
+    (arena.half() / crate::arena::ARENA_HALF).max(1.0)
 }
 
 /// Can a member at `eye` looking along `look` see into `spot` (a crouched player there)?
@@ -128,6 +135,8 @@ pub struct Searcher<'a> {
 /// Assign a spot to each searcher. `reserved`: targets already taken (investigators).
 /// Returns per searcher (same order) the spot to go to.
 pub fn assign(arena: &Arena, spots: &[Spot], who: &[Searcher], reserved: &[V2], rng: &mut BrainRng) -> Vec<Option<V2>> {
+    let scale = map_scale(arena);
+    let sigma = SIGMA * scale;
     let mut out: Vec<Option<V2>> = vec![None; who.len()];
     let mut taken: Vec<V2> = reserved.to_vec();
     let mut used = vec![false; spots.len()];
@@ -162,9 +171,9 @@ pub fn assign(arena: &Arena, spots: &[Spot], who: &[Searcher], reserved: &[V2], 
                     if !d.is_finite() {
                         return None;
                     }
-                    let rep: f32 = taken.iter().map(|t| (-t.dist(s.pos).powi(2) / (SIGMA * SIGMA)).exp()).sum();
+                    let rep: f32 = taken.iter().map(|t| (-t.dist(s.pos).powi(2) / (sigma * sigma)).exp()).sum();
                     let own = if owner(s.pos) == Some(k) { W_OWN } else { 0.0 };
-                    Some((W_MASS * s.mass - W_DIST * d / 30.0 - W_REP * rep + own, j))
+                    Some((W_MASS * s.mass - W_DIST * d / (30.0 * scale) - W_REP * rep + own, j))
                 })
                 .collect();
             opts.sort_by(|a, b| b.0.total_cmp(&a.0));

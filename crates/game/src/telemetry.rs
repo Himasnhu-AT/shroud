@@ -93,11 +93,8 @@ fn record(
     enemies: Query<(Entity, &Transform, &EnemyCombat), With<Enemy>>,
     mut shots: MessageReader<ShotFired>,
     mut damage: MessageReader<Damage>,
-    armed: Query<&crate::armed::Armed, With<Player>>,
 ) {
     let Ok((player, ptf, motor, look, php, rifle)) = players.single() else { return };
-    // The gun in the player's hands (the rifle until the arsenal tags the player).
-    let gun = armed.single().map_or(brain::weapons::WeaponKind::Rifle, |a| a.0);
     let s = &mut *s;
     let dt = time.delta_secs();
     s.clock += dt;
@@ -192,7 +189,7 @@ fn record(
 
     // --- Shots: reaction, per-range counts, per-shot records.
     for shot in &player_shots {
-        t.0.shot_with(gun);
+        t.0.shot_with(shot.kind);
         if let Some(at) = s.engaged_at.take() {
             let r = s.clock - at;
             if r < 2.0 {
