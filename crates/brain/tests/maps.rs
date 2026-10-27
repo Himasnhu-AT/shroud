@@ -1,7 +1,7 @@
 //! Every map: in bounds, spawns walkable and connected, zones and cover, no overlapping
 //! geometry (z-fighting), and the 2D sim plays a real round on it.
 
-use brain::arena::{ARENA_HALF, Arena, BlockKind, MapId, WALL_THICKNESS};
+use brain::arena::{Arena, BlockKind, GRID_HALF, MapId, WALL_THICKNESS};
 use brain::evolve::BrainState;
 use brain::limits::Limits;
 use brain::math::V2;
@@ -52,9 +52,10 @@ fn build_returns_the_requested_map() {
 #[test]
 fn maps_fit_inside_the_arena_bounds() {
     for a in maps() {
-        let lim = ARENA_HALF + WALL_THICKNESS + 1e-3;
+        assert!(a.half() <= GRID_HALF, "{:?}: bigger than the AI grids", a.id);
+        let lim = a.half() + WALL_THICKNESS + 1e-3;
         for b in &a.blocks {
-            let inner = if b.kind == BlockKind::Wall { lim } else { ARENA_HALF - WALL_THICKNESS + 1e-3 };
+            let inner = if b.kind == BlockKind::Wall { lim } else { a.half() - WALL_THICKNESS + 1e-3 };
             assert!(
                 (b.center.x.abs() + b.half.x) <= inner && (b.center.y.abs() + b.half.y) <= inner,
                 "{:?}: block at {:?} pokes out",

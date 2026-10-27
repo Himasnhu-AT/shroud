@@ -361,8 +361,8 @@ impl Ghost {
             for (i, &p) in row.iter().enumerate() {
                 r -= p;
                 if r <= 0.0 {
-                    let cell = 64.0 / ROUTE_W as f32;
-                    let c = V2::new(-32.0 + ((i % ROUTE_W) as f32 + 0.5) * cell, -32.0 + ((i / ROUTE_W) as f32 + 0.5) * cell);
+                    let cell = 2.0 * crate::arena::GRID_HALF / ROUTE_W as f32;
+                    let c = V2::new(-crate::arena::GRID_HALF + ((i % ROUTE_W) as f32 + 0.5) * cell, -crate::arena::GRID_HALF + ((i / ROUTE_W) as f32 + 0.5) * cell);
                     return arena.nav.nearest_walkable(c);
                 }
             }

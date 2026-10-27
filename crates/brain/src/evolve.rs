@@ -783,7 +783,10 @@ impl BrainState {
     pub fn load_or_new(path: &Path, seed: u64) -> Self {
         match std::fs::read(path) {
             Ok(bytes) => match serde_json::from_slice::<BrainState>(&bytes) {
-                Ok(s) if s.version == SAVE_VERSION => s,
+                Ok(mut s) if s.version == SAVE_VERSION => {
+                    s.player_model.fit_grids();
+                    s
+                }
                 _ => {
                     let _ = std::fs::rename(path, path.with_extension("json.bak"));
                     BrainState::new(seed)
