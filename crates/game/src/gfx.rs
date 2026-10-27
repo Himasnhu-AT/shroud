@@ -6,19 +6,15 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::light::AtmosphereEnvironmentMapLight;
-use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use engine::gfx::QualityPreset;
 use engine::render_budget::SceneryRanges;
 
-pub use engine::gfx::{FaceCamera, PendingMips, Sun, load_pbr, world_uv_cuboid};
+pub use engine::gfx::{FaceCamera, PendingMips, load_pbr, world_uv_cuboid};
 
 use crate::state::has_visuals;
 
-/// Haze colour for distance fog (matches the low-sun sky near the horizon).
-pub const FOG_COLOR: Color = Color::srgb(0.58, 0.62, 0.70);
 /// Where the fog is opaque: nothing is drawn beyond it.
 pub const FOG_END: f32 = 180.0;
 
@@ -35,21 +31,12 @@ impl Plugin for GfxPlugin {
     }
 }
 
-/// Shroud's camera look (never used headless). Quality-dependent parts (AA, SSAO, bloom,
-/// shadow resolution) and FOV come from the engine for `MainCamera`s.
+/// Shroud's camera look before the map's engine `Look` applies (never used headless). The
+/// look (`map::look::look_of`, engine feature `look`) then owns exposure, tonemapping, fog,
+/// sky and env light on the `MainCamera`; quality-dependent parts (AA, SSAO, bloom, shadow
+/// resolution) and FOV come from the engine.
 pub fn camera_look() -> impl Bundle {
-    (
-        Tonemapping::AgX,
-        Exposure { ev100: 13.0 },
-        AtmosphereSettings::default(),
-        AtmosphereEnvironmentMapLight { intensity: 1.0, size: UVec2::splat(128), ..default() },
-        DistanceFog {
-            color: FOG_COLOR,
-            directional_light_color: Color::srgba(1.0, 0.85, 0.65, 0.35),
-            directional_light_exponent: 24.0,
-            falloff: FogFalloff::Linear { start: 30.0, end: FOG_END },
-        },
-    )
+    (Tonemapping::AgX, Exposure { ev100: 13.0 })
 }
 
 /// Atmosphere sky, low afternoon sun (each map re-aims and re-tints it in `map::look`), cool

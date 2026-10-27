@@ -2,7 +2,10 @@
 """Launch Shroud (windowed by default) under memgate with the control port, run a script of
 commands, save screenshots, quit. For tests and visual checks; never grabs the mouse.
 
-  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N] [--no-build]
+  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N] [--no-build] [--exe BIN]
+
+--exe BIN runs that binary instead of target/debug/shroud (implies --no-build): build, copy
+and check your binary first when sibling worktrees share the target dir and may overwrite it.
 
 Builds this checkout first (via memgate) and runs a private copy of the binary.
 
@@ -27,11 +30,12 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # Build *this* checkout and snapshot the binary right away: the shared target dir means
     # another worktree's build can overwrite target/debug/shroud at any moment.
-    if "--no-build" not in args:
+    src = args[args.index("--exe") + 1] if "--exe" in args else "/Users/himanshu/codes/game/shroud/target/debug/shroud"
+    if "--no-build" not in args and "--exe" not in args:
         subprocess.run(["memgate", "--", "cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
     exe = os.path.join(out, "shroud")
     import shutil
-    shutil.copy2("/Users/himanshu/codes/game/shroud/target/debug/shroud", exe)
+    shutil.copy2(src, exe)
     log = open(os.path.join(out, "game.log"), "w")
     cmd = ["memgate", "--", exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
     cmd.append("--mute")  # never make noise (the user may be in a meeting)

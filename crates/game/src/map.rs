@@ -6,11 +6,15 @@
 //! dressing in [`look`] and [`dressing`].
 
 mod dressing;
+pub mod glass;
 mod look;
+mod props;
+
+use glass::GlassPlugin;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use brain::arena::{ARENA_HALF, Arena, BlockKind, MapId};
+use brain::arena::{Arena, BlockKind, MapId};
 use brain::math::V2;
 
 use crate::assets::AssetsDir;
@@ -29,6 +33,7 @@ impl Plugin for MapPlugin {
         let id = app.world().get_resource::<ShroudSettings>().map(|s| s.map).unwrap_or_default();
         app.insert_resource(ArenaRes(Arena::build(id)))
             .init_resource::<MapRequest>()
+            .add_plugins(GlassPlugin)
             .add_systems(Startup, spawn_current_map)
             .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
             // Map pieces are static scenery for the engine's render budget.
@@ -43,14 +48,14 @@ impl Plugin for MapPlugin {
                     .before(crate::match_flow::begin_round)
                     .before(crate::enemy::spawn_squad),
             )
-            .add_systems(Update, (look::apply_look, look::apply_light_budget).run_if(has_visuals));
+            .add_systems(Update, (look::sync_look, look::apply_light_budget).run_if(has_visuals));
         #[cfg(feature = "dev")]
         {
             use engine::devtools::{AddControlCommand, params};
             app.add_control_command(
                 "map.load",
                 "Switch map now (restarts the round)",
-                params(&[("name", "string", "Foundry | Depot | Office")]),
+                params(&[("name", "string", "Foundry | Depot | Office | Township")]),
                 map_load_command,
             )
             .add_control_command("map.info", "Current map", params(&[]), map_info_command);
@@ -166,10 +171,10 @@ fn sync_map(
 /// Spawn floor, blocks, door headers and roofs (with colliders), plus visuals and map lights
 /// when `gfx` is given. Everything gets [`ArenaPiece`].
 fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) {
-    let mut pal = gfx.as_deref_mut().map(|g| look::Palette::new(g, arena.id));
+    let mut pal = gfx.as_deref_mut().map(|g| look::Palette::new(g, arena));
 
     // Floor: a thick static slab whose top is at y = 0.
-    let floor_size = ARENA_HALF * 2.0 + 8.0;
+    let floor_size = arena.half() * 2.0 + 8.0;
     let floor_center = Vec3::new(0.0, -0.5, 0.0);
     let mut floor = commands.spawn((
         Name::new("Floor"),
@@ -186,6 +191,8 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
         ));
     }
 
+    // Small static wall pieces (window sills, Township lintels) merged per material.
+    let mut merged = dressing::Batch::default();
     for (i, b) in arena.blocks.iter().enumerate() {
         let size = Vec3::new(b.half.x * 2.0, b.height, b.half.y * 2.0);
         let kind_name = match b.kind {
@@ -204,7 +211,12 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
             ))
             .id();
         if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
-            look::dress_block(commands, id, i, b, size, center, g, p);
+            if b.kind == BlockKind::Low && p.shell_of.contains_key(&i) {
+                let key = p.block_key(i, b);
+                merged.add(g, p, &key, size, center);
+            } else {
+                look::dress_block(commands, id, i, b, size, center, g, p);
+            }
         }
     }
 
@@ -222,8 +234,18 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
             Transform::from_translation(center),
         ));
         if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
-            let (mat, tile) = p.header(g);
-            e.insert((Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(size, center, tile))), MeshMaterial3d(mat)));
+            // Township lintels are part of their wall: same material as the wall beside them.
+            let wall = (arena.id == MapId::Township).then(|| wall_beside(arena, min, max)).flatten();
+            match wall {
+                Some(k) => {
+                    let key = p.block_key(k, &arena.blocks[k]);
+                    merged.add(g, p, &key, size, center);
+                }
+                None => {
+                    let (mat, tile) = p.header(g);
+                    e.insert((Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(size, center, tile))), MeshMaterial3d(mat)));
+                }
+            }
         }
     }
     for (i, r) in arena.decor.roofs.iter().enumerate() {
@@ -237,14 +259,33 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
             Transform::from_translation(center),
         ));
         if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
-            let (mat, tile) = p.roof(g);
+            // A building's roof slab is its ceiling inside.
+            let (mat, tile) = match arena.decor.buildings.iter().find(|b| b.roof == i) {
+                Some(b) => p.mat(g, look::Palette::ceiling_key(b.use_)),
+                None => p.roof(g),
+            };
             e.insert((Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(size, center, tile))), MeshMaterial3d(mat)));
         }
     }
 
     if let (Some(g), Some(p)) = (gfx, pal.as_mut()) {
-        dressing::spawn(commands, arena, g, p);
+        dressing::spawn(commands, arena, g, p, merged);
     }
+}
+
+/// The wall block that a doorway lintel spanning `min`..`max` is cut into.
+fn wall_beside(arena: &Arena, min: V2, max: V2) -> Option<usize> {
+    let along_x = max.x - min.x > max.y - min.y;
+    arena.blocks.iter().position(|b| {
+        b.kind == BlockKind::Tall && {
+            let (lo, hi) = (b.center - b.half, b.center + b.half);
+            if along_x {
+                (lo.y - min.y).abs() < 0.01 && (hi.y - max.y).abs() < 0.01 && ((hi.x - min.x).abs() < 0.01 || (lo.x - max.x).abs() < 0.01)
+            } else {
+                (lo.x - min.x).abs() < 0.01 && (hi.x - max.x).abs() < 0.01 && ((hi.y - min.y).abs() < 0.01 || (lo.y - max.y).abs() < 0.01)
+            }
+        }
+    })
 }
 
 // ---------------------------------------------------------------- control port
@@ -257,7 +298,7 @@ fn parse_map(name: &str) -> Option<MapId> {
 #[cfg(feature = "dev")]
 fn map_load_command(world: &mut World, p: serde_json::Value) -> Result<serde_json::Value, String> {
     let name = p.get("name").and_then(serde_json::Value::as_str).ok_or("`name` (string) is required")?;
-    let id = parse_map(name).ok_or_else(|| format!("unknown map `{name}` (Foundry, Depot, Office)"))?;
+    let id = parse_map(name).ok_or_else(|| format!("unknown map `{name}` (Foundry, Depot, Office, Township)"))?;
     if let Some(mut s) = world.get_resource_mut::<ShroudSettings>() {
         s.map = id;
     }
@@ -289,6 +330,7 @@ mod tests {
     fn map_names_parse_case_insensitively() {
         assert_eq!(parse_map("office"), Some(MapId::Office));
         assert_eq!(parse_map(" Depot "), Some(MapId::Depot));
+        assert_eq!(parse_map("township"), Some(MapId::Township));
         assert_eq!(parse_map("nuke"), None);
     }
 }
