@@ -8,7 +8,7 @@ use avian3d::prelude::*;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use brain::arena::{Arena, Block, BlockKind, BuildingUse, MapId, Skin};
-use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SunLook, ToneMap};
+use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SkyLook, SkyMode, SunLook, ToneMap};
 use engine::render_budget::SceneryRanges;
 
 use super::{ArenaRes, Gfx};
@@ -104,8 +104,8 @@ pub(crate) struct Palette {
     pub shell_of: HashMap<usize, usize>,
     /// Building index → its facade colour variant.
     variant: Vec<usize>,
-    /// Shared car meshes (along z), by nothing: all cars share one body.
-    pub car: Option<Handle<Mesh>>,
+    /// Shared prop meshes by key (shape + size), so props of one kind and size share a handle.
+    shapes: HashMap<String, Handle<Mesh>>,
 }
 
 impl Palette {
@@ -130,7 +130,7 @@ impl Palette {
                 v
             })
             .collect();
-        Palette { id: arena.id, cache: HashMap::new(), cube: None, shell_of, variant, car: None }
+        Palette { id: arena.id, cache: HashMap::new(), cube: None, shell_of, variant, shapes: HashMap::new() }
     }
 
     /// A material from [`recipe`], cached by key.
@@ -162,6 +162,16 @@ impl Palette {
     /// Self-lit material (exposure-independent: emissive alpha 0).
     pub fn glow(&mut self, g: &mut Gfx, key: &str, c: LinearRgba) -> Handle<StandardMaterial> {
         self.flat(g, key, || StandardMaterial { base_color: Color::BLACK, emissive: c, ..default() })
+    }
+
+    /// A mesh made once per `key` (include the size in it) and shared by every prop that asks.
+    pub fn shape(&mut self, g: &mut Gfx, key: &str, make: impl FnOnce() -> Mesh) -> Handle<Mesh> {
+        if let Some(h) = self.shapes.get(key) {
+            return h.clone();
+        }
+        let h = g.meshes.add(make());
+        self.shapes.insert(key.to_string(), h.clone());
+        h
     }
 
     /// Unit cube, scaled per instance (for small props whose UVs don't matter).
@@ -311,10 +321,13 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
     }
     let (mat, tile) = p.mat(g, &p.block_key(i, b));
     let mesh = match b.skin {
-        Skin::Barrel => g.meshes.add(Cylinder::new(barrel_radius(b), b.height)),
+        Skin::Barrel => {
+            let (r, h) = (barrel_radius(b), b.height);
+            p.shape(g, &format!("barrel {r:.3} {h:.3}"), || Cylinder::new(r, h).mesh().resolution(20).into())
+        }
         _ => g.meshes.add(world_uv_cuboid(size, center, tile)),
     };
-    commands.entity(e).insert((Mesh3d(mesh), MeshMaterial3d(mat)));
+    commands.entity(e).insert((Mesh3d(mesh), MeshMaterial3d(mat.clone())));
     // Small props don't cast shadows (perf rule); walls and big cover do.
     if b.kind == BlockKind::Low && size.x.max(size.z) < 1.6 {
         commands.entity(e).insert(NotShadowCaster);
@@ -329,15 +342,8 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
             let m = p.glow(g, "trim_cyan", LinearRgba::new(0.4, 2.6, 4.0, 0.0));
             child_box(commands, e, p.cube(g), m, Vec3::new(0.0, -size.y * 0.5 + 0.35, 0.0), Vec3::new(size.x + 0.02, 0.05, size.z + 0.02));
         }
-        // Barrels: a darker rim band near the top.
-        (Skin::Barrel, _) if p.id == MapId::Depot => {
-            let m = p.flat(g, "barrel_rim", || StandardMaterial { base_color: Color::srgb(0.12, 0.13, 0.15), perceptual_roughness: 0.5, metallic: 0.6, ..default() });
-            let r = barrel_radius(b);
-            let ring = g.meshes.add(Cylinder::new(r + 0.012, 0.05));
-            for y in [size.y * 0.5 - 0.12, -size.y * 0.5 + 0.2] {
-                commands.spawn((Mesh3d(ring.clone()), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, y, 0.0), NotShadowCaster, ChildOf(e)));
-            }
-        }
+        // Steel drums: rolling hoops, rolled rims and a lid with bungs.
+        (Skin::Barrel, _) if p.id != MapId::Office => super::props::barrel(commands, e, barrel_radius(b), size.y, &mat, g, p),
         // A big square planter is a fountain: water on top.
         (Skin::Planter, _) if b.half.x.min(b.half.y) > 0.9 => {
             let m = p.flat(g, "water", || StandardMaterial { base_color: Color::srgb(0.05, 0.12, 0.14), perceptual_roughness: 0.03, reflectance: 0.9, ..default() });
@@ -347,7 +353,7 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         (Skin::Barrel, _) | (Skin::Planter, _) => {
             let m = p.flat(g, "shrub", || StandardMaterial { base_color: Color::srgb(0.16, 0.32, 0.14), perceptual_roughness: 0.9, ..default() });
             let r = b.half.x.min(b.half.y).min(0.6);
-            let shrub = g.meshes.add(Sphere::new(r * 1.05));
+            let shrub = p.shape(g, &format!("shrub {r:.3}"), || Sphere::new(r * 1.05).mesh().ico(3).unwrap_or_else(|_| Sphere::new(r * 1.05).into()));
             commands.spawn((Mesh3d(shrub), MeshMaterial3d(m), Transform::from_xyz(0.0, size.y * 0.5 + r * 0.45, 0.0).with_scale(Vec3::new(1.0, 0.9, 1.0)), NotShadowCaster, ChildOf(e)));
         }
         // Depot buildings: cornice cap, and windows on tall facades.
@@ -387,6 +393,8 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         }
         // Server racks / shelving: vented door panels with status LEDs.
         (Skin::Cabinet, BlockKind::Tall) if detail && size.y >= 2.1 => rack_fronts(commands, e, size, g, p),
+        // Lockers, fridges, vending machines and counters: door or drawer fronts with handles.
+        (Skin::Cabinet, _) if detail => super::props::cabinet_fronts(commands, e, size, g, p),
         _ => {}
     }
 }
@@ -506,42 +514,54 @@ pub fn look_of(id: MapId) -> Look {
             grading: GradingLook { temperature: 0.03, ..neutral },
             ..base
         },
-        // Indoors: no sun, ceiling lamps do the work, exposure set for interiors.
+        // Indoors: no sun, ceiling lamps do the work. Exposure and fill are set for a lit
+        // office (bright ceiling, light walls) without clipping the lamp panels.
         MapId::Office => Look {
             name: "office".into(),
             sun: SunLook { enabled: false, shadows: false, ..arena_sun },
-            ambient: AmbientLook { color: Rgb::new(0.95, 0.93, 0.90), brightness: 150.0, env_intensity: 0.08 },
+            ambient: AmbientLook { color: Rgb::new(0.97, 0.95, 0.92), brightness: 400.0, env_intensity: 0.14 },
             fog: fog([0.30, 0.30, 0.32], 60.0, fog_end(id)),
-            exposure: ExposureLook { ev100: 8.6, ..ExposureLook::default() },
+            exposure: ExposureLook { ev100: 7.8, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: neutral,
+            grading: GradingLook { midtones: GradeSection { contrast: 1.08, ..GradeSection::default() }, ..neutral },
             ..base
         },
-        // Golden hour: low warm sun from the west-south-west raking across Main Street, long
-        // shadows, warm haze down the streets, lamps just coming on.
+        // Clear late afternoon: a warm sun from the west-south-west, low enough for long
+        // shadows down Main Street, under a blue gradient sky (Foundry keeps the physical
+        // atmosphere and a high white sun). Cool, slightly blue distance haze; a neutral fill
+        // so plaster keeps its colour in shade.
         MapId::Township => Look {
-            name: "township_golden_hour".into(),
+            name: "township_afternoon".into(),
             sun: SunLook {
                 azimuth_deg: 248.0,
-                elevation_deg: 18.0,
-                illuminance: 70_000.0,
-                color: Rgb::new(1.0, 0.77, 0.54),
+                elevation_deg: 24.0,
+                illuminance: 95_000.0,
+                color: Rgb::new(1.0, 0.84, 0.64),
                 shadow_distance: 80.0,
                 cascades: 3,
                 first_cascade: 10.0,
                 ..SunLook::default()
             },
-            // Warm-neutral fill: interiors get it too, and a sky-blue fill turns plaster lilac.
-            ambient: AmbientLook { color: Rgb::new(0.84, 0.80, 0.80), brightness: 600.0, env_intensity: 1.0 },
-            fog: FogLook {
-                sun_color: Rgb::new(1.0, 0.68, 0.38),
-                sun_amount: 0.6,
-                sun_exponent: 14.0,
-                ..fog([0.80, 0.70, 0.60], 60.0, fog_end(id))
+            sky: SkyLook {
+                mode: SkyMode::Gradient,
+                zenith: Rgb::new(0.06, 0.30, 0.85),
+                horizon: Rgb::new(0.66, 0.80, 0.94),
+                ground: Rgb::new(0.30, 0.28, 0.25),
+                brightness: 7000.0,
+                sun_glow: 0.8,
+                ..SkyLook::default()
             },
-            exposure: ExposureLook { ev100: 12.4, ..ExposureLook::default() },
+            ambient: AmbientLook { color: Rgb::new(0.92, 0.90, 0.90), brightness: 900.0, env_intensity: 1.0 },
+            fog: FogLook {
+                sun_color: Rgb::new(1.0, 0.84, 0.62),
+                sun_amount: 0.3,
+                sun_exponent: 16.0,
+                ..fog([0.66, 0.76, 0.88], 50.0, fog_end(id))
+            },
+            exposure: ExposureLook { ev100: 13.0, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: GradingLook { temperature: 0.07, post_saturation: 1.1, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
+            // AgX pushes saturated blues towards lavender: extra saturation keeps the sky blue.
+            grading: GradingLook { post_saturation: 1.15, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
             ..base
         },
     }

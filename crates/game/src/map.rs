@@ -3,10 +3,11 @@
 //!
 //! Ground plane mapping: `V2 { x, y }` ↔ world `(x, h, y)`.
 //! Sky, sun and post-processing live in [`crate::gfx`]; per-map materials, lighting and set
-//! dressing in [`look`] and [`dressing`].
+//! dressing in [`look`], [`dressing`], [`props`] and [`grime`].
 
 mod dressing;
 pub mod glass;
+mod grime;
 mod look;
 mod props;
 
@@ -34,7 +35,7 @@ impl Plugin for MapPlugin {
         app.insert_resource(ArenaRes(Arena::build(id)))
             .init_resource::<MapRequest>()
             .add_plugins(GlassPlugin)
-            .add_systems(Startup, spawn_current_map)
+            .add_systems(Startup, (spawn_current_map, grime::setup.run_if(has_visuals)))
             .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
             // Map pieces are static scenery for the engine's render budget.
             .add_observer(|add: On<Add, ArenaPiece>, mut c: Commands| {
@@ -48,7 +49,7 @@ impl Plugin for MapPlugin {
                     .before(crate::match_flow::begin_round)
                     .before(crate::enemy::spawn_squad),
             )
-            .add_systems(Update, (look::sync_look, look::apply_light_budget).run_if(has_visuals));
+            .add_systems(Update, (look::sync_look, look::apply_light_budget, grime::spawn_grime).run_if(has_visuals));
         #[cfg(feature = "dev")]
         {
             use engine::devtools::{AddControlCommand, params};

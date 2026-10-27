@@ -1,6 +1,6 @@
 //! Shot effects. Particles are the engine's pooled VFX (`engine::vfx`): muzzle smoke per gun,
-//! surface impacts (concrete dust, plaster, metal sparks, wood splinters, suit sparks) and
-//! ejected shell casings (lit mesh particles that bounce off the level). Tracers and bullet
+//! surface impacts (concrete dust, plaster, metal sparks, wood splinters, suit sparks). Ejected
+//! casings are pooled brass cylinders ([`super::casings`]). Tracers and bullet
 //! holes are pooled entities on one shared mesh + material per kind, so they batch and never
 //! churn: the oldest hole is moved, not respawned.
 
@@ -12,6 +12,7 @@ use engine::vfx::{
     VfxTexture,
 };
 
+use super::casings::{self, Casings};
 use super::viewmodel::{MuzzleCam, fit};
 use super::{GunEvent, Impact, ShotFired, Surface, Tracer, WeaponKind, WeaponSet};
 use crate::gfx::FxAssets;
@@ -26,10 +27,10 @@ pub const MAX_DECALS: usize = 96;
 pub(super) fn build(app: &mut App) {
     app.init_resource::<Decals>()
         .init_resource::<Tracers>()
-        .add_systems(Startup, register_effects)
+        .add_systems(Startup, (register_effects, casings::setup.run_if(has_visuals)))
         .add_systems(PostStartup, init_weapon_fx.run_if(has_visuals))
         .add_systems(OnEnter(GameState::Playing), clear_decals.run_if(has_visuals))
-        .add_systems(Update, (shot_fx, impact_fx, update_tracers).chain().after(WeaponSet).run_if(has_visuals));
+        .add_systems(Update, (shot_fx, impact_fx, update_tracers, casings::update).chain().after(WeaponSet).run_if(has_visuals));
 }
 
 /// Effect names registered in the VFX library.
@@ -49,14 +50,6 @@ fn muzzle_effect(k: WeaponKind) -> &'static str {
         WeaponKind::Marksman => "muzzle_marksman",
         WeaponKind::Pistol | WeaponKind::Smg => "muzzle_light",
         WeaponKind::Rifle => "muzzle_rifle",
-    }
-}
-
-fn casing_effect(k: WeaponKind) -> &'static str {
-    match k {
-        WeaponKind::Shotgun => "casing_shell",
-        WeaponKind::Marksman => "casing_large",
-        _ => "casing",
     }
 }
 
@@ -161,27 +154,6 @@ fn dust_def(name: &str, rgb: [f32; 3], count: u32, size: f32, debris: Option<([f
     def
 }
 
-/// Spent cases: lit brass (or red hull) bits thrown right/up (effect space: +X right, -Z
-/// forward), bouncing off level colliders.
-fn casing_def(name: &str, rgb: [f32; 3], size: f32, life: f32) -> EffectDef {
-    EffectDef { cull_distance: 40.0, ..EffectDef::new(name) }.once(0.02).with(EmitterDef {
-        name: "case".into(),
-        capacity: 2,
-        bursts: vec![Burst::at(0.0, 1)],
-        lifetime: (life, life * 1.2),
-        velocity: Velocity::Fixed { v: Vec3::new(2.4, 2.0, 0.4), jitter: Vec3::new(0.5, 0.6, 0.4) },
-        gravity: G,
-        drag: 0.2,
-        size: (size, size * 1.1),
-        color_over_life: Gradient::srgb(&[(0.0, rgb, 1.0), (0.9, rgb, 1.0), (1.0, rgb, 0.0)]),
-        rotation: (0.0, std::f32::consts::TAU),
-        spin: (-18.0, 18.0),
-        render: RenderDef { mode: RenderMode::Mesh { shape: MeshShape::Cube }, lit: 1.0, ..Default::default() },
-        collision: Collision::Physics { restitution: 0.35, friction: 0.4, die: false },
-        ..Default::default()
-    })
-}
-
 fn register_effects(library: Option<ResMut<VfxLibrary>>) {
     let Some(mut lib) = library else { return };
     let defs = [
@@ -194,9 +166,6 @@ fn register_effects(library: Option<ResMut<VfxLibrary>>) {
         dust_def("impact_metal", [0.4, 0.4, 0.42], 2, 0.12, None, 12),
         dust_def("impact_wood", [0.55, 0.42, 0.28], 4, 0.18, Some(([0.62, 0.45, 0.26], 7, MeshShape::Shard)), 0),
         dust_def("impact_suit", [0.3, 0.32, 0.36], 2, 0.15, None, 9),
-        casing_def("casing", [0.85, 0.62, 0.25], 0.0045, 1.4),
-        casing_def("casing_large", [0.85, 0.62, 0.25], 0.006, 1.6),
-        casing_def("casing_shell", [0.75, 0.12, 0.08], 0.009, 1.8),
     ];
     for d in defs {
         let name = d.name.clone();
@@ -268,6 +237,8 @@ fn clear_decals(decals: Res<Decals>, mut vis: Query<&mut Visibility>) {
 /// the bolt).
 fn shot_fx(
     mut vfx: Vfx,
+    casings: Option<ResMut<Casings>>,
+    mut casing_mats: Query<&mut MeshMaterial3d<StandardMaterial>>,
     mut shots: MessageReader<ShotFired>,
     mut events: MessageReader<GunEvent>,
     muzzle: Res<MuzzleCam>,
@@ -283,9 +254,11 @@ fn shot_fx(
     let f = fit(w.kind);
     // Ejection port: a bit behind the muzzle along the barrel, on the right.
     let port_cam = muzzle.0 * Vec3::new(1.0, 1.0, 0.0) + Vec3::new(0.02, 0.03, f.hip.z + f.muzzle.z * 0.25);
-    let eject = |vfx: &mut Vfx, kind: WeaponKind| {
-        let at = Transform::from_translation(cam.transform_point(port_cam)).with_rotation(cam.rotation);
-        vfx.play(casing_effect(kind), at);
+    let mut casings = casings;
+    let mut eject = |kind: WeaponKind| {
+        if let Some(c) = casings.as_deref_mut() {
+            c.eject(cam.transform_point(port_cam), cam.rotation, kind, &mut casing_mats);
+        }
     };
     for s in shots.read() {
         if s.by != pe {
@@ -294,13 +267,13 @@ fn shot_fx(
         let at = Transform::from_translation(cam.transform_point(muzzle.0)).with_rotation(cam.rotation);
         vfx.play(muzzle_effect(s.kind), at);
         if !matches!(s.kind, WeaponKind::Shotgun | WeaponKind::Marksman) {
-            eject(&mut vfx, s.kind);
+            eject(s.kind);
         }
     }
     for ev in events.read() {
         match ev {
-            GunEvent::Pump => eject(&mut vfx, WeaponKind::Shotgun),
-            GunEvent::Bolt => eject(&mut vfx, WeaponKind::Marksman),
+            GunEvent::Pump => eject(WeaponKind::Shotgun),
+            GunEvent::Bolt => eject(WeaponKind::Marksman),
             _ => {}
         }
     }

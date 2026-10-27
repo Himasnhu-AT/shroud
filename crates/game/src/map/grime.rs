@@ -1,0 +1,420 @@
+//! Grime and wear so big flat walls and floors aren't uniform:
+//!
+//! - **Edge grime**: a dirty band along the foot of every wall, one merged mesh per map with a
+//!   lit, alpha-blended dirt material on a texture that tiles along the wall. One draw call
+//!   for the whole map.
+//! - **Stains, streaks and floor marks**: the engine's forward decals (`engine::look::decal`),
+//!   a few dozen per map on three shared materials (water streaks running down facades,
+//!   blotchy floor stains, tyre marks / scuffs). Skipped on Low quality (they need a depth
+//!   prepass).
+//!
+//! Textures and materials are made once at startup ([`GrimeAssets`]); a map build adds one
+//! mesh and spawns decal entities on shared handles. Everything is an [`ArenaPiece`], so it
+//! goes with the map. Placement is deterministic per map.
+
+use bevy::asset::RenderAssetUsages;
+use bevy::image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor};
+use bevy::light::NotShadowCaster;
+use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::pbr::decal::ForwardDecalMaterial;
+use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use brain::arena::{Arena, Block, BlockKind, MapId, Skin};
+use engine::look::{decal_image, decal_material, spawn_decal};
+use engine::settings::{CoreSettings, GraphicsQuality};
+
+use super::{ArenaPiece, ArenaRes};
+
+/// Edge-grime texture repeats every this many metres along a wall.
+const STRIP_TILE: f32 = 2.5;
+
+/// Shared grime textures and materials.
+#[derive(Resource)]
+pub(crate) struct GrimeAssets {
+    strip_strong: Handle<StandardMaterial>,
+    strip_light: Handle<StandardMaterial>,
+    stain: Handle<ForwardDecalMaterial<StandardMaterial>>,
+    streak: Handle<ForwardDecalMaterial<StandardMaterial>>,
+    marks: Handle<ForwardDecalMaterial<StandardMaterial>>,
+}
+
+// ---------------------------------------------------------------- noise
+
+fn hash(x: i32, y: i32, salt: u32) -> f32 {
+    let mut h = (x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ salt.wrapping_mul(0xcb1a_b31f);
+    h ^= h >> 13;
+    h = h.wrapping_mul(0x5bd1_e995);
+    h ^= h >> 15;
+    (h & 0x00ff_ffff) as f32 / 16_777_216.0
+}
+
+/// Smooth value noise in 0..1; `period` > 0 wraps x (tiles horizontally).
+fn noise(x: f32, y: f32, period: i32, salt: u32) -> f32 {
+    let (xi, yi) = (x.floor() as i32, y.floor() as i32);
+    let (fx, fy) = (x - xi as f32, y - yi as f32);
+    let w = |i: i32| if period > 0 { i.rem_euclid(period) } else { i };
+    let s = |t: f32| t * t * (3.0 - 2.0 * t);
+    let (sx, sy) = (s(fx), s(fy));
+    let a = hash(w(xi), yi, salt);
+    let b = hash(w(xi + 1), yi, salt);
+    let c = hash(w(xi), yi + 1, salt);
+    let d = hash(w(xi + 1), yi + 1, salt);
+    let top = a + (b - a) * sx;
+    let bot = c + (d - c) * sx;
+    top + (bot - top) * sy
+}
+
+/// Four octaves of [`noise`], 0..1. `period` is the wrap of the first octave.
+fn fbm(x: f32, y: f32, period: i32, salt: u32) -> f32 {
+    let (mut sum, mut amp, mut norm, mut f) = (0.0, 0.5, 0.0, 1.0);
+    for o in 0..4 {
+        let p = if period > 0 { period * f as i32 } else { 0 };
+        sum += amp * noise(x * f, y * f, p, salt.wrapping_add(o * 977));
+        norm += amp;
+        amp *= 0.5;
+        f *= 2.0;
+    }
+    sum / norm
+}
+
+fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+// ---------------------------------------------------------------- textures
+
+/// The wall-foot band: dirt colour whose alpha is clear at the top and fades in, noisy, to
+/// the bottom, with drip streaks reaching up. Tiles along u; v = 0 at the top of the band.
+fn strip_image(strength: f32) -> Image {
+    let (w, h) = (256u32, 64u32);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    let dirt = [0.20f32, 0.17, 0.13];
+    for y in 0..h {
+        for x in 0..w {
+            let u = (x as f32 + 0.5) / w as f32;
+            let v = (y as f32 + 0.5) / h as f32;
+            let up = 1.0 - v; // height in the band, 0 at the floor
+            // Ragged top edge, plus thin streaks climbing higher.
+            let edge = 0.45 + 0.5 * (fbm(u * 8.0, 0.5, 8, 11) - 0.5) * 2.0;
+            let streak = smoothstep(0.55, 0.75, fbm(u * 48.0, 0.3, 48, 23)) * 0.4;
+            let reach = (edge + streak).clamp(0.2, 1.0);
+            let mut d = (1.0 - up / reach).clamp(0.0, 1.0).powf(0.9);
+            // Blotchy variation and a darker line right at the floor.
+            d *= 0.7 + 0.3 * fbm(u * 24.0, v * 6.0, 24, 37);
+            d = d.max(smoothstep(0.93, 1.0, v) * 0.8);
+            let k = (d * strength).clamp(0.0, 1.0);
+            for c in dirt {
+                data.push((c.powf(1.0 / 2.2) * 255.0 + 0.5) as u8);
+            }
+            data.push((k * 0.85 * 255.0 + 0.5) as u8);
+        }
+    }
+    let mut img = Image::new(Extent3d { width: w, height: h, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+    img.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::ClampToEdge,
+        ..ImageSamplerDescriptor::linear()
+    });
+    engine::gfx::build_mips(&mut img);
+    img
+}
+
+/// Blotchy floor stain (oil, water marks), soft ragged edge.
+fn stain_image() -> Image {
+    decal_image(128, |uv| {
+        let p = uv * 2.0 - Vec2::ONE;
+        let r = p.length() + (fbm(uv.x * 5.0, uv.y * 5.0, 0, 51) - 0.5) * 0.7;
+        let body = smoothstep(0.85, 0.35, r);
+        let mottled = 0.55 + 0.45 * fbm(uv.x * 14.0, uv.y * 14.0, 0, 53);
+        let ring = smoothstep(0.5, 0.75, r) * smoothstep(0.95, 0.75, r) * 0.35;
+        let a = ((body * mottled + ring) * 0.8).clamp(0.0, 1.0);
+        [0.13, 0.12, 0.10, a]
+    })
+}
+
+/// Water streaks running down from the top edge (v = 0 at the top), fading at the sides.
+fn streak_image() -> Image {
+    decal_image(128, |uv| {
+        let lane = fbm(uv.x * 12.0, 0.5, 0, 61);
+        let len = 0.35 + 0.6 * fbm(uv.x * 6.0, 2.5, 0, 67);
+        let run = smoothstep(0.42, 0.7, lane) * (1.0 - smoothstep(len * 0.6, len, uv.y));
+        let wash = (1.0 - uv.y).powf(2.0) * 0.35 * fbm(uv.x * 4.0, uv.y * 3.0, 0, 71);
+        let sides = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x);
+        let top = smoothstep(0.0, 0.04, uv.y);
+        let a = ((run * 0.75 + wash) * sides * top).clamp(0.0, 1.0);
+        [0.16, 0.15, 0.13, a]
+    })
+}
+
+/// Two parallel worn bands (tyre marks on streets, scuffs indoors), patchy along their length.
+fn marks_image() -> Image {
+    decal_image(128, |uv| {
+        let band = |c: f32| smoothstep(0.09, 0.04, (uv.x - c).abs());
+        let b = band(0.3).max(band(0.7));
+        let patchy = 0.4 + 0.6 * fbm(uv.x * 3.0, uv.y * 10.0, 0, 81);
+        let ends = smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
+        [0.07, 0.07, 0.07, (b * patchy * ends * 0.7).clamp(0.0, 1.0)]
+    })
+}
+
+pub(crate) fn setup(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+    mut decals: ResMut<Assets<ForwardDecalMaterial<StandardMaterial>>>,
+) {
+    let strip = |img: Handle<Image>| StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(img),
+        perceptual_roughness: 1.0,
+        reflectance: 0.2,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    };
+    let strong = images.add(strip_image(1.0));
+    let light = images.add(strip_image(0.7));
+    let decal = |img: Image, images: &mut Assets<Image>| StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(images.add(img)),
+        perceptual_roughness: 0.95,
+        ..default()
+    };
+    let stain = decal(stain_image(), &mut images);
+    let streak = decal(streak_image(), &mut images);
+    let marks = decal(marks_image(), &mut images);
+    commands.insert_resource(GrimeAssets {
+        strip_strong: mats.add(strip(strong)),
+        strip_light: mats.add(strip(light)),
+        stain: decals.add(decal_material(stain, 0.06)),
+        streak: decals.add(decal_material(streak, 0.06)),
+        marks: decals.add(decal_material(marks, 0.06)),
+    });
+}
+
+// ---------------------------------------------------------------- placement
+
+/// Deterministic 0..1 sequence per map.
+struct Seq(u32);
+
+impl Seq {
+    fn next(&mut self) -> f32 {
+        self.0 = self.0.wrapping_add(1);
+        hash(self.0 as i32, 7, 0x51ed_270b)
+    }
+    fn range(&mut self, a: f32, b: f32) -> f32 {
+        a + (b - a) * self.next()
+    }
+}
+
+/// Blocks that read as walls (get edge grime and streaks); props don't.
+fn is_wall(b: &Block) -> bool {
+    matches!(b.skin, Skin::Auto | Skin::Concrete | Skin::Stucco | Skin::Drywall | Skin::Brick | Skin::Plaster | Skin::Siding | Skin::Sandbag | Skin::Container)
+}
+
+/// A vertical block face: centre on the ground, outward normal, length along it, the block.
+struct Face {
+    at: Vec3,
+    n: Vec3,
+    len: f32,
+    height: f32,
+    /// Faces away from its building / toward the playable area (gets streaks).
+    outer: bool,
+}
+
+fn faces(arena: &Arena) -> Vec<Face> {
+    let mut shell_center = vec![None; arena.blocks.len()];
+    let mut sill = vec![false; arena.blocks.len()];
+    for b in &arena.decor.buildings {
+        let c = (b.min + b.max) * 0.5;
+        for &i in &b.shell {
+            shell_center[i] = Some(Vec2::new(c.x, c.y));
+            sill[i] = arena.blocks[i].kind == BlockKind::Low;
+        }
+    }
+    let lim = arena.half() + 0.01;
+    let mut out = Vec::new();
+    for (i, b) in arena.blocks.iter().enumerate() {
+        if !is_wall(b) || sill[i] || (b.kind == BlockKind::Low && b.height < 0.6) {
+            continue;
+        }
+        let c = Vec2::new(b.center.x, b.center.y);
+        for (n, half_n, len) in [(Vec2::X, b.half.x, b.half.y * 2.0), (-Vec2::X, b.half.x, b.half.y * 2.0), (Vec2::Y, b.half.y, b.half.x * 2.0), (-Vec2::Y, b.half.y, b.half.x * 2.0)] {
+            let p = c + n * half_n;
+            // Outer faces of the perimeter wall look out of the map: nobody sees them.
+            if len < 0.8 || p.x.abs() > lim || p.y.abs() > lim {
+                continue;
+            }
+            let outer = match shell_center[i] {
+                Some(bc) => (p - bc).dot(n) > 0.0,
+                None => b.kind != BlockKind::Wall || (-p).dot(n) > 0.0,
+            };
+            out.push(Face { at: Vec3::new(p.x, 0.0, p.y), n: Vec3::new(n.x, 0.0, n.y), len, height: b.height, outer });
+        }
+    }
+    out
+}
+
+/// One quad per wall face for the foot band, merged into one mesh (world-space u so the
+/// texture runs continuously along a wall).
+fn strip_mesh(faces: &[Face], band: f32) -> Mesh {
+    let mut pos = Vec::with_capacity(faces.len() * 4);
+    let mut nrm = Vec::with_capacity(faces.len() * 4);
+    let mut uv = Vec::with_capacity(faces.len() * 4);
+    let mut idx = Vec::with_capacity(faces.len() * 6);
+    for f in faces {
+        // Just proud of the wall and of interior linings (1 cm), behind skirting and plinths.
+        let base = f.at + f.n * 0.014;
+        let t = Vec3::Y.cross(f.n); // along the wall, so (t, up, n) faces outward
+        let h = band.min(f.height * 0.6);
+        let along = base.x * t.x + base.z * t.z; // world coordinate along t
+        let (u0, u1) = ((along - f.len * 0.5) / STRIP_TILE, (along + f.len * 0.5) / STRIP_TILE);
+        let i0 = pos.len() as u32;
+        for (s, y, u, v) in [(-0.5, 0.0, u0, 1.0), (0.5, 0.0, u1, 1.0), (0.5, h, u1, 1.0 - h / band), (-0.5, h, u0, 1.0 - h / band)] {
+            let p = base + t * (s * f.len) + Vec3::Y * y;
+            pos.push(p.to_array());
+            nrm.push(f.n.to_array());
+            uv.push([u, v]);
+        }
+        idx.extend_from_slice(&[i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3]);
+    }
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, nrm)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uv)
+        .with_inserted_indices(Indices::U32(idx))
+}
+
+/// How dirty each map is: band height, strong or light band, stains, marks, streaks.
+fn budget(id: MapId) -> (f32, bool, usize, usize, usize) {
+    match id {
+        MapId::Foundry => (1.1, true, 28, 10, 26),
+        MapId::Depot => (0.9, true, 30, 12, 24),
+        MapId::Office => (0.32, false, 26, 18, 0),
+        MapId::Township => (0.85, true, 40, 14, 40),
+    }
+}
+
+/// Whether ground point `p` is clear of every block (with a margin).
+fn clear_of_blocks(arena: &Arena, p: Vec2, margin: f32) -> bool {
+    arena.blocks.iter().all(|b| (p.x - b.center.x).abs() > b.half.x + margin || (p.y - b.center.y).abs() > b.half.y + margin)
+}
+
+/// Spawns grime for the current map once per map build.
+pub(crate) fn spawn_grime(
+    mut commands: Commands,
+    arena: Res<ArenaRes>,
+    assets: Option<Res<GrimeAssets>>,
+    core: Res<CoreSettings>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut done: Local<Option<MapId>>,
+) {
+    let Some(g) = assets else { return };
+    let arena = &arena.0;
+    if *done == Some(arena.id) {
+        return;
+    }
+    *done = Some(arena.id);
+    let (band, strong, n_stains, n_marks, n_streaks) = budget(arena.id);
+    let faces = faces(arena);
+    commands.spawn((
+        Name::new("Edge grime"),
+        ArenaPiece,
+        Mesh3d(meshes.add(strip_mesh(&faces, band))),
+        MeshMaterial3d(if strong { g.strip_strong.clone() } else { g.strip_light.clone() }),
+        Transform::default(),
+        NotShadowCaster,
+    ));
+    if core.quality == GraphicsQuality::Low {
+        return;
+    }
+    let mut rng = Seq(arena.id as u32 * 7919 + 17);
+    let half = arena.half() - 1.0;
+    let decal = |commands: &mut Commands, m: &Handle<ForwardDecalMaterial<StandardMaterial>>, tf: Transform| {
+        let e = spawn_decal(commands, m.clone(), tf);
+        commands.entity(e).insert((ArenaPiece, NotShadowCaster));
+    };
+    // Floor stains and marks, on open ground (inside buildings too).
+    for (count, mat, kind) in [(n_stains, &g.stain, 0), (n_marks, &g.marks, 1)] {
+        let mut placed = 0;
+        for _ in 0..count * 8 {
+            if placed == count {
+                break;
+            }
+            let p = Vec2::new(rng.range(-half, half), rng.range(-half, half));
+            let (w, l) = match (kind, arena.id) {
+                (0, _) => {
+                    let s = rng.range(0.8, 2.6);
+                    (s, s * rng.range(0.7, 1.3))
+                }
+                (_, MapId::Office) => (rng.range(0.5, 0.8), rng.range(0.5, 1.0)),
+                _ => (rng.range(0.7, 0.9), rng.range(3.0, 6.0)),
+            };
+            if !clear_of_blocks(arena, p, 0.2 + w.max(l) * 0.3) {
+                continue;
+            }
+            let yaw = rng.range(0.0, std::f32::consts::TAU);
+            // Between the ground slab (y 0) and floor patches (y 0.012).
+            let tf = Transform::from_xyz(p.x, 0.006, p.y).with_rotation(Quat::from_rotation_y(yaw)).with_scale(Vec3::new(w, 0.1, l));
+            decal(&mut commands, mat, tf);
+            placed += 1;
+        }
+    }
+    // Water streaks running down from the top of outer wall faces.
+    let tall: Vec<&Face> = faces.iter().filter(|f| f.outer && f.len >= 2.0 && f.height >= 2.4).collect();
+    if tall.is_empty() {
+        return;
+    }
+    for _ in 0..n_streaks {
+        let f = tall[(rng.next() * tall.len() as f32) as usize % tall.len()];
+        let w = rng.range(1.0, 2.2).min(f.len - 0.2);
+        let h = rng.range(1.2, 2.4).min(f.height - 0.3);
+        let t = Vec3::Y.cross(f.n);
+        let s = rng.range(-0.5, 0.5) * (f.len - w);
+        let top = f.height - rng.range(0.02, 0.4);
+        let at = f.at + t * s + f.n * 0.005 + Vec3::Y * (top - h * 0.5);
+        // Decal quad: local +Y = wall normal; texture top (v = 0) is local -Z, so -Z = up.
+        let rot = Quat::from_mat3(&Mat3::from_cols(f.n.cross(Vec3::NEG_Y), f.n, Vec3::NEG_Y));
+        decal(&mut commands, &g.streak, Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::new(w, 0.1, h)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn noise_tiles_and_stays_in_range() {
+        for i in 0..50 {
+            let y = i as f32 * 0.13;
+            let a = fbm(0.0, y, 8, 3);
+            let b = fbm(8.0, y, 8, 3);
+            assert!((a - b).abs() < 1e-4, "{a} vs {b}");
+            assert!((0.0..=1.0).contains(&a));
+        }
+    }
+
+    #[test]
+    fn strip_is_dirty_at_the_floor_and_clear_at_the_top() {
+        let img = strip_image(1.0);
+        let d = img.data.as_ref().unwrap();
+        let (w, h) = (256usize, 64usize);
+        let row_alpha = |y: usize| (0..w).map(|x| d[(y * w + x) * 4 + 3] as f32).sum::<f32>() / w as f32;
+        eprintln!("alpha top {} mid {} bottom {}", row_alpha(0), row_alpha(h / 2), row_alpha(h - 1));
+        assert!(row_alpha(h - 1) > 120.0, "bottom {}", row_alpha(h - 1));
+        assert!(row_alpha(h * 3 / 4) > 60.0, "lower quarter {}", row_alpha(h * 3 / 4));
+        assert!(row_alpha(0) < 30.0, "top {}", row_alpha(0));
+    }
+
+    #[test]
+    fn every_map_has_wall_faces_inside_the_arena() {
+        for id in MapId::ALL {
+            let arena = Arena::build(id);
+            let f = faces(&arena);
+            assert!(f.len() > 8, "{id:?}: {}", f.len());
+            assert!(f.iter().all(|f| f.at.x.abs() <= arena.half() + 0.02 && f.at.z.abs() <= arena.half() + 0.02));
+            let m = strip_mesh(&f, 0.8);
+            assert_eq!(m.count_vertices(), f.len() * 4);
+        }
+    }
+}

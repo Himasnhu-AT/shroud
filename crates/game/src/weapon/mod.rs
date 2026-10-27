@@ -20,6 +20,7 @@ use bevy::prelude::*;
 use brain::math::V2;
 
 pub mod arsenal;
+mod casings;
 #[cfg(feature = "dev")]
 mod dev;
 pub mod fire;
