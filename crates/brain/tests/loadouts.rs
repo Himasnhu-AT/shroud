@@ -153,3 +153,92 @@ fn trade_stacks_and_breaches_a_room() {
     assert!(stacked, "entry and trader stack beside the door");
     assert_ne!(b.door.side(pos[0]), b.door.side(player));
 }
+
+/// What a breach run saw: the breach planned, whether someone stacked on its door (an order
+/// beside the frame, watching it), and whether someone was then sent through it.
+struct BreachRun {
+    breach: Option<brain::squad::Breach>,
+    stacked: bool,
+    went: bool,
+    calls: Vec<String>,
+}
+
+/// Members stand at `pos` (static) with `weapons`; he is at `player`, last seen `last_seen` s
+/// ago by all of them. `play`: forced, or None to let the coordinator choose. 12 s of ticks.
+fn breach_run(id: MapId, play: Option<Play>, player: V2, pos: &[V2], weapons: &[WeaponKind], last_seen: f32) -> BreachRun {
+    let a = Arena::build(id);
+    let model = brain::player_model::PlayerModel::default();
+    let mut sq = SquadCoordinator::new(&a, pos.len());
+    sq.force_play = play;
+    let player = a.nav.nearest_walkable(player);
+    let pos: Vec<V2> = pos.iter().map(|&p| a.nav.nearest_walkable(p)).collect();
+    let views: Vec<brain::squad::MemberView> = pos
+        .iter()
+        .enumerate()
+        .map(|(i, &p)| brain::squad::MemberView {
+            pos: p,
+            alive: true,
+            hp: 1.0,
+            last_known: player,
+            last_seen,
+            heard: None,
+            // Looking away from his room (a search must not tick it off from outside).
+            look: (p - player).norm(),
+            traits: brain::genome::Traits { weapon: weapons[i % weapons.len()], ..Default::default() },
+            bark: None,
+        })
+        .collect();
+    let mut run = BreachRun { breach: None, stacked: false, went: false, calls: Vec::new() };
+    for _ in 0..240 {
+        let orders = sq.tick(0.05, &views, &a, &model).to_vec();
+        run.calls.extend(sq.drain_callouts().into_iter().map(|c| c.text));
+        if let Some(b) = sq.breach {
+            run.breach = Some(b);
+            run.stacked |= orders.iter().flatten().any(|o| o.dest.is_some_and(|d| d.dist(b.door.pos) < 3.5) && o.watch == Some(b.door.pos));
+            run.went |= orders.iter().flatten().any(|o| o.via == Some(b.inside));
+        }
+    }
+    run
+}
+
+fn assert_breached(what: &str, r: &BreachRun, player: V2, from: V2) {
+    let b = r.breach.unwrap_or_else(|| panic!("{what}: no breach planned (calls {:?})", r.calls));
+    eprintln!("{what}: door {:?} calls {:?}", b.door.pos, r.calls);
+    assert!(r.stacked, "{what}: nobody stacked on the door");
+    assert!(r.went, "{what}: nobody went through the door");
+    assert_ne!(b.door.side(from), b.door.side(player), "{what}: the door is between them and him");
+    assert!(r.calls.iter().any(|c| c.contains("Stacked on")), "{what}: no stack call ({:?})", r.calls);
+}
+
+#[test]
+fn other_plays_breach_his_room_too() {
+    // Office: he holds a back office north of the z = -22 partition; the squad is on the floor.
+    let office_player = V2::new(-21.0, -27.0);
+    let office = [V2::new(-21.0, -12.0), V2::new(-23.0, -10.0), V2::new(-25.0, -8.0), V2::new(-19.0, -9.0)];
+    let guns = [WeaponKind::Shotgun, WeaponKind::Smg, WeaponKind::Rifle, WeaponKind::Rifle];
+    for play in [Play::Trade, Play::PinFlank, Play::Collapse, Play::Sweep] {
+        let r = breach_run(MapId::Office, Some(play), office_player, &office, &guns, 0.0);
+        assert_breached(&format!("Office {play:?}"), &r, office_player, office[0]);
+    }
+    // Lost him in that office: the search's investigators stack and breach it.
+    let r = breach_run(MapId::Office, None, office_player, &office, &guns, 5.0);
+    assert_breached("Office search", &r, office_player, office[0]);
+}
+
+#[test]
+fn squads_breach_township_houses() {
+    // The red house hall (x 9-21, z 24-34; doors north at x 12 and east at z 31); the squad is
+    // out on the street between it and the corner shop.
+    let player = V2::new(12.0, 29.0);
+    let street = [V2::new(6.0, 22.0), V2::new(4.0, 21.5), V2::new(8.0, 21.5), V2::new(3.0, 22.5)];
+    let guns = [WeaponKind::Shotgun, WeaponKind::Smg, WeaponKind::Rifle, WeaponKind::Marksman];
+    let a = Arena::build(MapId::Township);
+    let doors = brain::rooms::doorways(&a);
+    assert!(doors.len() >= 20, "Township doors: {}", doors.len());
+    for play in [Play::Trade, Play::PinFlank, Play::Collapse] {
+        let r = breach_run(MapId::Township, Some(play), player, &street, &guns, 0.0);
+        assert_breached(&format!("Township {play:?}"), &r, player, street[0]);
+    }
+    let r = breach_run(MapId::Township, None, player, &street, &guns, 5.0);
+    assert_breached("Township search", &r, player, street[0]);
+}
