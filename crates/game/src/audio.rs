@@ -18,7 +18,8 @@ use crate::enemy::{Enemy, EnemyCombat};
 use crate::match_flow::MatchFlow;
 use crate::player::Player;
 use crate::state::GameState;
-use crate::weapon::{Damage, Dummy, Health, ShotFired, Tracer, WeaponSet};
+use crate::enemy::gun::EnemyFx;
+use crate::weapon::{Damage, Dummy, Health, Impact, ShotFired, WeaponSet};
 
 /// Shroud's sounds live in the engine's library.
 pub(crate) type Sfx = SoundLibrary;
@@ -80,7 +81,8 @@ impl Plugin for AudioPlugin {
                 Update,
                 (
                     shot_sounds,
-                    tracer_sounds,
+                    impact_sounds,
+                    enemy_bullet_sounds,
                     damage_sounds,
                     player_footsteps,
                     enemy_footsteps,
@@ -137,32 +139,77 @@ fn shot_sounds(
     }
 }
 
-/// Impacts where tracers end, plus a whiz/ricochet when an enemy bullet passes close to the player.
-fn tracer_sounds(
+/// Most bullet impacts voiced per frame (a shotgun blast is one crack, not nine).
+const MAX_IMPACTS_PER_FRAME: usize = 3;
+
+/// The player's bullets: an impact (or the odd ricochet) where each one actually hits the world
+/// (`Impact`, not where a tracer happens to end: misses into the sky are silent). Flesh hits
+/// are voiced by the hit marker instead.
+fn impact_sounds(mut commands: Commands, mut impacts: MessageReader<Impact>, sfx: Res<Sfx>, master: Res<Volumes>) {
+    let mut rng = rand::rng();
+    for i in impacts.read().filter(|i| !i.flesh && !i.exit).take(MAX_IMPACTS_PER_FRAME) {
+        let name = if rng.random_bool(0.18) { "ricochet" } else { "impact" };
+        play(&mut commands, &sfx, &master, name, 0.55, Some(i.pos));
+    }
+}
+
+/// What an enemy bullet sounds like to the player, from its tracer (`EnemyFx::Shot`; enemies
+/// never write `Tracer`). The tracer is cut 1.5 m short of the player's eye when it hit him and
+/// 2.5 m short on a close miss.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum BulletHeard {
+    /// It hit him (the hurt sound covers it).
+    Hit,
+    /// A near miss: a crack / whiz past his head, at this point.
+    Whiz(Vec3),
+    /// It struck the world here.
+    Impact(Vec3),
+    /// Nothing worth a sound (out of earshot, or spent at max range).
+    Nothing,
+}
+
+/// Classify an enemy tracer `from` -> `to` for a listener at `eye`.
+pub(crate) fn bullet_heard(from: Vec3, to: Vec3, eye: Vec3) -> BulletHeard {
+    let end_d = to.distance(eye);
+    if end_d < 1.6 {
+        return BulletHeard::Hit;
+    }
+    let seg = to - from;
+    let len = seg.length();
+    if len < 1e-3 {
+        return BulletHeard::Nothing;
+    }
+    let dir = seg / len;
+    // Closest approach of the bullet's line (it flies on past a clipped tracer end).
+    let along = (eye - from).dot(dir);
+    let closest = from + dir * along.max(0.0);
+    if along > 1.5 && closest.distance(eye) < 2.6 {
+        return BulletHeard::Whiz(closest);
+    }
+    // Tracers that ran their full length (59+ m) hit nothing.
+    if len < 59.0 && end_d < 80.0 { BulletHeard::Impact(to) } else { BulletHeard::Nothing }
+}
+
+/// Enemy bullets: whiz past the player's head, impacts where they strike.
+fn enemy_bullet_sounds(
     mut commands: Commands,
-    mut tracers: MessageReader<Tracer>,
+    mut fx: MessageReader<EnemyFx>,
     sfx: Res<Sfx>,
     master: Res<Volumes>,
     player: Query<&Transform, With<Player>>,
 ) {
     let Ok(ptf) = player.single() else { return };
     let eye = ptf.translation + Vec3::Y * 0.6;
-    let mut rng = rand::rng();
-    for t in tracers.read() {
-        let seg = t.to - t.from;
-        let len2 = seg.length_squared().max(1e-4);
-        let u = ((eye - t.from).dot(seg) / len2).clamp(0.0, 1.0);
-        let closest = t.from + seg * u;
-        let from_enemy = t.from.distance(eye) > 1.5;
-        if from_enemy && closest.distance(eye) < 2.5 && u < 0.98 {
-            play(&mut commands, &sfx, &master, "ricochet", 0.7, Some(closest));
-        }
-        if t.to.distance(eye) < 80.0 {
-            if rng.random_bool(0.18) {
-                play(&mut commands, &sfx, &master, "ricochet", 0.5, Some(t.to));
-            } else {
-                play(&mut commands, &sfx, &master, "impact", 0.55, Some(t.to));
+    let mut impacts = 0;
+    for ev in fx.read() {
+        let EnemyFx::Shot { from, to: Some(to), .. } = *ev else { continue };
+        match bullet_heard(from, to, eye) {
+            BulletHeard::Whiz(at) => play(&mut commands, &sfx, &master, "ricochet", 0.7, Some(at)),
+            BulletHeard::Impact(at) if impacts < MAX_IMPACTS_PER_FRAME => {
+                impacts += 1;
+                play(&mut commands, &sfx, &master, "impact", 0.5, Some(at));
             }
+            _ => {}
         }
     }
 }
@@ -299,5 +346,54 @@ fn round_stingers(
 fn radio_clicks(mut commands: Commands, sfx: Res<Sfx>, master: Res<Volumes>, mut msgs: MessageReader<crate::enemy::Callout>) {
     if msgs.read().count() > 0 {
         play(&mut commands, &sfx, &master, "radio_click", 0.35, None);
+    }
+}
+
+/// Groups that may legitimately have no files (silent until someone adds them).
+#[cfg(test)]
+pub(crate) const OPTIONAL_SOUNDS: &[&str] = &["radio_click", "frag_explode", "flashbang"];
+
+/// The files `SoundLibrary::load_variants` looks for: `<name>.ogg`, or `<name>_<i>.ogg`.
+#[cfg(test)]
+pub(crate) fn sound_files(name: &str, n: usize) -> Vec<std::path::PathBuf> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/audio");
+    if n <= 1 { vec![dir.join(format!("{name}.ogg"))] } else { (0..n).map(|i| dir.join(format!("{name}_{i}.ogg"))).collect() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_required_sound_has_its_files() {
+        // A missing or misnamed file is silent at runtime (`load_variants` skips it), so check here.
+        for &(name, n) in SOUNDS {
+            if OPTIONAL_SOUNDS.contains(&name) {
+                continue;
+            }
+            for f in sound_files(name, n) {
+                assert!(f.is_file(), "{name}: missing {}", f.display());
+                assert!(std::fs::metadata(&f).unwrap().len() > 1000, "{name}: {} looks empty", f.display());
+            }
+        }
+        for name in ["step", "impact", "ricochet", "enemy_shot", "hit_marker", "player_hurt"] {
+            assert!(SOUNDS.iter().any(|s| s.0 == name), "{name} is triggered but never loaded");
+        }
+    }
+
+    #[test]
+    fn enemy_bullets_whiz_past_and_strike_the_world() {
+        let eye = Vec3::new(0.0, 1.6, 0.0);
+        // A hit: the tracer stops 1.5 m short of his eye.
+        let from = Vec3::new(0.0, 1.6, -30.0);
+        assert_eq!(bullet_heard(from, eye + Vec3::new(0.0, 0.0, -1.5), eye), BulletHeard::Hit);
+        // A near miss clipped 2.5 m short: the bullet flies on past his head.
+        let miss_to = Vec3::new(1.0, 1.6, -2.3);
+        assert!(matches!(bullet_heard(Vec3::new(1.0, 1.6, -30.0), miss_to, eye), BulletHeard::Whiz(p) if p.distance(eye) < 1.1));
+        // Into a wall 20 m to his side.
+        let wall = Vec3::new(20.0, 1.0, -10.0);
+        assert_eq!(bullet_heard(Vec3::new(20.0, 1.5, -30.0), wall, eye), BulletHeard::Impact(wall));
+        // Full-length tracer into the sky: nothing to hear.
+        assert_eq!(bullet_heard(Vec3::new(30.0, 1.5, -30.0), Vec3::new(30.0, 40.0, 20.0), eye), BulletHeard::Nothing);
     }
 }
