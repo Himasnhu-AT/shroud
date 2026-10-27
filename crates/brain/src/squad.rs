@@ -1467,10 +1467,10 @@ impl SquadCoordinator {
                             if have {
                                 self.breach_throw = Some(b.inside);
                                 b.go_at = Some(self.play_t + grenade::WINDUP_S + grenade::FLASH_FUSE_S + 0.3);
-                                self.bark(entry, format!("Stacked on {zone} - utility in"), true);
+                                self.bark(entry, format!("Stacked on {zone} door - utility in"), true);
                             } else {
                                 b.go_at = Some(self.play_t + 0.3);
-                                self.bark(entry, format!("Stacked on {zone} - breaching"), true);
+                                self.bark(entry, format!("Stacked on {zone} door - breaching"), true);
                             }
                         }
                     } else if !stacking && !b.called {
