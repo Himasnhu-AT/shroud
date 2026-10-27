@@ -24,3 +24,4 @@ pub mod sim;
 pub mod squad;
 pub mod trainer;
 pub mod utility;
+pub mod weapons;
