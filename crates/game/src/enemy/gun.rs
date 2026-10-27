@@ -1,28 +1,41 @@
-//! Enemy gun presentation: a rifle in the mannequin's right hand that points where the enemy
-//! aims, muzzle flashes, short tracers, a glint before an enemy opens fire, a team tint, and the
-//! gun dropping when its owner dies. Gameplay only reads [`muzzle_point`]; everything else here
-//! runs only with visuals.
+//! Enemy gun presentation: the gun in the mannequin's right hand (shaped per weapon kind) that
+//! points where the enemy aims, muzzle flashes, short tracers, a glint before an enemy opens
+//! fire and a team tint. (A dead enemy's gun becomes the arsenal's pickup, `weapon::pickups`.) Gameplay only reads
+//! [`muzzle_point`]; everything else here runs only with visuals.
+//!
+//! Cost: every flash, tracer, glint and muzzle light comes from a small fixed pool spawned once
+//! (shared meshes and materials, hidden when idle); nothing is spawned or allocated per shot.
 
 use std::collections::HashMap;
 use std::f32::consts::PI;
 
 use bevy::prelude::*;
+use brain::weapons::WeaponKind;
 
-use super::{Corpse, Enemy, EnemyCombat};
+use super::{Enemy, EnemyCombat};
 use crate::assets::AssetsDir;
 use crate::state::has_visuals;
+use crate::weapon::viewmodel;
 
-pub const ENEMY_RIFLE_MODEL: &str = "models/enemy_rifle.glb";
 /// Right-hand bone of the Quaternius mannequin (fingers point along its +Y).
 const HAND_BONE: &str = "hand_r";
-const GUN_SCALE: f32 = 0.85;
-/// In gun model space (Kenney blaster-a: barrel along +Z, pistol grip under the back).
-const GRIP: Vec3 = Vec3::new(0.0, -0.1, -0.2);
-const MUZZLE: Vec3 = Vec3::new(0.0, 0.05, 0.44);
+/// Enemy guns are the arsenal's own models (`weapon::viewmodel::fit`: per-gun path, hand point,
+/// muzzle; barrel toward model -Z), this much bigger than the first-person scale so they read
+/// at third-person size in the mannequin's hand.
+const THIRD_PERSON: f32 = 1.35;
 /// Gun pitch while not engaged (low ready), radians.
 const LOW_READY: f32 = 0.45;
 
+/// Pool sizes.
+const FLASHES: usize = 12;
+const TRACERS: usize = 24;
+const GLINTS: usize = 8;
+const LIGHTS: usize = 4;
+const LIGHT_INTENSITY: f32 = 60_000.0;
+
 /// What the enemy FX layer should draw. Written by the AI every shot (headless too; unread there).
+// `shooter` is for listeners (audio, tests); the pooled FX place flashes at `from`.
+#[allow(dead_code)]
 #[derive(Message, Clone, Copy, Debug)]
 pub enum EnemyFx {
     /// A shot left `from`; draw a tracer to `to` if set (already kept clear of the player's camera).
@@ -42,19 +55,59 @@ pub struct GunLink {
 struct EnemyGun {
     owner: Entity,
     rot: Option<Quat>,
+    /// The kind it is currently showing, and that model's entity.
+    kind: Option<WeaponKind>,
+    model: Option<Entity>,
+    muzzle: Entity,
 }
 
-#[derive(Component)]
-struct DroppedGun {
-    vel: Vec3,
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FxKind {
+    Flash,
+    Tracer,
+    Glint,
+    Light,
 }
 
+/// One pooled FX entity: hidden while `ttl <= 0`.
 #[derive(Component)]
-struct FxLife {
+struct PooledFx {
+    kind: FxKind,
     ttl: f32,
     max: f32,
-    /// Grow then shrink over the lifetime (glints); otherwise constant.
-    pulse: bool,
+}
+
+#[derive(Resource, Default)]
+struct FxPool {
+    flashes: Vec<Entity>,
+    tracers: Vec<Entity>,
+    glints: Vec<Entity>,
+    lights: Vec<Entity>,
+    next: [usize; 4],
+}
+
+impl FxPool {
+    fn take(&mut self, k: FxKind) -> Option<Entity> {
+        let (list, i) = match k {
+            FxKind::Flash => (&self.flashes, 0),
+            FxKind::Tracer => (&self.tracers, 1),
+            FxKind::Glint => (&self.glints, 2),
+            FxKind::Light => (&self.lights, 3),
+        };
+        if list.is_empty() {
+            return None;
+        }
+        let e = list[self.next[i] % list.len()];
+        self.next[i] = self.next[i].wrapping_add(1);
+        Some(e)
+    }
+}
+
+/// Shared primitive mesh/material for guns whose model file is missing.
+#[derive(Resource)]
+struct GunParts {
+    body: Handle<Mesh>,
+    mat: Handle<StandardMaterial>,
 }
 
 /// Where a shot leaves: the gun muzzle if the model has one, else a point at the right shoulder.
@@ -69,15 +122,62 @@ pub struct EnemyGunPlugin;
 
 impl Plugin for EnemyGunPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<EnemyFx>().add_systems(
-            Update,
-            (attach_guns, tint_enemies, drop_guns, fall_dropped, spawn_fx, tick_fx).run_if(has_visuals),
-        );
+        app.add_message::<EnemyFx>()
+            .init_resource::<FxPool>()
+            .add_systems(Startup, setup.run_if(has_visuals))
+            .add_systems(
+                Update,
+                (attach_guns, restyle_guns, tint_enemies, drop_guns, spawn_fx, tick_fx).run_if(has_visuals).run_if(resource_exists::<GunParts>),
+            );
         app.add_systems(
             PostUpdate,
             aim_guns.after(bevy::transform::TransformSystems::Propagate).run_if(has_visuals),
         );
     }
+}
+
+/// Shared gun parts and the FX pool, once.
+fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>, mut pool: ResMut<FxPool>) {
+    commands.insert_resource(GunParts {
+        body: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+        mat: materials.add(StandardMaterial { base_color: Color::srgb(0.1, 0.1, 0.12), perceptual_roughness: 0.5, ..default() }),
+    });
+    // Unlit ignores emissive, so the HDR colour goes in base_color (bloom picks up > 1).
+    let glow = |c: LinearRgba| StandardMaterial { base_color: c.into(), unlit: true, ..default() };
+    let ball = meshes.add(Sphere::new(1.0));
+    let cube = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+    let flash_mat = materials.add(glow(LinearRgba::rgb(9.0, 5.0, 1.2)));
+    let tracer_mat = materials.add(glow(LinearRgba::rgb(3.0, 1.7, 0.5)));
+    let glint_mat = materials.add(glow(LinearRgba::rgb(6.0, 7.5, 10.0)));
+    let mut fx = |kind: FxKind, mesh: &Handle<Mesh>, mat: &Handle<StandardMaterial>| {
+        commands
+            .spawn((
+                Name::new("enemy fx"),
+                PooledFx { kind, ttl: 0.0, max: 1.0 },
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(mat.clone()),
+                Transform::default(),
+                Visibility::Hidden,
+                bevy::light::NotShadowCaster,
+            ))
+            .id()
+    };
+    pool.flashes = (0..FLASHES).map(|_| fx(FxKind::Flash, &ball, &flash_mat)).collect();
+    pool.tracers = (0..TRACERS).map(|_| fx(FxKind::Tracer, &cube, &tracer_mat)).collect();
+    pool.glints = (0..GLINTS).map(|_| fx(FxKind::Glint, &ball, &glint_mat)).collect();
+    pool.lights = (0..LIGHTS)
+        .map(|_| {
+            commands
+                .spawn((
+                    Name::new("enemy muzzle light"),
+                    PooledFx { kind: FxKind::Light, ttl: 0.0, max: 1.0 },
+                    PointLight { color: Color::srgb(1.0, 0.7, 0.35), intensity: LIGHT_INTENSITY, range: 6.0, ..default() },
+                    Transform::default(),
+                    Visibility::Hidden,
+                ))
+                .id()
+        })
+        .collect();
 }
 
 fn owner_enemy(mut e: Entity, parents: &Query<&ChildOf>, enemies: &Query<(), With<Enemy>>) -> Option<Entity> {
@@ -90,57 +190,74 @@ fn owner_enemy(mut e: Entity, parents: &Query<&ChildOf>, enemies: &Query<(), Wit
     None
 }
 
-/// When an enemy's hand bone appears, put a gun in it.
-fn attach_guns(
-    mut commands: Commands,
-    names: Query<(Entity, &Name), Added<Name>>,
-    parents: Query<&ChildOf>,
-    enemies: Query<(), With<Enemy>>,
-    dir: Res<AssetsDir>,
-    server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+/// When an enemy's hand bone appears, give it a gun pivot (the model comes in `restyle_guns`).
+fn attach_guns(mut commands: Commands, names: Query<(Entity, &Name), Added<Name>>, parents: Query<&ChildOf>, enemies: Query<(), With<Enemy>>) {
     for (hand, name) in &names {
         if name.as_str() != HAND_BONE {
             continue;
         }
         let Some(owner) = owner_enemy(hand, &parents, &enemies) else { continue };
-        let gun = commands
-            .spawn((
-                Name::new("enemy gun"),
-                EnemyGun { owner, rot: None },
-                Transform::from_scale(Vec3::splat(GUN_SCALE)),
-                Visibility::default(),
-                ChildOf(hand),
-            ))
-            .id();
-        if dir.has(ENEMY_RIFLE_MODEL) {
-            let scene = server.load::<bevy::world_serialization::WorldAsset>(
-                bevy::gltf::GltfAssetLabel::Scene(0).from_asset(ENEMY_RIFLE_MODEL),
-            );
-            commands.entity(gun).insert(bevy::world_serialization::WorldAssetRoot(scene));
-        } else {
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.08, 0.12, 0.75))),
-                MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::srgb(0.1, 0.1, 0.12), ..default() })),
-                Transform::from_xyz(0.0, 0.0, -0.02),
-                ChildOf(gun),
-            ));
-        }
-        let muzzle = commands.spawn((Transform::from_translation(MUZZLE), Visibility::default(), ChildOf(gun))).id();
+        let gun = commands.spawn((Name::new("enemy gun"), Transform::default(), Visibility::default(), ChildOf(hand))).id();
+        let muzzle = commands.spawn((Transform::default(), Visibility::default(), ChildOf(gun))).id();
+        commands.entity(gun).insert(EnemyGun { owner, rot: None, kind: None, model: None, muzzle });
         commands.entity(owner).insert(GunLink { gun, muzzle });
     }
 }
 
-/// Point each held gun at the enemy's aim target (or low ready), grip in the palm.
-/// Runs after transform propagation so it sees this frame's animated hand.
-fn aim_guns(
-    time: Res<Time>,
-    mut guns: Query<(&mut EnemyGun, &mut Transform, &ChildOf)>,
-    globals: Query<&GlobalTransform>,
-    enemies: Query<&EnemyCombat>,
+/// Show the gun its owner holds (the primary, or the sidearm after a switch): the arsenal's
+/// model for that kind, the hand point on the pivot, the muzzle where that model's barrel ends.
+fn restyle_guns(
+    mut commands: Commands,
+    mut guns: Query<(Entity, &mut EnemyGun)>,
+    owners: Query<&EnemyCombat>,
+    mut transforms: Query<&mut Transform>,
+    dir: Res<AssetsDir>,
+    server: Res<AssetServer>,
+    parts: Res<GunParts>,
 ) {
+    for (gun, mut g) in &mut guns {
+        let Ok(c) = owners.get(g.owner) else { continue };
+        let kind = c.gun.held;
+        if g.kind == Some(kind) {
+            continue;
+        }
+        g.kind = Some(kind);
+        if let Some(old) = g.model.take() {
+            commands.entity(old).despawn();
+        }
+        let fit = viewmodel::fit(kind);
+        let k = THIRD_PERSON;
+        let model = if dir.has(fit.path) {
+            let scene = server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(fit.path));
+            commands
+                .spawn((
+                    bevy::world_serialization::WorldAssetRoot(scene),
+                    Transform::from_translation(fit.offset * k).with_scale(Vec3::splat(fit.scale * k)),
+                    Visibility::default(),
+                    ChildOf(gun),
+                ))
+                .id()
+        } else {
+            let size = fit.body * k;
+            commands
+                .spawn((
+                    Mesh3d(parts.body.clone()),
+                    MeshMaterial3d(parts.mat.clone()),
+                    Transform::from_xyz(0.0, 0.0, -size.z * 0.4).with_scale(size),
+                    ChildOf(gun),
+                ))
+                .id()
+        };
+        g.model = Some(model);
+        if let Ok(mut m) = transforms.get_mut(g.muzzle) {
+            m.translation = fit.muzzle * k;
+        }
+    }
+}
+
+/// Point each held gun at the enemy's aim target (or low ready), hand point in the palm.
+/// Runs after transform propagation so it sees this frame's animated hand.
+fn aim_guns(time: Res<Time>, mut guns: Query<(&mut EnemyGun, &mut Transform, &ChildOf)>, globals: Query<&GlobalTransform>, enemies: Query<&EnemyCombat>) {
     let k = 1.0 - (-16.0 * time.delta_secs()).exp();
     for (mut g, mut tf, parent) in &mut guns {
         let (Ok(hand), Ok(root), Ok(c)) = (globals.get(parent.parent()), globals.get(g.owner), enemies.get(g.owner)) else {
@@ -150,20 +267,20 @@ fn aim_guns(
         let fwd = root.forward().as_vec3();
         let low = (fwd * LOW_READY.cos() - Vec3::Y * LOW_READY.sin()).normalize();
         let dir = c.aim_at.map_or(low, |p| (p - palm).try_normalize().unwrap_or(fwd));
-        // The model faces +Z, so point -Z away from the target.
-        let want = Transform::IDENTITY.looking_to(-dir, Vec3::Y).rotation;
+        // The barrel is model -Z (Transform forward): point it at the target.
+        let want = Transform::IDENTITY.looking_to(dir, Vec3::Y).rotation;
         let rot = g.rot.map_or(want, |r| r.slerp(want, k));
         g.rot = Some(rot);
-        let world = Transform {
-            translation: palm - rot * (GRIP * GUN_SCALE),
-            rotation: rot,
-            scale: Vec3::splat(GUN_SCALE),
-        };
-        *tf = GlobalTransform::from(world).reparented_to(hand);
+        let world = Transform { translation: palm, rotation: rot, scale: Vec3::ONE };
+        let local = GlobalTransform::from(world).reparented_to(hand);
+        if *tf != local {
+            *tf = local;
+        }
     }
 }
 
-/// Team colour: tint every enemy body material red with a little glow so they pop.
+/// Team colour: tint every enemy body material red with a little glow so they pop. One tinted
+/// material per source material, shared by every enemy.
 fn tint_enemies(
     mut commands: Commands,
     added: Query<(Entity, &MeshMaterial3d<StandardMaterial>), Added<MeshMaterial3d<StandardMaterial>>>,
@@ -206,129 +323,73 @@ fn tint_enemies(
     }
 }
 
-/// A dead enemy lets go of its gun.
-fn drop_guns(
-    mut commands: Commands,
-    enemies: Query<(Entity, &EnemyCombat, &GunLink, &Transform)>,
-    globals: Query<&GlobalTransform>,
-) {
-    for (e, c, link, tf) in &enemies {
-        if !c.dead {
-            continue;
-        }
-        commands.entity(e).remove::<GunLink>();
-        let Ok(g) = globals.get(link.gun) else { continue };
-        let side = tf.rotation * Vec3::X;
-        commands
-            .entity(link.gun)
-            .remove::<(ChildOf, EnemyGun)>()
-            .insert((g.compute_transform(), DroppedGun { vel: side * 1.2 + Vec3::Y * 1.5 }, Corpse(3.0)));
-    }
-}
-
-fn fall_dropped(time: Res<Time>, mut q: Query<(&mut DroppedGun, &mut Transform)>) {
-    let dt = time.delta_secs();
-    for (mut d, mut tf) in &mut q {
-        if d.vel == Vec3::ZERO {
-            continue;
-        }
-        d.vel.y -= 9.81 * dt;
-        tf.translation += d.vel * dt;
-        // Settle on its side.
-        let (yaw, _, _) = tf.rotation.to_euler(EulerRot::YXZ);
-        let flat = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, PI * 0.5);
-        tf.rotation = tf.rotation.slerp(flat, 1.0 - (-8.0 * dt).exp());
-        if tf.translation.y <= 0.07 {
-            tf.translation.y = 0.07;
-            tf.rotation = flat;
-            d.vel = Vec3::ZERO;
+/// A dead enemy's gun leaves its hand: the arsenal drops a pickup of its `Armed` gun in its place.
+fn drop_guns(mut commands: Commands, enemies: Query<(Entity, &EnemyCombat, &GunLink)>) {
+    for (e, c, link) in &enemies {
+        if c.dead {
+            commands.entity(e).remove::<GunLink>();
+            commands.entity(link.gun).despawn();
         }
     }
 }
 
+/// Light up pooled FX for this frame's shots and glints.
 fn spawn_fx(
-    mut commands: Commands,
     mut fx: MessageReader<EnemyFx>,
-    links: Query<&GunLink>,
-    globals: Query<&GlobalTransform>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut assets: Local<Option<(Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>, Handle<StandardMaterial>, Handle<StandardMaterial>)>>,
+    mut pool: ResMut<FxPool>,
+    mut q: Query<(&mut PooledFx, &mut Transform, &mut Visibility)>,
+    mut lights: Query<&mut PointLight>,
 ) {
-    let (ball, cube, flash_mat, tracer_mat, glint_mat) = assets
-        .get_or_insert_with(|| {
-            // Unlit ignores emissive, so the HDR colour goes in base_color (bloom picks up > 1).
-            let glow = |c: LinearRgba| StandardMaterial { base_color: c.into(), unlit: true, ..default() };
-            (
-                meshes.add(Sphere::new(1.0)),
-                meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                materials.add(glow(LinearRgba::rgb(9.0, 5.0, 1.2))),
-                materials.add(glow(LinearRgba::rgb(3.0, 1.7, 0.5))),
-                materials.add(glow(LinearRgba::rgb(6.0, 7.5, 10.0))),
-            )
-        })
-        .clone();
-    // Flash and glint parent to the visual muzzle when there is one, so they ride the gun.
+    let mut show = |pool: &mut FxPool, kind: FxKind, ttl: f32, tf: Transform| {
+        let e = pool.take(kind)?;
+        let Ok((mut p, mut t, mut v)) = q.get_mut(e) else { return None };
+        p.ttl = ttl;
+        p.max = ttl;
+        *t = tf;
+        if *v != Visibility::Visible {
+            *v = Visibility::Visible;
+        }
+        Some(e)
+    };
     for f in fx.read() {
         match *f {
-            EnemyFx::Shot { shooter, from, to } => {
-                let parent = links.get(shooter).ok().map(|l| l.muzzle).filter(|m| globals.contains(*m));
+            EnemyFx::Shot { from, to, .. } => {
+                let aim = to.filter(|t| t.distance(from) > 0.05).map_or(Vec3::NEG_Z, |t| (t - from).normalize());
                 // Muzzle flash: a stretched glowing blob along the barrel plus a brief light.
-                let mut flash = commands.spawn((
-                    FxLife { ttl: 0.05, max: 0.05, pulse: false },
-                    Mesh3d(ball.clone()),
-                    MeshMaterial3d(flash_mat.clone()),
-                    bevy::light::NotShadowCaster,
-                ));
-                match parent {
-                    Some(m) => flash.insert((Transform::from_xyz(0.0, 0.0, 0.06).with_scale(Vec3::new(0.05, 0.05, 0.12)), ChildOf(m))),
-                    None => flash.insert(Transform::from_translation(from).with_scale(Vec3::splat(0.07))),
-                };
-                flash.with_child(PointLight {
-                    color: Color::srgb(1.0, 0.7, 0.35),
-                    intensity: 60_000.0,
-                    range: 6.0,
-                    ..default()
-                });
+                let flash = Transform::from_translation(from + aim * 0.06).looking_to(aim, Vec3::Y).with_scale(Vec3::new(0.05, 0.05, 0.12));
+                show(&mut pool, FxKind::Flash, 0.05, flash);
+                if let Some(l) = show(&mut pool, FxKind::Light, 0.05, Transform::from_translation(from))
+                    && let Ok(mut pl) = lights.get_mut(l)
+                    && pl.intensity != LIGHT_INTENSITY
+                {
+                    pl.intensity = LIGHT_INTENSITY;
+                }
                 // Tracer: thin, gone in two frames.
                 if let Some(to) = to {
                     let len = from.distance(to);
                     if len > 0.5 {
-                        commands.spawn((
-                            FxLife { ttl: 0.035, max: 0.035, pulse: false },
-                            Mesh3d(cube.clone()),
-                            MeshMaterial3d(tracer_mat.clone()),
-                            Transform::from_translation((from + to) * 0.5)
-                                .looking_at(to, Vec3::Y)
-                                .with_scale(Vec3::new(0.012, 0.012, len)),
-                            bevy::light::NotShadowCaster,
-                        ));
+                        let t = Transform::from_translation((from + to) * 0.5).looking_at(to, Vec3::Y).with_scale(Vec3::new(0.012, 0.012, len));
+                        show(&mut pool, FxKind::Tracer, 0.035, t);
                     }
                 }
             }
-            EnemyFx::Glint { shooter, at } => {
-                let parent = links.get(shooter).ok().map(|l| l.muzzle).filter(|m| globals.contains(*m));
-                let mut glint = commands.spawn((
-                    FxLife { ttl: 0.35, max: 0.35, pulse: true },
-                    Mesh3d(ball.clone()),
-                    MeshMaterial3d(glint_mat.clone()),
-                    bevy::light::NotShadowCaster,
-                ));
-                match parent {
-                    Some(m) => glint.insert((Transform::from_scale(Vec3::ZERO), ChildOf(m))),
-                    None => glint.insert(Transform::from_translation(at).with_scale(Vec3::ZERO)),
-                };
+            EnemyFx::Glint { at, .. } => {
+                show(&mut pool, FxKind::Glint, 0.35, Transform::from_translation(at).with_scale(Vec3::ZERO));
             }
         }
     }
 }
 
-fn tick_fx(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut FxLife, &mut Transform)>) {
-    for (e, mut f, mut tf) in &mut q {
-        f.ttl -= time.delta_secs();
+fn tick_fx(time: Res<Time>, mut q: Query<(&mut PooledFx, &mut Transform, &mut Visibility)>) {
+    let dt = time.delta_secs();
+    for (mut f, mut tf, mut v) in &mut q {
         if f.ttl <= 0.0 {
-            commands.entity(e).despawn();
-        } else if f.pulse {
+            continue;
+        }
+        f.ttl -= dt;
+        if f.ttl <= 0.0 {
+            *v = Visibility::Hidden;
+        } else if f.kind == FxKind::Glint {
             let s = (PI * (1.0 - f.ttl / f.max)).sin();
             tf.scale = Vec3::splat(0.09 * s);
         }

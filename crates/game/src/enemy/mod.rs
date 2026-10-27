@@ -17,9 +17,11 @@ use brain::posture;
 use brain::mind::{Action, AllyInfo, EnemyMind, MindCtx, Observation};
 use brain::squad::{MemberView, SquadCoordinator, UtilityBudget, callsign};
 use brain::utility::Goal;
-use brain::perception::{self, GUNSHOT_RANGE, Heard, RELOAD_RANGE, Sound};
-use brain::sim::{CROUCH_SPEED, FIRE_INTERVAL, MAG, RELOAD_S, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
+use brain::perception::{self, Heard, RELOAD_RANGE, Sound};
+use brain::sim::{CROUCH_SPEED, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
+pub use brain::loadout::{GunState, Role};
 
+use crate::armed::Armed;
 use crate::assets::{AssetsDir, ENEMY_MODEL};
 use crate::map::{ArenaRes, to_ground, to_world};
 use crate::player::{Player, PlayerSet, collide_and_slide};
@@ -80,6 +82,8 @@ impl Plugin for EnemyPlugin {
 pub struct Callout {
     pub speaker: &'static str,
     pub text: String,
+    /// The speaker's loadout role ("Marksman"), if it is an enemy.
+    pub role: Option<&'static str>,
 }
 
 /// Enemy AI runs here: after player movement, before weapons apply damage.
@@ -127,9 +131,14 @@ pub struct Mind(pub EnemyMind);
 
 #[derive(Component)]
 pub struct EnemyCombat {
-    pub ammo: u32,
-    pub reload: f32,
-    pub cooldown: f32,
+    /// Primary + sidearm: magazines, reload, cycle and switch timers (`brain::loadout`).
+    /// `gun.held` is the gun in hand, `gun.primary` the loadout; `gun.reloading()`.
+    pub gun: GunState,
+    /// What the loadout makes this enemy (rifleman, rusher, breacher, marksman).
+    pub role: Role,
+    /// Trigger pulls and pulls that hit the player (scoreboard accuracy).
+    pub shots: u32,
+    pub shots_hit: u32,
     pub hit_t: f32,
     pub last_seen: f32,
     pub last_known: V2,
@@ -234,7 +243,8 @@ pub fn spawn_squad(
     let limits = difficulty.limits(brain.state.generation);
     let n = params.squad_size.min(arena.0.enemy_spawns.len());
     // More enemies than evolved squad slots: slots are reused with their own seeds.
-    let minds = brain.state.squad_minds_for(seed, n, &limits);
+    // Guns from the evolved weapon genes, within this difficulty's caps (`brain::loadout`).
+    let minds = brain.state.squad_minds_on(seed, n, &limits, difficulty);
     squad.size = minds.len();
     squad.difficulty = difficulty;
     squad.params = Some(params);
@@ -258,16 +268,19 @@ pub fn spawn_squad(
     squad.coord = Some(coord);
     for (slot, (mind, spawn)) in minds.into_iter().zip(arena.0.enemy_spawns.iter()).enumerate() {
         let report = EnemyReport { trait_id: mind.trait_id, neat_id: mind.neat_id, ..default() };
+        let kind = mind.weapon();
+        info!("  {} (slot {slot}): {} with the {}", callsign(slot), mind.role().label(), kind.label());
         let root = commands
             .spawn((
                 Name::new(format!("Enemy {slot}")),
                 Enemy { slot },
                 engine::render_budget::Actor,
-                Mind(mind),
+                Armed(kind),
                 EnemyCombat {
-                    ammo: MAG,
-                    reload: 0.0,
-                    cooldown: 0.0,
+                    gun: GunState::new(kind),
+                    role: mind.role(),
+                    shots: 0,
+                    shots_hit: 0,
                     hit_t: 99.0,
                     last_seen: 99.0,
                     last_known: arena.0.player_spawn,
@@ -285,6 +298,7 @@ pub fn spawn_squad(
                     lean: 0.0,
                     prefiring: false,
                 },
+                Mind(mind),
                 Health::new(ENEMY_HP),
                 RigidBody::Kinematic,
                 Transform::from_translation(to_world(*spawn, 0.0)).looking_to(Vec3::Z, Vec3::Y),
@@ -326,7 +340,8 @@ pub fn spawn_squad(
 #[derive(Resource, Default)]
 struct Inbox {
     /// (muzzle, direction) of each player shot.
-    player_shots: Vec<(Vec3, Vec3)>,
+    /// (muzzle, direction, heard within m) of each player shot.
+    player_shots: Vec<(Vec3, Vec3, f32)>,
     hits: Vec<(Entity, bool)>,
 }
 
@@ -337,7 +352,7 @@ fn collect_inbox(
     mut damage: MessageReader<Damage>,
 ) {
     let player = players.single().ok();
-    inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| (s.origin, s.dir)).collect();
+    inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| (s.origin, s.dir, s.loudness_m)).collect();
     inbox.hits = damage.read().filter(|d| Some(d.source) == player).map(|d| (d.target, d.headshot)).collect();
 }
 
@@ -383,6 +398,7 @@ fn think_and_act(
     slots: Query<&Enemy>,
     mut hurt: Local<(f32, f32)>,
     mut timings: ResMut<AiTimings>,
+    mut scratch: Local<AiScratch>,
 ) {
     let AiOut { damage: damage_out, shots: shots_out, fx, callouts, throws: throws_out } = &mut out;
     let dt = time.delta_secs();
@@ -390,6 +406,8 @@ fn think_and_act(
         return;
     }
     let Ok((player, ptf, motor, php, rifle)) = players.single() else { return };
+    let AiScratch { sounds, heard_events, reveals, snapshot, allies_buf, rng } = &mut *scratch;
+    let rng = rng.get_or_insert_with(|| brain::math::rng_from_seed(0x5407));
     let player_reloading = rifle.is_some_and(|r| r.reloading.is_some());
     let p_center = ptf.translation;
     let p_ground = to_ground(p_center);
@@ -409,7 +427,9 @@ fn think_and_act(
     let player_shots = &inbox.player_shots;
     let hits = &inbox.hits;
     // Stimuli the player makes this frame (perception.rs): gunshots, footsteps, reload.
-    let mut sounds: Vec<(Sound, V2, f32)> = player_shots.iter().map(|(o, _)| (Sound::Gunshot, to_ground(*o), GUNSHOT_RANGE)).collect();
+    sounds.clear();
+    // Each shot carries as far as its gun is loud (`ShotFired::loudness_m`, scaled like the sim).
+    sounds.extend(player_shots.iter().map(|(o, _, l)| (Sound::Gunshot, to_ground(*o), perception::gunshot_range_m(*l))));
     let steps = if motor.grounded { perception::footstep_range(p_vel.len(), motor.crouched) } else { 0.0 };
     if steps > 0.0 {
         sounds.push((Sound::Footstep, p_ground, steps));
@@ -417,14 +437,15 @@ fn think_and_act(
     if player_reloading {
         sounds.push((Sound::Reload, p_ground, RELOAD_RANGE));
     }
-    let mut heard_events: Vec<(usize, Heard)> = Vec::new();
-    let mut reveals: Vec<usize> = Vec::new();
-
-    let snapshot: Vec<(Entity, V2, bool, bool)> = enemies
-        .iter()
-        .filter(|e| !e.3.dead)
-        .map(|(e, tf, m, c, _, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY, m.0.goal() == Goal::Flank))
-        .collect();
+    heard_events.clear();
+    reveals.clear();
+    snapshot.clear();
+    snapshot.extend(
+        enemies
+            .iter()
+            .filter(|e| !e.3.dead)
+            .map(|(e, tf, m, c, _, _, _)| (e, to_ground(tf.translation), c.last_seen < ENGAGE_MEMORY, m.0.goal() == Goal::Flank)),
+    );
     // --- Squad layer: one coordinator tick before the minds think (perception from last frame).
     let n = squad.size;
     let mut views: Vec<Option<MemberView>> = vec![None; n];
@@ -441,8 +462,8 @@ fn think_and_act(
             if hits.iter().any(|h| h.0 == e) {
                 reveals.push(slot);
             }
-            let near_miss = player_shots.iter().any(|(o, d)| perception::near_miss(&arena.0, to_ground(*o), V2::new(d.x, d.z).norm(), pos));
-            let h = if near_miss { Some(Heard { sound: Sound::Gunshot, pos: p_ground, loud: 1.0 }) } else { perception::listen(&arena.0, &sounds, pos) };
+            let near_miss = player_shots.iter().any(|(o, d, _)| perception::near_miss(&arena.0, to_ground(*o), V2::new(d.x, d.z).norm(), pos));
+            let h = if near_miss { Some(Heard { sound: Sound::Gunshot, pos: p_ground, loud: 1.0 }) } else { perception::listen(&arena.0, sounds, pos) };
             if let Some(h) = h {
                 c.heard = Some(h.pos);
                 heard_events.push((slot, h));
@@ -466,10 +487,10 @@ fn think_and_act(
     let Some(coord) = squad.coord.as_mut() else { return };
     coord.player_hp = php.hp / php.max;
     let views: Vec<MemberView> = views.into_iter().map(|v| v.unwrap_or_else(MemberView::gone)).collect();
-    for &slot in &reveals {
+    for &slot in reveals.iter() {
         coord.reveal(slot, p_ground, &arena.0);
     }
-    for (slot, h) in &heard_events {
+    for (slot, h) in heard_events.iter() {
         coord.hear(*slot, h, &arena.0);
     }
     let squad_t = std::time::Instant::now();
@@ -479,7 +500,8 @@ fn think_and_act(
     let calls = coord.drain_callouts();
     if !freeze.0 {
         for c in calls {
-            callouts.write(Callout { speaker: callsign(c.speaker), text: c.text });
+            let role = views.get(c.speaker).filter(|v| v.alive).map(|v| Role::of(v.traits.weapon).label());
+            callouts.write(Callout { speaker: callsign(c.speaker), text: c.text, role });
         }
     }
     // Breachers releasing grenades this frame.
@@ -553,7 +575,7 @@ fn think_and_act(
             dt,
             pos,
             hp: hp.hp / hp.max,
-            ammo_frac: if c.reload > 0.0 { 0.0 } else { c.ammo as f32 / MAG as f32 },
+            ammo_frac: c.gun.ammo_frac(),
             crouched: c.crouched,
             player_visible: sees,
             player_pos: shared.0,
@@ -562,21 +584,27 @@ fn think_and_act(
             player_facing: p_facing,
             time_since_seen: shared.1,
             heard_shot: c.heard,
-            allies: snapshot
-                .iter()
-                .filter(|a| a.0 != e)
-                .map(|a| AllyInfo { pos: a.1, engaged: a.2, flanking: a.3 })
-                .collect(),
+            allies: {
+                // Reused buffer: handed to the observation and taken back after `think`.
+                let mut v = std::mem::take(allies_buf);
+                v.clear();
+                v.extend(snapshot.iter().filter(|a| a.0 != e).map(|a| AllyInfo { pos: a.1, engaged: a.2, flanking: a.3 }));
+                v
+            },
             taking_fire: c.hit_t < 0.6,
             player_reloading,
             player_hurt,
             squad_alert: board.alert,
             token_denied: slots.get(e).is_ok_and(|en| !tokens.get(en.slot).copied().unwrap_or(true)),
+            weapon: c.gun.held,
+            primary_ammo: c.gun.primary_frac(),
+            busy_s: c.gun.busy_s(),
         };
         if let Ok(en) = slots.get(e) {
             mind.0.set_order(orders.get(en.slot).copied().flatten());
         }
         let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
+        *allies_buf = obs.allies;
         // Lean out of tall cover toward where the squad thinks he is (or the angle it holds).
         let lean_want = if let Some(l) = lean_override.0 {
             l
@@ -604,7 +632,7 @@ fn think_and_act(
             info!(
                 "ai {e}: pos ({:.1},{:.1}) goal {:?} sees {} hp {:.0} path {} dest {:?} move ({:.2},{:.2}) fire {} seen_t {:.2} aim_off {:.3} gate {:.2} ammo {} reload {:.1} react {:.2}",
                 pos.x, pos.y, mind.0.goal(), sees, hp.hp, mind.0.debug.path.len(), mind.0.debug.dest, act.move_dir.x, act.move_dir.y, act.fire,
-                mind.0.debug.seen_time, mind.0.debug.aim_off, mind.0.debug.micro[2], c.ammo, c.reload, mind.0.traits.reaction_time
+                mind.0.debug.seen_time, mind.0.debug.aim_off, mind.0.debug.micro[2], c.gun.ammo(), c.gun.reload_t, mind.0.traits.reaction_time
             );
         }
 
@@ -621,29 +649,21 @@ fn think_and_act(
             tf.look_to(v2_dir3(act.look_dir), Vec3::Y);
         }
 
-        // --- Weapon.
-        c.cooldown -= dt;
+        // --- Weapon (primary + sidearm, `brain::loadout::GunState`).
         c.last_shot += dt;
-        if c.reload > 0.0 {
-            c.reload -= dt;
-            if c.reload <= 0.0 {
-                c.ammo = MAG;
-            }
+        if let Some(k) = act.weapon {
+            c.gun.switch_to(k);
+        }
+        if act.reload {
+            c.gun.start_reload();
+        }
+        let kind = c.gun.held;
+        let trigger = act.fire && c.engage_t >= TELEGRAPH_S;
+        if !c.gun.tick(dt, trigger) {
             continue;
         }
-        if act.reload && c.ammo < MAG {
-            c.reload = RELOAD_S;
-            continue;
-        }
-        if !(act.fire && c.cooldown <= 0.0 && c.ammo > 0 && c.engage_t >= TELEGRAPH_S) {
-            continue;
-        }
-        c.cooldown = FIRE_INTERVAL;
         c.last_shot = 0.0;
-        c.ammo -= 1;
-        if c.ammo == 0 {
-            c.reload = RELOAD_S;
-        }
+        c.shots += 1;
         let mut muzzle = gun::muzzle_point(&tf, c.crouched, gun_link, &globals);
         if gun_link.is_none() {
             // No animated hand to follow the lean: shift the fallback muzzle with it.
@@ -654,20 +674,43 @@ fn think_and_act(
         let horiz = (aim_pt - muzzle).xz().length().max(0.1);
         let pitch = (aim_pt.y - muzzle.y).atan2(horiz) + act.shot_pitch_err;
         let dir = Vec3::new(act.shot_dir.x * pitch.cos(), pitch.sin(), act.shot_dir.y * pitch.cos());
-        let Ok(dir3) = Dir3::new(dir) else { continue };
-        shots_out.write(ShotFired::new(muzzle, dir, e, crate::weapon::WeaponKind::Rifle));
-        let hit = spatial.cast_ray(muzzle, dir3, brain::sim::VISION_RANGE, true, &filter);
-        // Tracer: stop where the bullet stops, but never near the player's eye.
-        let mut len = hit.map_or(60.0, |h| h.distance);
-        let cam = p_center + Vec3::Y * 0.6;
-        let clearance = if hit.is_some_and(|h| h.entity == player) { TRACER_CLEARANCE } else { TRACER_MISS_CLEARANCE };
-        if let Some(t) = ray_sphere_enter(muzzle, dir, cam, clearance) {
-            len = len.min(t);
+        if Dir3::new(dir).is_err() {
+            continue;
         }
-        let to = (muzzle.distance(cam) > clearance).then_some(muzzle + dir * len);
-        fx.write(EnemyFx::Shot { shooter: e, from: muzzle, to });
-        if hit.is_some_and(|h| h.entity == player) && player_hp_left > 0.0 {
-            let amount = limits.damage_per_hit;
+        shots_out.write(ShotFired::new(muzzle, dir, e, kind));
+        // Every pellet is its own ray inside the gun's cone; one tracer per shot (three for a
+        // shotgun blast), damage summed into one hit per trigger pull.
+        let spec = kind.spec();
+        let range = spec.max_range.min(brain::sim::VISION_RANGE);
+        let mut amount = 0.0;
+        let cam = p_center + Vec3::Y * 0.6;
+        for k in 0..spec.pellets {
+            let d = if act.spread > 0.0 {
+                let yaw = act.shot_dir.angle() + brain::math::gauss(rng) * act.spread;
+                let p = pitch + brain::math::gauss(rng) * act.spread * 0.6;
+                Vec3::new(yaw.cos() * p.cos(), p.sin(), yaw.sin() * p.cos())
+            } else {
+                dir
+            };
+            let Ok(d3) = Dir3::new(d) else { continue };
+            let hit = spatial.cast_ray(muzzle, d3, range, true, &filter);
+            let on_player = hit.is_some_and(|h| h.entity == player);
+            if on_player {
+                amount += brain::loadout::enemy_damage(kind, muzzle.distance(p_center), &limits);
+            }
+            if k < 3 {
+                // Tracer: stop where the bullet stops, but never near the player's eye.
+                let mut len = hit.map_or(60.0f32.min(range), |h| h.distance);
+                let clearance = if on_player { TRACER_CLEARANCE } else { TRACER_MISS_CLEARANCE };
+                if let Some(t) = ray_sphere_enter(muzzle, d, cam, clearance) {
+                    len = len.min(t);
+                }
+                let to = (muzzle.distance(cam) > clearance).then_some(muzzle + d * len);
+                fx.write(EnemyFx::Shot { shooter: e, from: muzzle, to });
+            }
+        }
+        if amount > 0.0 && player_hp_left > 0.0 {
+            c.shots_hit += 1;
             damage_out.write(Damage { target: player, amount, source: e, headshot: false });
             c.report.damage_dealt += amount;
             player_hp_left -= amount;
@@ -683,6 +726,18 @@ fn think_and_act(
     {
         coord.player_damaged(dealt);
     }
+}
+
+/// Per-frame buffers of the AI system, reused so a frame allocates nothing (perf rule).
+#[derive(Default)]
+struct AiScratch {
+    sounds: Vec<(Sound, V2, f32)>,
+    heard_events: Vec<(usize, Heard)>,
+    reveals: Vec<usize>,
+    snapshot: Vec<(Entity, V2, bool, bool)>,
+    allies_buf: Vec<AllyInfo>,
+    /// Pellet spread.
+    rng: Option<brain::math::BrainRng>,
 }
 
 /// Message writers the AI system needs (bundled to stay under the system parameter limit).

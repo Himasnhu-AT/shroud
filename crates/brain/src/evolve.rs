@@ -6,7 +6,9 @@ use crate::utility::Goal;
 use crate::genome::{GENE_COUNT, GaConfig, Gene, TraitGenome, TraitPopulation};
 use crate::ghost::{self, CalibConfig, GhostParams, Outcome, RealStats};
 use crate::limits::Limits;
+use crate::loadout::{self, TRAINER_DIFFICULTY};
 use crate::math::{BrainRng, rng_from_seed};
+use crate::weapons::WeaponKind;
 use crate::mind::{EnemyMind, NEAT_INPUTS, NEAT_OUTPUTS};
 use crate::neat::{self, NeatConfig};
 use crate::player_model::{MatchStats, MatchTelemetry, PlayerModel};
@@ -159,6 +161,11 @@ pub struct EvolveSummary {
     /// Sim-vs-real for the squad that just played (see `MatchSummary`).
     pub deployed_sim_win: Option<f32>,
     pub real_win: Option<f32>,
+    /// Why the next squad carries what it carries ("They brought more marksmen because you
+    /// fight at 35 m"), when the loadout changed.
+    pub loadout_note: Option<String>,
+    /// The next squad's primaries (one per evolved slot, as the trainer equips them).
+    pub next_loadout: Vec<WeaponKind>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -420,6 +427,7 @@ impl BrainState {
         self.champion = trained.champion;
         self.sim_rounds = self.sim_rounds.max(trained.sim_rounds);
         self.evaluated = true;
+        self.migrate();
         self.deploy_champion();
         true
     }
@@ -478,9 +486,37 @@ impl BrainState {
         self.squad_minds_for(seed, self.squad.len(), &self.limits())
     }
 
-    /// `n` minds under `limits` (e.g. `Difficulty::limits`). With more enemies than squad
-    /// slots, slots are reused (same genomes, their own seeds and minds).
+    /// `n` minds under `limits` (e.g. `Difficulty::limits`), equipped as the trainer does.
     pub fn squad_minds_for(&self, seed: u64, n: usize, limits: &Limits) -> Vec<EnemyMind> {
+        self.squad_minds_on(seed, n, limits, TRAINER_DIFFICULTY)
+    }
+
+    /// `n` minds under `limits`, guns handed out under `difficulty`'s caps. With more enemies
+    /// than squad slots, slots are reused (same genomes, their own seeds and minds).
+    pub fn squad_minds_on(&self, seed: u64, n: usize, limits: &Limits, difficulty: crate::difficulty::Difficulty) -> Vec<EnemyMind> {
+        let mut minds = self.squad_minds_raw(seed, n, limits);
+        loadout::equip(&mut minds, difficulty);
+        minds
+    }
+
+    /// The current squad's primaries as the trainer equips them.
+    pub fn squad_loadout(&self) -> Vec<WeaponKind> {
+        let l = self.limits();
+        self.squad_minds_for(0, self.squad.len(), &l).iter().map(EnemyMind::weapon).collect()
+    }
+
+    /// Fill weapon genes missing from an old save (they get their seeded preferences).
+    pub fn migrate(&mut self) {
+        self.traits.genomes.iter_mut().for_each(TraitGenome::fill_loadout);
+        if let Some(c) = &mut self.champion {
+            c.traits.iter_mut().for_each(TraitGenome::fill_loadout);
+        }
+        for r in &mut self.replay {
+            r.traits.iter_mut().for_each(TraitGenome::fill_loadout);
+        }
+    }
+
+    fn squad_minds_raw(&self, seed: u64, n: usize, limits: &Limits) -> Vec<EnemyMind> {
         if self.squad.is_empty() {
             return Vec::new();
         }
@@ -517,6 +553,7 @@ impl BrainState {
         let start = Instant::now();
         let rounds_before = self.sim_rounds;
         let deployed_sim_win = self.champion.as_ref().map(|c| c.score.win_rate());
+        let loadout_before = self.squad_loadout();
         let mut rng = rng_from_seed(self.seed ^ (self.generation as u64).wrapping_mul(0x2545_F491_4F6C_DD1D));
         let before = squad_avg(&self.traits, &self.squad);
 
@@ -551,13 +588,14 @@ impl BrainState {
             let make = |g: usize, seed: u64| {
                 let r = &replay[g];
                 let limits = Limits::for_generation(r.generation);
-                let minds = r
+                let mut minds: Vec<EnemyMind> = r
                     .traits
                     .iter()
                     .zip(&r.neat)
                     .enumerate()
                     .map(|(k, (tg, ng))| EnemyMind::new(tg, k, ng, k, &limits, seed.wrapping_add(k as u64 * 7919)))
                     .collect();
+                loadout::equip(&mut minds, TRAINER_DIFFICULTY);
                 (minds, limits)
             };
             let ccfg = CalibConfig {
@@ -656,6 +694,8 @@ impl BrainState {
         let card = (rounds > 0).then(|| {
             insights::squad_card(&model_before, arena, &report.telemetry, &report.enemies, report.player_rounds, report.enemy_rounds, top.as_ref())
         });
+        let next_loadout = self.squad_loadout();
+        let loadout_note = loadout_note(&loadout_before, &next_loadout, &self.player_model);
         progress(1.0);
         EvolveSummary {
             generation: self.generation,
@@ -676,6 +716,8 @@ impl BrainState {
             total_sim_rounds: self.sim_rounds,
             deployed_sim_win,
             real_win,
+            loadout_note,
+            next_loadout,
         }
     }
 
@@ -710,7 +752,7 @@ impl BrainState {
         let plan = Halving { base_rounds: cfg.rounds_per_genome, rungs: cfg.rungs };
         let res = successive_halving(squads.len(), plan, par, |c, r| {
             let seed = round_seed(gen_seed, r);
-            let minds = (0..SQUAD)
+            let mut minds: Vec<EnemyMind> = (0..SQUAD)
                 .map(|j| match (&champ, c >= pop_n) {
                     (Some(ch), true) => EnemyMind::new(&ch.traits[j], 0, &ch.neat[j], 0, &limits, seed ^ j as u64),
                     _ => {
@@ -719,6 +761,8 @@ impl BrainState {
                     }
                 })
                 .collect();
+            // Guns from the weapon genes, as the game hands them out.
+            loadout::equip(&mut minds, TRAINER_DIFFICULTY);
             let rr: RoundResult = sim::run_round(arena, &self.player_model, limits, minds, seed);
             let rho: Vec<f32> = rr.enemies.iter().map(sim::EnemyStats::fitness).collect();
             let mean = rho.iter().sum::<f32>() / rho.len().max(1) as f32;
@@ -784,6 +828,8 @@ impl BrainState {
         match std::fs::read(path) {
             Ok(bytes) => match serde_json::from_slice::<BrainState>(&bytes) {
                 Ok(mut s) if s.version == SAVE_VERSION => {
+                    // Saves from before loadouts load as-is; weapon genes get seeded.
+                    s.migrate();
                     s.player_model.fit_grids();
                     s
                 }
@@ -797,8 +843,34 @@ impl BrainState {
     }
 }
 
+/// Explain a loadout change for the debrief, from what the player model says about him.
+pub fn loadout_note(before: &[WeaponKind], after: &[WeaponKind], model: &PlayerModel) -> Option<String> {
+    let (b, a) = (loadout::counts(before), loadout::counts(after));
+    let range = model.engagement_range();
+    let fav = model.favourite_weapon();
+    // The kind that gained the most slots (ties: the most specialised).
+    let order = [3usize, 2, 0, 1];
+    let gained = order.iter().copied().filter(|&k| a[k] > b[k]).max_by_key(|&k| a[k] - b[k])?;
+    let n = a[gained];
+    let text = match WeaponKind::PRIMARIES[gained] {
+        WeaponKind::Marksman if range >= 20.0 => format!("They brought {} because you fight at {:.0} m+", plural(n, "a marksman", "marksmen"), range),
+        WeaponKind::Marksman => format!("They brought {}: your long sightlines get watched now", plural(n, "a marksman", "marksmen")),
+        WeaponKind::Shotgun if range < 12.0 => format!("They brought {} because you keep fights inside {:.0} m", plural(n, "a shotgun", "shotguns"), range.max(5.0)),
+        WeaponKind::Shotgun => format!("They brought {} to breach the rooms you hold", plural(n, "a shotgun", "shotguns")),
+        WeaponKind::Smg if fav == WeaponKind::Marksman => format!("{} to rush you while you're scoped in", plural(n, "An SMG rusher", "SMG rushers")),
+        WeaponKind::Smg => format!("{} to flank you up close", plural(n, "An SMG rusher", "SMG rushers")),
+        _ => format!("Back to rifles ({}): steady mid-range fire works against you at {:.0} m", n, range),
+    };
+    Some(text)
+}
+
+fn plural(n: u32, one: &str, many: &str) -> String {
+    if n == 1 { one.to_string() } else { format!("{n} {many}") }
+}
+
 /// Run `f` over `items` on up to `threads` scoped threads, keeping order.
-pub(crate) fn run_parallel<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+pub(crate) fn run_parallel
+<T: Sync, R: Send>(items: &[T], threads: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
     let threads = threads.max(1).min(items.len().max(1));
     let chunk = items.len().div_ceil(threads);
     std::thread::scope(|s| {

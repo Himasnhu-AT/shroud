@@ -10,7 +10,10 @@ use serde_json::{Value, json};
 
 use engine::devtools::{AddControlCommand, params};
 use crate::enemy::grenade::{Flashed, Grenade, ThrowGrenade};
-use crate::enemy::{Enemy, EnemyCombat, EnemyFreeze, Mind, Squad};
+use crate::armed::Armed;
+use crate::enemy::{Enemy, EnemyCombat, EnemyFreeze, GunState, Mind, Role, Squad};
+use brain::weapons::WeaponKind;
+
 use crate::map::{ArenaRes, to_ground};
 use crate::match_flow::MatchFlow;
 use crate::save::Brain;
@@ -36,6 +39,34 @@ pub fn register(app: &mut App) {
                 ("from", "array", "[x, y, z] release point for `at` (default 6 m short of it, 1.6 m up)"),
             ]),
             ai_throw,
+        )
+        .add_control_command(
+            "enemy.loadout",
+            "Hand enemies a primary now (test hook): `kind` for all (or `id`), or `kinds` by slot",
+            params(&[
+                ("kind", "string", "pistol | smg | rifle | shotgun | marksman"),
+                ("id", "integer", "slot (default: every enemy)"),
+                ("kinds", "array", "one kind per slot, e.g. [\"rifle\", \"smg\", \"shotgun\", \"marksman\"]"),
+            ]),
+            enemy_loadout,
+        )
+        .add_control_command(
+            "match.time_limit",
+            "Round time limit in seconds (omit or null: no limit). Headless runs never time out.",
+            params(&[("seconds", "number", "limit; omit for none")]),
+            match_time_limit,
+        )
+        .add_control_command(
+            "ai.play",
+            "Force the squad's play (test hook; omit `name` to hand it back to the bandit)",
+            params(&[("name", "string", "trade | crossfire | pinflank | bait | overwatch | collapse | sweep | search | encircle | free")]),
+            ai_play,
+        )
+        .add_control_command(
+            "enemy.place",
+            "Move an enemy (test hook)",
+            params(&[("id", "integer", "slot"), ("x", "number", "world x"), ("z", "number", "world z"), ("face", "array", "[x, z] to look at")]),
+            enemy_place,
         )
         .add_control_command(
             "enemy.lean",
@@ -79,6 +110,14 @@ fn enemy_list(world: &mut World, _: Value) -> Result<Value, String> {
                 "trait_id": m.0.trait_id,
                 "neat_id": m.0.neat_id,
                 "damage_dealt": c.report.damage_dealt,
+                "loadout": c.role.label(),
+                "weapon": c.gun.held.label(),
+                "primary": c.gun.primary.label(),
+                "ammo": c.gun.ammo(),
+                "reloading": c.gun.reloading(),
+                "shots": c.shots,
+                "shots_hit": c.shots_hit,
+                "clearing": m.0.debug.clearing,
                 "traits": {
                     "aggression": m.0.traits.aggression,
                     "preferred_range": m.0.traits.preferred_range,
@@ -91,6 +130,87 @@ fn enemy_list(world: &mut World, _: Value) -> Result<Value, String> {
         })
         .collect();
     Ok(json!(out))
+}
+
+fn weapon_kind(s: &str) -> Result<WeaponKind, String> {
+    let s = s.to_lowercase();
+    WeaponKind::ALL
+        .into_iter()
+        .find(|k| format!("{k:?}").to_lowercase() == s || k.label().to_lowercase() == s)
+        .ok_or_else(|| format!("unknown weapon {s:?} (pistol, smg, rifle, shotgun, marksman)"))
+}
+
+fn enemy_loadout(world: &mut World, p: Value) -> Result<Value, String> {
+    let by_slot: Option<Vec<WeaponKind>> = match p.get("kinds").and_then(Value::as_array) {
+        Some(a) => Some(a.iter().map(|v| weapon_kind(v.as_str().unwrap_or(""))).collect::<Result<_, _>>()?),
+        None => None,
+    };
+    let one = match p.get("kind").and_then(Value::as_str) {
+        Some(s) => Some(weapon_kind(s)?),
+        None => None,
+    };
+    if by_slot.is_none() && one.is_none() {
+        return Err("give `kind` or `kinds`".into());
+    }
+    let id = p.get("id").and_then(Value::as_u64).map(|v| v as usize);
+    let mut out = Vec::new();
+    for (e, mut mind, mut c, mut armed) in world.query::<(&Enemy, &mut Mind, &mut EnemyCombat, &mut Armed)>().iter_mut(world) {
+        let kind = match (&by_slot, one) {
+            (Some(v), _) => v.get(e.slot).copied(),
+            (None, Some(k)) if id.is_none_or(|i| i == e.slot) => Some(k),
+            _ => None,
+        };
+        let Some(kind) = kind else { continue };
+        mind.0.set_weapon(kind);
+        c.gun = GunState::new(kind);
+        c.role = Role::of(kind);
+        armed.0 = kind;
+        out.push(json!({ "id": e.slot, "weapon": kind.label(), "role": c.role.label() }));
+    }
+    Ok(json!(out))
+}
+
+fn match_time_limit(world: &mut World, p: Value) -> Result<Value, String> {
+    let secs = p.get("seconds").and_then(Value::as_f64).map(|s| s as f32);
+    world.resource_mut::<crate::match_flow::RoundLimit>().0 = secs;
+    Ok(json!({ "seconds": secs }))
+}
+
+fn ai_play(world: &mut World, p: Value) -> Result<Value, String> {
+
+    use brain::squad::Play;
+    let want = p.get("name").and_then(Value::as_str).map(|s| s.to_lowercase().replace([' ', '-', '_'], ""));
+    let all = [Play::Free, Play::Overwatch, Play::Crossfire, Play::Trade, Play::PinFlank, Play::Collapse, Play::Bait, Play::Sweep, Play::Search, Play::Encircle];
+    let play = match &want {
+        None => None,
+        Some(w) => Some(
+            all.into_iter()
+                .find(|p| p.label().replace([' ', '-'], "") == *w || format!("{p:?}").to_lowercase() == *w)
+                .ok_or_else(|| format!("unknown play {w:?}"))?,
+        ),
+    };
+    let mut sq = world.resource_mut::<Squad>();
+    let Some(c) = sq.coord.as_mut() else { return Err("no squad".into()) };
+    c.force_play = play;
+    Ok(json!({ "play": play.map(|p| p.label()) }))
+}
+
+fn enemy_place(world: &mut World, p: Value) -> Result<Value, String> {
+
+    let id = p.get("id").and_then(Value::as_u64).ok_or("need `id`")? as usize;
+    let x = p.get("x").and_then(Value::as_f64).ok_or("need `x`")? as f32;
+    let z = p.get("z").and_then(Value::as_f64).ok_or("need `z`")? as f32;
+    let face = p.get("face").and_then(Value::as_array).and_then(|a| Some(Vec3::new(a.first()?.as_f64()? as f32, 0.0, a.get(1)?.as_f64()? as f32)));
+    for (e, mut tf) in world.query::<(&Enemy, &mut Transform)>().iter_mut(world) {
+        if e.slot == id {
+            tf.translation = Vec3::new(x, 0.0, z);
+            if let Some(f) = face.filter(|f| f.distance(tf.translation) > 0.1) {
+                tf.look_at(f, Vec3::Y);
+            }
+            return Ok(json!({ "id": id, "pos": [x, z] }));
+        }
+    }
+    Err(format!("no enemy {id}"))
 }
 
 fn enemy_freeze(world: &mut World, p: Value) -> Result<Value, String> {
@@ -201,6 +321,7 @@ fn ai_squad(world: &mut World, _: Value) -> Result<Value, String> {
         "size": sq.size,
         "coordination": c.enabled,
         "play": c.play.label(),
+        "breach": c.breach.map(|b| json!({ "door": [b.door.pos.x, b.door.pos.y], "inside": [b.inside.x, b.inside.y], "t": b.t, "go_at": b.go_at })),
         "alert": c.board.alert.label(),
         "board_age": c.board.age,
         "roles": c.orders.iter().map(|o| o.map(|o| o.role.label())).collect::<Vec<_>>(),

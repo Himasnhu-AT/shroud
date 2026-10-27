@@ -4,14 +4,17 @@
 use crate::arena::Arena;
 use crate::genome::{TraitGenome, Traits};
 use crate::limits::Limits;
+use crate::loadout;
 use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::neat;
 use crate::perception::{Alert, COMBAT_CALM_S, Heard, SUSPICIOUS_CALM_S, Sound};
 use crate::player_model::PlayerModel;
 use crate::posts;
 use crate::posture;
+use crate::rooms::{self, Doorway};
 use crate::squad::{self, Order};
 use crate::utility::{self, Goal, UtilityInput};
+use crate::weapons::{FireMode, WeaponKind};
 
 pub const NEAT_INPUTS: usize = 14;
 pub const NEAT_OUTPUTS: usize = 4;
@@ -140,6 +143,12 @@ pub struct Observation {
     /// The squad gave this member no attack token: reposition to a flank rather than trade
     /// shots (it still shoots in self-defence or up close).
     pub token_denied: bool,
+    /// The gun in hand (the primary or the sidearm).
+    pub weapon: WeaponKind,
+    /// The primary's magazine 0..1 (0 while it reloads).
+    pub primary_ammo: f32,
+    /// Seconds until the held gun can fire again (reload / switch left).
+    pub busy_s: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -163,6 +172,10 @@ pub struct Action {
     /// Lean out of cover: -1 left .. +1 right of `look_dir` (0 = upright; the game may still
     /// lean on its own at tall corners).
     pub lean: f32,
+    /// Switch to this gun (the primary or the sidearm); None keeps the one in hand.
+    pub weapon: Option<WeaponKind>,
+    /// Per-pellet cone (1 sigma, radians) around `shot_dir` for each bullet the gun fires.
+    pub spread: f32,
 }
 
 pub struct MindCtx<'a> {
@@ -185,6 +198,8 @@ pub struct MindDebug {
     pub post: Option<PostPhase>,
     /// No ally close enough to help.
     pub isolated: bool,
+    /// Clearing a doorway: looking through it / checking the corners behind it.
+    pub clearing: bool,
 }
 
 /// Peek-shoot-hide loop at cover posts (`posts.rs`).
@@ -296,8 +311,23 @@ pub struct EnemyMind {
     burst_jitter: f32,
     /// Reaction time needed for the current sighting (latched when it starts).
     react_need: f32,
+    /// Room clearing: the map's doorways (found on the first repath), the one the current path
+    /// goes through and the side it is entered from, and the corner-check clock.
+    doors: Option<Vec<Doorway>>,
+    door: Option<(Doorway, f32)>,
+    clear_t: f32,
+    /// Seconds idling at a spot without an order or a sighting (window sills, empty rooms).
+    stale_t: f32,
     pub debug: MindDebug,
 }
+
+/// An idle hold with no order and no sighting this long (s) moves on to hunt.
+pub const STALE_HOLD_S: f32 = 8.0;
+/// Corner checks: each side of a room is looked at this long (s) after stepping through a door.
+pub const CORNER_LOOK_S: f32 = 0.55;
+/// Marksmen fight from posts this far (m) from the player, searched within this radius.
+pub const MARKSMAN_BAND: (f32, f32) = (16.0, 55.0);
+pub const MARKSMAN_POST_RADIUS: f32 = 14.0;
 
 /// No living ally within this distance (m, ~4 s at a walk): the enemy is on its own.
 pub const ISOLATION_M: f32 = 15.0;
@@ -390,8 +420,27 @@ impl EnemyMind {
             crouch_prev: false,
             burst_jitter: 1.0,
             react_need: 0.0,
+            doors: None,
+            door: None,
+            clear_t: 0.0,
+            stale_t: 0.0,
             debug: MindDebug::default(),
         }
+    }
+
+    /// The primary this enemy carries.
+    pub fn weapon(&self) -> WeaponKind {
+        self.traits.weapon
+    }
+
+    /// Hand this enemy its primary (`loadout::assign`): tactics follow the gun's range band.
+    pub fn set_weapon(&mut self, kind: WeaponKind) {
+        self.traits = self.traits.with_weapon(kind);
+    }
+
+    /// The loadout's role (rifleman, rusher, breacher, marksman).
+    pub fn role(&self) -> loadout::Role {
+        loadout::Role::of(self.traits.weapon)
     }
 
     /// Running the peek-shoot-hide loop (and its phase).
@@ -510,13 +559,15 @@ impl EnemyMind {
         let contact = self.own_unseen < POST_CONTACT_S || o.taking_fire;
         let window = o.player_reloading || o.player_hp < 0.35;
         let open_fight = matches!(self.goal, Goal::Attack | Goal::TakeCover) || self.post.is_some();
+        // Marksmen always fight from posts: a long sightline, a shot or two, then relocate.
+        let marksman = t.weapon == WeaponKind::Marksman && o.weapon == WeaponKind::Marksman;
         let want_post = combat
             && contact
             && !sticky_order
             && !window
             && self.goal != Goal::Retreat
             && dist > posts::MIN_PLAYER_DIST
-            && (self.isolated || o.token_denied && open_fight || self.goal == Goal::TakeCover);
+            && (self.isolated || o.token_denied && open_fight || self.goal == Goal::TakeCover || marksman);
         // Reload behind cover when it is close, not in the open.
         let hidden_here = !cx.arena.line_of_sight(o.player_pos, false, o.pos, true);
         let reload_spot = if engaged && o.ammo_frac < 0.2 && !hidden_here && !want_post {
@@ -559,6 +610,14 @@ impl EnemyMind {
                 player_reloading: o.player_reloading,
             };
             let mut new_goal = utility::choose(self.goal, &ui, &t, self.order.map(|o| o.goal), self.order.is_some_and(|o| o.sticky));
+            // Idle too long at one spot with nothing to show for it (a window sill, an empty
+            // room): move on and hunt instead of hugging the cover all round.
+            if self.stale_t > STALE_HOLD_S && new_goal == self.goal && self.post.is_none() {
+                new_goal = Goal::Hunt;
+                self.stale_t = 0.0;
+                self.goal_t = GOAL_COMMIT_S;
+                self.bark = Some("Moving up");
+            }
             // Working a post: alone it overrides everything but falling back; with the squad
             // around it only replaces standing in the open.
             if let Some(st) = self.post {
@@ -623,10 +682,46 @@ impl EnemyMind {
                     (Some(d), None) => routed(d, None),
                     (None, _) => Vec::new(),
                 };
+                let doors = self.doors.get_or_insert_with(|| rooms::doorways(cx.arena));
+                self.door = rooms::door_on_path(doors, o.pos, &self.path).map(|(d, _)| (d, d.side(o.pos)));
+                self.clear_t = 0.0;
             }
             self.goal = new_goal;
             self.dest = new_dest;
         }
+
+        // Idle-hold clock (no order, nothing seen, standing still).
+        let idle = matches!(self.goal, Goal::TakeCover | Goal::Ambush | Goal::Hold | Goal::Attack)
+            && self.order.is_none()
+            && self.path.is_empty()
+            && self.post.is_none()
+            && self.own_unseen > STALE_HOLD_S
+            && !o.taking_fire
+            && !o.player_visible;
+        self.stale_t = if idle { self.stale_t + o.dt } else { 0.0 };
+        // Room clearing: through the door, check the corners either side, then carry on.
+        let mut corner: Option<V2> = None;
+        let mut near_door = false;
+        if let Some((d, from)) = self.door {
+            let gap = d.pos.dist(o.pos);
+            if d.side(o.pos) == from {
+                near_door = gap < 3.0;
+                if gap > 25.0 && self.path.is_empty() {
+                    self.door = None;
+                }
+            } else if gap < 4.5 {
+                near_door = true;
+                self.clear_t += o.dt;
+                let side = if ((self.clear_t / CORNER_LOOK_S) as u32).is_multiple_of(2) { 1.0 } else { -1.0 };
+                corner = Some(d.inside(d.pos + d.normal * from, 2.5) + d.normal.perp() * (3.0 * side * self.flank_side));
+                if self.clear_t > 3.0 * CORNER_LOOK_S {
+                    self.door = None;
+                }
+            } else {
+                self.door = None;
+            }
+        }
+        self.debug.clearing = near_door;
 
         // 2. Path following.
         while let Some(&wp) = self.path.first() {
@@ -752,6 +847,11 @@ impl EnemyMind {
         } else if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S || posting.is_some_and(|p| p != PostPhase::Move || self.own_unseen < 1.0) {
             // (At a post the gun stays on where he was: the peek comes out pre-aimed.)
             (o.player_pos + o.player_vel * 0.08 - o.pos).norm()
+        } else if let Some(c) = corner {
+            (c - o.pos).norm()
+        } else if let Some((d, _)) = self.door.filter(|_| near_door && !self.path.is_empty()) {
+            // Slicing the pie: the gun goes through the doorway first.
+            (d.pos - o.pos).norm()
         } else if let Some(h) = self.heard_prev.filter(|_| self.heard_t < 2.5 && !self.path.is_empty() || self.heard_t < 1.0) {
             (h - o.pos).norm()
         } else if let Some(w) = self.following().and_then(|od| od.watch) {
@@ -778,7 +878,15 @@ impl EnemyMind {
         // tokens no longer hold fire: members without one shoot too, just suppressively (wider
         // spread, below).
         let fire_gate = if engaged && !combat { micro[2] > -0.6 } else { true };
-        let ready = o.player_visible && self.seen_time >= self.react_need && aim_off < 0.07 && fire_gate && o.ammo_frac > 0.0;
+        let gun = o.weapon.spec();
+        let h = loadout::handling(o.weapon);
+        let ready = o.player_visible
+            && self.seen_time >= self.react_need
+            && aim_off < 0.07
+            && fire_gate
+            && o.ammo_frac > 0.0
+            && self.on_target_time >= h.ads_gate_s
+            && dist <= gun.max_range;
         self.debug.seen_time = self.seen_time;
         self.debug.aim_off = aim_off;
         let mut fire = false;
@@ -787,7 +895,10 @@ impl EnemyMind {
         } else if ready {
             fire = true;
             self.burst_timer += o.dt;
-            if self.burst_timer >= t.burst_length as f32 * 0.1 * self.burst_jitter {
+            // Bursts are counted in rounds: an SMG's burst is quicker than a rifle's; pump and bolt
+            // guns keep cycling (their cycle time is the pause).
+            let per_round = if gun.mode == FireMode::Auto { gun.shot_interval() } else { gun.shot_interval().max(0.15) };
+            if self.burst_timer >= t.burst_length as f32 * per_round * self.burst_jitter {
                 self.burst_timer = 0.0;
                 self.burst_jitter = 0.7 + 0.6 * self.rng_f();
                 self.burst_pause = if combat { 0.18 + 0.15 * self.rng_f() } else { 0.3 + 0.2 * self.rng_f() };
@@ -808,16 +919,16 @@ impl EnemyMind {
         // Spread: base error, worse while moving, wide on the first shots and narrowing as the
         // aim settles on him; suppressive (no token, not self-defence) fire is wider still.
         // (Pre-fire aims at a fixed spot, not a target to settle on: its own spread covers it.)
-        let settle = if prefiring { 1.0 } else { 1.0 + SETTLE_SPREAD * (1.0 - (self.on_target_time / SETTLE_S).min(1.0)) };
+        let settle = if prefiring { 1.0 } else { 1.0 + SETTLE_SPREAD * (1.0 - (self.on_target_time / h.settle_s.max(0.05)).min(1.0)) };
         let suppress = if o.token_denied && !self.isolated && !o.taking_fire && dist >= 12.0 { SUPPRESS_SPREAD } else { 1.0 };
-        let moving = 1.0 + move_dir.len() * 0.35;
+        let moving = 1.0 + move_dir.len() * h.move_mult;
         if o.taking_fire && !self.was_hit {
             self.flinch_t = FLINCH_S;
         }
         self.was_hit = o.taking_fire;
         self.flinch_t = (self.flinch_t - o.dt).max(0.0);
         let flinch = 1.0 + FLINCH_SPREAD * self.flinch_t / FLINCH_S;
-        let sigma = t.aim_error_deg.to_radians() * settle * moving * flinch * suppress * if prefiring { PREFIRE_SPREAD } else { 1.0 };
+        let sigma = t.aim_error_deg.to_radians() * loadout::aim_mult_at(o.weapon, dist) * settle * moving * flinch * suppress * if prefiring { PREFIRE_SPREAD } else { 1.0 };
         let shot_dir = V2::from_angle(self.aim_yaw + gauss(&mut self.rng) * sigma);
         let shot_pitch_err = gauss(&mut self.rng) * sigma * 0.6;
 
@@ -855,10 +966,12 @@ impl EnemyMind {
         let sticky = self.following().is_some_and(|od| od.sticky);
         // Cover-to-cover: a push dashes between covers even in view; a combat hunt runs.
         let dash = self.goal == Goal::Push && far && !fire && self.following().is_none();
-        let sprint = dash
-            || posting == Some(PostPhase::Move) && far
-            || (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far || combat && self.goal == Goal::Hunt)
-                && (!o.player_visible || sticky && far);
+        // (Never through a doorway at a run: the pie gets sliced at a walk.)
+        let sprint = !near_door
+            && (dash
+                || posting == Some(PostPhase::Move) && far
+                || (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far || combat && self.goal == Goal::Hunt)
+                    && (!o.player_visible || sticky && far));
         // Reload when empty, when calm, or early while hidden (a post, or cover he can't see).
         let hidden_now = !cx.arena.line_of_sight(o.player_pos, false, o.pos, true);
         let reload = o.ammo_frac <= 0.0
@@ -874,7 +987,19 @@ impl EnemyMind {
             }
             _ => 0.0,
         };
-        if reload && !self.was_reloading {
+        // Sidearm: dry primary mid-fight with a long reload ahead -> pistol; back to the primary
+        // once out of sight for a moment (and reload it there).
+        let primary = t.weapon;
+        let mut weapon = None;
+        if o.weapon == primary && primary != WeaponKind::Pistol {
+            if o.player_visible && o.primary_ammo <= 0.0 && o.busy_s > 0.9 && dist < 30.0 {
+                weapon = Some(WeaponKind::Pistol);
+                self.bark = Some("Switching to pistol");
+            }
+        } else if o.weapon == WeaponKind::Pistol && !o.player_visible && self.own_unseen > 1.2 {
+            weapon = Some(primary);
+        }
+        if reload && !self.was_reloading && weapon.is_none() {
             self.bark = Some("Reloading");
         }
         self.was_reloading = reload;
@@ -896,6 +1021,8 @@ impl EnemyMind {
             reload,
             prefire: prefire.filter(|_| fire),
             lean,
+            weapon,
+            spread: loadout::pellet_spread(o.weapon),
         }
     }
 
@@ -932,7 +1059,7 @@ impl EnemyMind {
             if self.post_retry > 0.0 {
                 return;
             }
-            match posts::pick(cx.arena, o.pos, o.player_pos, &self.recent_peeks, None) {
+            match self.pick_post(o, cx, None) {
                 Some(post) => {
                     self.post = Some(PostState { post, phase: PostPhase::Move, t: 0.0, fired: 0.0, burst: 0.0, peeked: false, reload_only: false });
                     self.force_repath = true;
@@ -972,13 +1099,13 @@ impl EnemyMind {
                         self.post = None;
                         return;
                     }
-                    if st.peeked && !self.isolated {
+                    if st.peeked && !self.isolated && self.traits.weapon != WeaponKind::Marksman {
                         // Squad nearby: one cycle, then back to the squad's tactics.
                         self.post = None;
                         self.post_retry = 2.0;
                         return;
                     }
-                    let next = if st.peeked { posts::pick(cx.arena, o.pos, o.player_pos, &self.recent_peeks, Some(st.post.pos)) } else { None };
+                    let next = if st.peeked { self.pick_post(o, cx, Some(st.post.pos)) } else { None };
                     match next {
                         Some(post) => {
                             st = PostState { post, phase: PostPhase::Move, t: 0.0, fired: 0.0, burst: 0.0, peeked: false, reload_only: false };
@@ -989,9 +1116,15 @@ impl EnemyMind {
                                 st.post.peek = peek;
                             }
                             st.phase = PostPhase::Peek;
-                            st.t = PEEK_MAX_S;
                             st.fired = 0.0;
-                            st.burst = PEEK_BURST_S.0 + (PEEK_BURST_S.1 - PEEK_BURST_S.0) * r;
+                            if self.traits.weapon == WeaponKind::Marksman {
+                                // Scope in, one or two shots, then off to a new sightline.
+                                st.t = PEEK_MAX_S + 1.5;
+                                st.burst = 0.15 + 0.2 * r;
+                            } else {
+                                st.t = PEEK_MAX_S;
+                                st.burst = PEEK_BURST_S.0 + (PEEK_BURST_S.1 - PEEK_BURST_S.0) * r;
+                            }
                             self.recent_peeks.push((st.post.peek, 0.0));
                         }
                     }
@@ -1010,6 +1143,16 @@ impl EnemyMind {
             self.force_repath = true;
         }
         self.post = Some(st);
+    }
+
+    /// A post for the peek loop: marksmen want a long sightline, everyone else the usual.
+    fn pick_post(&self, o: &Observation, cx: &MindCtx, current: Option<V2>) -> Option<posts::Post> {
+        if self.traits.weapon == WeaponKind::Marksman
+            && let Some(p) = posts::pick_band(cx.arena, o.pos, o.player_pos, &self.recent_peeks, current, MARKSMAN_BAND, MARKSMAN_POST_RADIUS)
+        {
+            return Some(p);
+        }
+        posts::pick(cx.arena, o.pos, o.player_pos, &self.recent_peeks, current)
     }
 
     fn rng_f(&mut self) -> f32 {
@@ -1038,6 +1181,9 @@ impl EnemyMind {
                 // Fight at the player's weakest range if we trust the model, else our own.
                 let trust = t.prediction_trust * cx.model.confidence();
                 let range = t.preferred_range + (cx.model.weakest_range() - t.preferred_range) * trust;
+                // ...but within reach of the gun (a shotgun doesn't stop at his weak 20 m).
+                let range = range.clamp(t.preferred_range * 0.6, t.preferred_range * 1.5);
+
                 // Cover-to-cover: bound to the next cover that gains ground, if there is one.
                 let ranged = player + (o.pos - player).norm() * range.min(o.pos.dist(player) - 2.0).max(4.0);
                 // (An ordered entry walks the direct line so its trader can follow.)

@@ -58,12 +58,19 @@ pub fn recency(p: V2, recent: &[(V2, f32)]) -> f32 {
 /// spots used lately (pos, seconds ago); `current`: the post it is leaving (the next one is
 /// at least `NEXT_POST_M` away).
 pub fn pick(arena: &Arena, me: V2, player: V2, recent: &[(V2, f32)], current: Option<V2>) -> Option<Post> {
+    pick_band(arena, me, player, recent, current, (MIN_PLAYER_DIST, f32::INFINITY), POST_RADIUS)
+}
+
+/// `pick` among cover `band.0..band.1` m from the player, within `radius` of the enemy
+/// (marksmen: long sightlines further out). Closer to the middle of the band scores higher.
+pub fn pick_band(arena: &Arena, me: V2, player: V2, recent: &[(V2, f32)], current: Option<V2>, band: (f32, f32), radius: f32) -> Option<Post> {
     let d_now = me.dist(player);
+    let banded = band.1.is_finite();
     let mut best: Option<Post> = None;
     for c in &arena.cover {
         let d_me = c.pos.dist(me);
         let d_pl = c.pos.dist(player);
-        if d_me > POST_RADIUS || d_pl < MIN_PLAYER_DIST || current.is_some_and(|p| p.dist(c.pos) < NEXT_POST_M) {
+        if d_me > radius || d_pl < band.0.max(MIN_PLAYER_DIST) || d_pl > band.1 || current.is_some_and(|p| p.dist(c.pos) < NEXT_POST_M) {
             continue;
         }
         // Must hide at least crouched.
@@ -73,13 +80,15 @@ pub fn pick(arena: &Arena, me: V2, player: V2, recent: &[(V2, f32)], current: Op
         let Some(peek) = peek_cell(arena, c.pos, player) else { continue };
         let tall = !arena.line_of_sight(player, false, c.pos, false);
         let covered = if tall { 1.0 } else { 0.75 };
-        // Getting there shouldn't mean walking at him.
-        let toward = ((d_now - d_pl).max(0.0) / 6.0).min(1.0);
+        // Getting there shouldn't mean walking at him (a long-range post doesn't care).
+        let toward = if banded { 0.0 } else { ((d_now - d_pl).max(0.0) / 6.0).min(1.0) };
+        let in_band = if banded { 1.0 - 0.4 * ((d_pl - (band.0 + band.1) * 0.5).abs() / (band.1 - band.0).max(1.0)) } else { 1.0 };
         // Nor crossing his view on the way (sample the midpoint).
         let mid = (me + c.pos) * 0.5;
         let crossing = if d_me > 2.0 && arena.line_of_sight(player, false, mid, false) { 0.8 } else { 1.0 };
         let fresh = 1.0 - recency(peek, recent).max(recency(c.pos, recent));
-        let score = covered * (1.0 - 0.5 * toward) * crossing * (0.15 + 0.85 * fresh) - 0.02 * d_me;
+        let score = covered * in_band * (1.0 - 0.5 * toward) * crossing * (0.15 + 0.85 * fresh) - 0.02 * d_me;
+
         if best.is_none_or(|b| score > b.score) {
             best = Some(Post { pos: c.pos, peek, tall, score });
         }

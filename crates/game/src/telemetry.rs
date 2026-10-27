@@ -189,6 +189,7 @@ fn record(
 
     // --- Shots: reaction, per-range counts, per-shot records.
     for shot in &player_shots {
+        t.0.shot_with(shot.kind);
         if let Some(at) = s.engaged_at.take() {
             let r = s.clock - at;
             if r < 2.0 {

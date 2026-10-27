@@ -9,6 +9,7 @@
 
 mod assets;
 mod armed;
+mod armor;
 mod audio;
 mod dev;
 mod enemy;

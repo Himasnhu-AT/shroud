@@ -11,7 +11,7 @@ use crate::limits::Limits;
 use crate::mind::EnemyMind;
 use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::player_model::{HEAT_W, MatchTelemetry, PlayerModel, ROUTE_W, heat_center, range_bin, route_idx, sector_of};
-use crate::sim::{Body, CROUCH_SPEED, DT, HEARING_RANGE, HP, MAG, WALK};
+use crate::sim::{Body, CROUCH_SPEED, DT, HP, WALK};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::TAU;
@@ -115,8 +115,10 @@ pub struct EnemyView {
     pub crouched: bool,
     /// In the ghost's view (LOS and view cone), computed by the sim.
     pub visible: bool,
-    /// Fired this tick (audible within `HEARING_RANGE`).
+    /// Fired this tick (audible within `loud` m).
     pub fired: bool,
+    /// How far (m) that shot carries for the ghost (by the enemy's gun).
+    pub loud: f32,
 }
 
 pub struct GhostView<'a> {
@@ -218,7 +220,7 @@ impl Ghost {
         };
         let b = (0..6).max_by(|&a, &b| model.kill_share[a].total_cmp(&model.kill_share[b])).unwrap_or(2);
         Ghost {
-            body: Body::new(pos),
+            body: Body::with_gun(pos, model.favourite_weapon()),
             facing: -std::f32::consts::FRAC_PI_2,
             stats: GhostStats::default(),
             mode,
@@ -410,7 +412,7 @@ impl Ghost {
         if let Some((_, i)) = seen {
             self.threat = Some(v.enemies[i].pos);
             self.threat_age = 0.0;
-        } else if let Some(e) = v.enemies.iter().filter(|e| e.alive && e.fired && e.pos.dist(pos) < HEARING_RANGE).min_by(|x, y| {
+        } else if let Some(e) = v.enemies.iter().filter(|e| e.alive && e.fired && e.pos.dist(pos) < e.loud).min_by(|x, y| {
             x.pos.dist(pos).total_cmp(&y.pos.dist(pos))
         }) {
             self.threat = Some(e.pos);
@@ -446,7 +448,7 @@ impl Ghost {
             self.go_to(a, c);
         }
         let mut reload = false;
-        if target.is_none() && self.body.reload_t <= 0.0 && self.body.ammo < MAG / 3 {
+        if target.is_none() && !self.body.reloading() && self.body.gun.ammo() < self.body.gun.spec().mag / 3 {
             let covered = self.threat.is_none_or(|t| !a.line_of_sight(pos, false, t, false));
             if covered || self.threat_age > 3.0 {
                 reload = true;
@@ -460,7 +462,7 @@ impl Ghost {
             }
         }
         if reload {
-            self.body.reload_t = crate::sim::RELOAD_S;
+            self.body.gun.start_reload();
         }
 
         // 4. Movement.
@@ -653,7 +655,7 @@ impl Ghost {
             let next = v
                 .enemies
                 .iter()
-                .filter(|e| e.alive && (e.visible || (e.fired && e.pos.dist(pos) < HEARING_RANGE)))
+                .filter(|e| e.alive && (e.visible || (e.fired && e.pos.dist(pos) < e.loud)))
                 .map(|e| e.pos)
                 .next()
                 .or(self.threat);

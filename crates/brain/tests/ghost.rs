@@ -15,7 +15,10 @@ fn win_rate(a: &Arena, model: &PlayerModel, mode: GhostMode, brains: &[BrainStat
             // Squad grenades and plays off: this compares the ghosts' own skill. Frags/flashes
             // and the squad's encirclement deliberately punish V2's hold-and-re-peek style, so
             // against a coordinated squad the gap says more about the squad than the ghost.
-            wins += sim::run_round_opts(a, model, Limits::for_generation(0), s.squad_minds(seed), seed, mode, false, UtilityBudget::NONE).player_won as u32;
+            // Rifles only (the pre-loadout baseline): this measures the ghosts, not the guns.
+            let mut minds = s.squad_minds(seed);
+            minds.iter_mut().for_each(|m| m.set_weapon(brain::weapons::WeaponKind::Rifle));
+            wins += sim::run_round_opts(a, model, Limits::for_generation(0), minds, seed, mode, false, UtilityBudget::NONE).player_won as u32;
         }
     }
     wins as f32 / (brains.len() as u64 * rounds) as f32

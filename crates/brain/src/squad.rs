@@ -24,6 +24,8 @@ use crate::math::{BrainRng, V2, angle_diff, rng_from_seed};
 use crate::mind::{Blackboard, RADIO_PERIOD_S};
 use crate::search::{self, Searcher, Spot};
 use crate::perception::{Alert, Heard, Sound, heard_sigma};
+use crate::rooms::{self, Doorway};
+use crate::weapons::WeaponKind;
 use crate::player_model::{CoverState, HEAT_W, PlayerModel, SECTORS, classify_cover, heat_idx, sector_of};
 use crate::utility::Goal;
 use rand::Rng;
@@ -669,6 +671,47 @@ pub struct SquadCoordinator {
     pub shooters: Vec<usize>,
     /// Staggered reactions: a member's new order lands after this many seconds.
     order_lag: Vec<f32>,
+
+    // --- Room clearing (stack and breach).
+    doors: Option<Vec<Doorway>>,
+    /// The entry's breach of the room he holds, if the Trade play goes through a door.
+    pub breach: Option<Breach>,
+    /// A grenade wanted through the breach door (lands here).
+    breach_throw: Option<V2>,
+    /// Map size vs the 64 m maps (`search::map_scale`): big maps give staging and the
+    /// encirclement proportionally longer, since everyone has further to walk.
+    map_scale: f32,
+}
+
+/// Stack and breach: the entry and its trader stack beside the door frame, utility goes in,
+/// then the entry pushes through the door and pies the corners.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Breach {
+    pub door: Doorway,
+    /// The side they stack on (the entry's position when it was planned).
+    pub from: V2,
+    /// A point just inside the room.
+    pub inside: V2,
+    pub t: f32,
+    /// Play time at which the entry goes in (set once stacked).
+    pub go_at: Option<f32>,
+    called: bool,
+}
+
+/// Breach a door when he is within this far (m) past it.
+pub const BREACH_REACH: f32 = 14.0;
+/// Longest the stack waits for the trader (s).
+pub const BREACH_STACK_S: f32 = 6.0;
+
+/// Entry pick weight by gun: shotguns and SMGs go first; marksmen never.
+fn entry_weight(k: WeaponKind) -> f32 {
+    match k {
+        WeaponKind::Shotgun => 1.0,
+        WeaponKind::Smg => 0.8,
+        WeaponKind::Rifle => 0.5,
+        WeaponKind::Pistol => 0.4,
+        WeaponKind::Marksman => -1.0,
+    }
 }
 
 /// At most this many members hold attack tokens at once (fewer in small squads).
@@ -756,6 +799,10 @@ impl SquadCoordinator {
             go_t: None,
             shooters: Vec::new(),
             order_lag: vec![0.0; n],
+            doors: None,
+            breach: None,
+            breach_throw: None,
+            map_scale: search::map_scale(arena),
         }
     }
 
@@ -1225,6 +1272,7 @@ impl SquadCoordinator {
                 return;
             }
             self.pending_throw = None;
+            self.breach_throw = None;
             self.throws.push(t);
             self.throw_cd = grenade::SQUAD_COOLDOWN_S;
             let text = match t.kind {
@@ -1258,6 +1306,17 @@ impl SquadCoordinator {
         let target = if known { self.board.pos } else { self.predicted(arena) };
         let kind = match forced {
             Some(k) => k,
+            // Stacked on a door: a flashbang (or a frag) goes through it first.
+            None if self.breach_throw.is_some() => {
+                if self.flashes_used < self.utility.flashes {
+                    GrenadeKind::Flash
+                } else if self.frags_used < self.utility.frags {
+                    GrenadeKind::Frag
+                } else {
+                    self.breach_throw = None;
+                    return;
+                }
+            }
             None if !known => return,
             None => {
                 let camping = self.still_t >= CAMP_S;
@@ -1278,8 +1337,13 @@ impl SquadCoordinator {
             if !m.alive || (used && forced.is_none()) || Some(i) == self.lead || Some(i) == self.anchor {
                 continue;
             }
-            // A flash lands a step in front of him, on the thrower's side, so he sees it pop.
-            let aim = if frag { target } else { target + (m.pos - target).norm() * 1.5 };
+            // A flash lands a step in front of him, on the thrower's side, so he sees it pop;
+            // a breach grenade lands just inside the door.
+            let aim = match self.breach_throw {
+                Some(p) => p,
+                None if frag => target,
+                None => target + (m.pos - target).norm() * 1.5,
+            };
             let d = m.pos.dist(aim);
             if !(grenade::THROW_MIN..grenade::THROW_MAX).contains(&d) || grenade::landing(arena, m.pos, aim).dist(aim) > 2.0 {
                 continue;
@@ -1311,7 +1375,10 @@ impl SquadCoordinator {
             self.lead = None;
             self.second = None;
             self.trail.clear();
+            self.breach = None;
+            self.breach_throw = None;
         }
+
         let dead = |s: Option<usize>| s.is_none_or(|i| !members.get(i).is_some_and(|m| m.alive));
         if dead(self.lead) {
             self.lead = None;
@@ -1364,15 +1431,70 @@ impl SquadCoordinator {
                 }
             }
             Play::Trade => {
-                let entry = *self.lead.get_or_insert(by_dist[0]);
+                // The entry: a close-range gun among the three nearest (never a marksman).
+                let entry = *self.lead.get_or_insert_with(|| {
+                    by_dist
+                        .iter()
+                        .take(3)
+                        .enumerate()
+                        .map(|(r, &i)| (entry_weight(members[i].traits.weapon) - 0.25 * r as f32, i))
+                        .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)))
+                        .map_or(by_dist[0], |x| x.1)
+                });
                 if self.second.is_none() {
-                    self.second = by_dist.iter().copied().find(|&i| i != entry);
+                    self.second = by_dist
+                        .iter()
+                        .copied()
+                        .find(|&i| i != entry && members[i].traits.weapon != WeaponKind::Marksman)
+                        .or_else(|| by_dist.iter().copied().find(|&i| i != entry));
                 }
                 let second = self.second;
                 let ep = members[entry].pos;
                 let away = (ep - target).norm();
-                self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: false, via: None, prefire: None });
-                if let Some(tr) = second {
+                // He holds a room: stack on the door, utility in, then breach (`Breach`).
+                if changed {
+                    let doors = self.doors.get_or_insert_with(|| rooms::doorways(arena));
+                    self.breach = rooms::breach_door(arena, doors, ep, target, BREACH_REACH)
+                        .map(|door| Breach { door, from: ep, inside: door.inside(ep, 2.5), t: 0.0, go_at: None, called: false });
+                    self.breach_throw = None;
+                }
+                let stacking = self.breach.is_some_and(|b| b.go_at.is_none_or(|g| self.play_t < g));
+                if let Some(mut b) = self.breach {
+                    b.t += RADIO_PERIOD_S;
+                    let stack_e = b.door.stack(arena, b.from, 1.6, 0);
+                    let stack_t = b.door.stack(arena, b.from, 3.0, 0);
+                    if b.go_at.is_none() {
+                        let tr_ready = second.is_none_or(|tr| members[tr].pos.dist(stack_t) < 2.5);
+                        if (ep.dist(stack_e) < 1.8 && tr_ready && b.t > 1.0) || b.t > BREACH_STACK_S {
+                            let have = self.utility.flashes > self.flashes_used || self.utility.frags > self.frags_used;
+                            let zone = arena.zone_of(b.inside).map_or("the room", |z| z.name);
+                            if have {
+                                self.breach_throw = Some(b.inside);
+                                b.go_at = Some(self.play_t + grenade::WINDUP_S + grenade::FLASH_FUSE_S + 0.3);
+                                self.bark(entry, format!("Stacked on {zone} door - utility in"), true);
+                            } else {
+                                b.go_at = Some(self.play_t + 0.3);
+                                self.bark(entry, format!("Stacked on {zone} door - breaching"), true);
+                            }
+                        }
+                    } else if !stacking && !b.called {
+                        b.called = true;
+                        self.bark(entry, "Breach! Go go go".into(), true);
+                    }
+                    self.breach = Some(b);
+                    if stacking {
+                        let watch = Some(b.door.pos);
+                        self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Hold, dest: Some(stack_e), watch, threat: Some(target), sticky: true, via: None, prefire: None });
+                        if let Some(tr) = second {
+                            self.orders[tr] = Some(Order { role: Role::Trader, goal: Goal::Hold, dest: Some(stack_t), watch, threat: Some(target), sticky: true, via: None, prefire: None });
+                        }
+                    }
+                }
+                let via = self.breach.filter(|_| !stacking).map(|b| b.inside);
+                if !stacking {
+                    self.orders[entry] = Some(Order { role: Role::Entry, goal: Goal::Push, dest: None, watch: Some(target), threat: None, sticky: via.is_some(), via, prefire: None });
+                }
+                if let Some(tr) = second.filter(|_| !stacking) {
                     if self.trail.last().is_none_or(|l| l.dist(ep) > 0.5) {
                         self.trail.push(ep);
                     }
@@ -1393,17 +1515,24 @@ impl SquadCoordinator {
                 for &i in &rest {
                     self.orders[i] = Some(hold(self.claims[i], Role::Support));
                 }
-                if changed {
+                if changed && self.breach.is_none() {
                     self.bark(entry, "Going in - trade me".into(), true);
                     self.flash_wanted = 4.0;
                 }
             }
             Play::PinFlank => {
                 let flanker = *self.lead.get_or_insert_with(|| {
-                    *alive
-                        .iter()
-                        .max_by(|&&a, &&b| members[a].traits.flank_bias.total_cmp(&members[b].traits.flank_bias).then(b.cmp(&a)))
-                        .unwrap_or(&alive[0])
+                    // Flank bias, and the gun: SMGs flank, marksmen stay on their sightlines.
+                    let w = |i: usize| {
+                        members[i].traits.flank_bias
+                            + match members[i].traits.weapon {
+                                WeaponKind::Smg => 0.4,
+                                WeaponKind::Shotgun => 0.2,
+                                WeaponKind::Marksman => -1.0,
+                                _ => 0.0,
+                            }
+                    };
+                    *alive.iter().max_by(|&&a, &&b| w(a).total_cmp(&w(b)).then(b.cmp(&a))).unwrap_or(&alive[0])
                 });
                 if full || changed || self.claims[flanker].is_none() {
                     let (sector, dest) = least_watched_flank(arena, model, target, members[flanker].traits.preferred_range);
@@ -1445,7 +1574,11 @@ impl SquadCoordinator {
             Play::Bait => {
                 let bait = *self
                     .lead
-                    .get_or_insert_with(|| *alive.iter().max_by(|&&a, &&b| members[a].hp.total_cmp(&members[b].hp).then(b.cmp(&a))).unwrap_or(&alive[0]));
+                    // The healthiest member draws him out; a marksman stays on its sightline.
+                    .get_or_insert_with(|| {
+                        let hp = |i: usize| members[i].hp - if members[i].traits.weapon == WeaponKind::Marksman { 2.0 } else { 0.0 };
+                        *alive.iter().max_by(|&&a, &&b| hp(a).total_cmp(&hp(b)).then(b.cmp(&a))).unwrap_or(&alive[0])
+                    });
                 let r = model.weakest_range().clamp(6.0, 28.0);
                 let dest = arena.nav.nearest_walkable(target + (members[bait].pos - target).norm() * r);
                 self.orders[bait] = Some(Order { role: Role::Bait, goal: Goal::Push, dest: Some(dest), watch: Some(target), threat: None, sticky: true, via: None, prefire: None });
@@ -1510,7 +1643,7 @@ impl SquadCoordinator {
 
     /// The synchronised peek has had its moment (or the encirclement has run its time).
     fn encircled(&self) -> bool {
-        self.play_t > ENCIRCLE_S || self.go_t.is_some_and(|g| self.time - g > GO_S)
+        self.play_t > ENCIRCLE_S * self.map_scale || self.go_t.is_some_and(|g| self.time - g > GO_S)
     }
 
     /// Every mover is at its staging cell.
@@ -1754,7 +1887,7 @@ impl SquadCoordinator {
         }
         // Staged: everyone is a step from his line of fire (or it took too long). Then all
         // peek at once from their sides, so he can't take them one at a time.
-        if self.go_t.is_none() && (self.staged(members) || self.play_t > STAGE_S) {
+        if self.go_t.is_none() && (self.staged(members) || self.play_t > STAGE_S * self.map_scale) {
             self.go_t = Some(now);
             if let Some(&s) = self.shooters.first() {
                 self.bark(s, "All set - go go go".into(), true);
