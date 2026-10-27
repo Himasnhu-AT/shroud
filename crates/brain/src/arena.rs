@@ -7,7 +7,13 @@ use crate::nav::NavGrid;
 /// Height of low cover: you can shoot over it standing, hide behind it crouched.
 pub const LOW_COVER_HEIGHT: f32 = 1.1;
 pub const TALL_HEIGHT: f32 = 3.6;
+/// Default half extent of a map (Foundry, Depot, Office are 64 m squares). Each map has its
+/// own size: use [`Arena::half`]. Outer walls are centred on ±half, inner faces at
+/// ±(half - WALL_THICKNESS).
 pub const ARENA_HALF: f32 = 32.0;
+/// Half extent covered by the AI's fixed world grids (player-model heat/routes, squad belief):
+/// big enough for the largest map. Every map's `half()` must be ≤ this.
+pub const GRID_HALF: f32 = 48.0;
 pub const WALL_THICKNESS: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +60,20 @@ pub enum Skin {
     Desk,
     /// Server rack, shelf or vending machine: dark painted metal.
     Cabinet,
+    /// Red brick facade (also garden walls when Low).
+    Brick,
+    /// Painted render on houses; the renderer varies the colour per building.
+    Plaster,
+    /// Painted corrugated metal cladding (warehouses, workshops).
+    Siding,
+    /// Parked car (Low: shoot over the bonnet, hide behind it crouched).
+    Car,
+    /// Store shelving / workbench (Low or Tall).
+    Shelf,
+    /// Steel dumpster.
+    Dumpster,
+    /// Concrete planter with a shrub.
+    Planter,
 }
 
 impl Block {
@@ -66,7 +86,7 @@ impl Block {
     }
 
     /// Box from its ground-plane extents.
-    fn rect(x0: f32, z0: f32, x1: f32, z1: f32, kind: BlockKind, height: f32, skin: Skin) -> Self {
+    pub(crate) fn rect(x0: f32, z0: f32, x1: f32, z1: f32, kind: BlockKind, height: f32, skin: Skin) -> Self {
         let (x0, x1) = (x0.min(x1), x0.max(x1));
         let (z0, z1) = (z0.min(z1), z0.max(z1));
         Block {
@@ -127,8 +147,8 @@ pub struct CoverPoint {
 }
 
 /// Which map to play. CONTRACT: variants, `ALL`, `label`, `blurb` and `Arena::build` are
-/// shared by the maps, AI and UI streams. Every map fits inside ±ARENA_HALF (the player-model
-/// heat grids assume it) and has at least 6 enemy spawns.
+/// shared by the maps, AI and UI streams. Every map fits inside ±`Arena::half()` (≤ GRID_HALF,
+/// which the player-model heat grids cover) and has at least 6 enemy spawns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum MapId {
     #[default]
@@ -137,15 +157,18 @@ pub enum MapId {
     Depot,
     /// Tight indoor close-quarters map (Office / Shoot House-like).
     Office,
+    /// A 90 m town block: streets, alleys, a courtyard and eight enterable buildings.
+    Township,
 }
 
 impl MapId {
-    pub const ALL: [MapId; 3] = [MapId::Foundry, MapId::Depot, MapId::Office];
+    pub const ALL: [MapId; 4] = [MapId::Foundry, MapId::Depot, MapId::Office, MapId::Township];
     pub fn label(self) -> &'static str {
         match self {
             MapId::Foundry => "Foundry",
             MapId::Depot => "Depot",
             MapId::Office => "Office",
+            MapId::Township => "Township",
         }
     }
     pub fn blurb(self) -> &'static str {
@@ -153,12 +176,15 @@ impl MapId {
             MapId::Foundry => "Open industrial yard around a central tower.",
             MapId::Depot => "Three lanes, long sightlines, one contested middle.",
             MapId::Office => "Tight corridors and rooms. Every corner is a fight.",
+            MapId::Township => "A town block at golden hour: long streets, alleys, houses with windows.",
         }
     }
 }
 
 pub struct Arena {
     pub id: MapId,
+    /// Half extent: outer walls are centred on ±half (see [`Arena::half`]).
+    pub half: f32,
     pub blocks: Vec<Block>,
     pub zones: Vec<Zone>,
     pub player_spawn: V2,
@@ -194,6 +220,59 @@ pub struct Decor {
     pub headers: Vec<Header>,
     /// Floor surface patches drawn just above the ground (non-overlapping).
     pub floors: Vec<FloorPatch>,
+    /// Window openings: a Low sill block below (gameplay), glass + lintel above (the lintel
+    /// is bullet-solid, the glass stops nothing). Not in `headers`.
+    pub windows: Vec<Window>,
+    /// Enterable buildings, for the renderer (facades, linings, roofs, probes).
+    pub buildings: Vec<BuildingInfo>,
+}
+
+/// A window opening in a wall. `min`/`max` is the opening's ground rect (= its sill block's).
+/// Between `sill` and `top` it is open (glass, which stops nothing); `top`..`wall_top` is
+/// the lintel.
+#[derive(Clone, Copy, Debug)]
+pub struct Window {
+    pub min: V2,
+    pub max: V2,
+    pub sill: f32,
+    pub top: f32,
+    pub wall_top: f32,
+    /// Glazed: the renderer adds a pane that shatters when shot.
+    pub glass: bool,
+    /// In an exterior wall (else an interior partition).
+    pub exterior: bool,
+}
+
+/// What a building is used for (renderer hint: lamps, floors, colours).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BuildingUse {
+    House,
+    Shop,
+    Warehouse,
+    Office,
+    Workshop,
+}
+
+/// One enterable building (renderer data; gameplay only sees its blocks).
+#[derive(Clone, Debug)]
+pub struct BuildingInfo {
+    pub name: &'static str,
+    /// Outer footprint.
+    pub min: V2,
+    pub max: V2,
+    /// Wall top = ceiling underside = roof slab bottom.
+    pub height: f32,
+    pub facade: Skin,
+    pub interior: Skin,
+    pub use_: BuildingUse,
+    /// Indices into `Arena::blocks` of the exterior wall segments and window sills.
+    pub shell: Vec<usize>,
+    /// Flat roof with a parapet (else a slab with eaves).
+    pub parapet: bool,
+    /// Index of its roof in `Decor::roofs`.
+    pub roof: usize,
+    /// Sides that are shared with a neighbouring wing (no wall of its own; N, S, W, E).
+    pub open_sides: [bool; 4],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -210,6 +289,23 @@ pub struct Lamp {
     pub pos: V2,
     /// Mount height (just below the ceiling or roof).
     pub height: f32,
+    pub style: LampStyle,
+}
+
+/// Fixture the renderer draws for a lamp.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LampStyle {
+    /// Caged bulkhead under a roof (warm point light).
+    #[default]
+    Bulkhead,
+    /// Recessed ceiling panel (downward spot).
+    Panel,
+    /// Pendant lamp in a house (warm, small).
+    Pendant,
+    /// Industrial high-bay under a tall roof.
+    HighBay,
+    /// Street lamp on a facade bracket; the light hangs `facing` (unit ground axis) off the wall.
+    Wall { facing_x: i8, facing_z: i8 },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -225,6 +321,14 @@ pub enum FloorSkin {
     Asphalt,
     Tiles,
     Pavement,
+    /// Paving slabs (sidewalks, courtyards).
+    Sidewalk,
+    /// Wooden boards (house interiors).
+    Wood,
+    /// Sealed concrete (warehouse, workshop).
+    Concrete,
+    /// Office carpet.
+    Carpet,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -235,15 +339,25 @@ pub struct FloorPatch {
 }
 
 /// Axis-aligned map authoring helper: boxes by extents, walls with doorways cut in.
-struct Builder {
-    blocks: Vec<Block>,
-    decor: Decor,
+pub(crate) struct Builder {
+    pub(crate) half: f32,
+    pub(crate) blocks: Vec<Block>,
+    pub(crate) decor: Decor,
+    /// Zones added while building (rooms); they precede the map's own list.
+    pub(crate) zones: Vec<Zone>,
+    /// Style for `lamp()`.
+    pub(crate) lamp_style: LampStyle,
 }
 
 impl Builder {
-    /// Starts with the four outer walls (inner faces at ±(ARENA_HALF - WALL_THICKNESS)).
+    /// Default-size map with the four outer walls.
     fn new(wall_height: f32, wall_skin: Skin) -> Self {
-        let h = ARENA_HALF;
+        Self::sized(ARENA_HALF, wall_height, wall_skin)
+    }
+
+    /// Starts with the four outer walls (inner faces at ±(half - WALL_THICKNESS)).
+    pub(crate) fn sized(half: f32, wall_height: f32, wall_skin: Skin) -> Self {
+        let h = half;
         let t = WALL_THICKNESS;
         let mut blocks = Vec::new();
         for (cx, cz, hx, hz) in [(0.0, -h, h + t, t), (0.0, h, h + t, t), (-h, 0.0, t, h + t), (h, 0.0, t, h + t)] {
@@ -252,14 +366,14 @@ impl Builder {
             b.skin = wall_skin;
             blocks.push(b);
         }
-        Builder { blocks, decor: Decor::default() }
+        Builder { half, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead }
     }
 
-    fn low(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, skin: Skin) {
+    pub(crate) fn low(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, skin: Skin) {
         self.blocks.push(Block::rect(x0, z0, x1, z1, BlockKind::Low, LOW_COVER_HEIGHT, skin));
     }
 
-    fn tall(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, height: f32, skin: Skin) {
+    pub(crate) fn tall(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, height: f32, skin: Skin) {
         self.blocks.push(Block::rect(x0, z0, x1, z1, BlockKind::Tall, height, skin));
     }
 
@@ -284,7 +398,7 @@ impl Builder {
         }
     }
 
-    fn header(&mut self, min: V2, max: V2, top: f32) {
+    pub(crate) fn header(&mut self, min: V2, max: V2, top: f32) {
         self.decor.headers.push(Header { min, max, bottom: DOOR_HEIGHT, top });
     }
 
@@ -307,27 +421,48 @@ impl Builder {
         out
     }
 
-    fn roof(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, bottom: f32) {
+    pub(crate) fn roof(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, bottom: f32) {
         self.decor.roofs.push(Roof { min: V2::new(x0, z0), max: V2::new(x1, z1), bottom, thickness: 0.3 });
     }
 
-    fn lamp(&mut self, x: f32, z: f32, height: f32) {
-        self.decor.lamps.push(Lamp { pos: V2::new(x, z), height });
+    pub(crate) fn lamp(&mut self, x: f32, z: f32, height: f32) {
+        let style = self.lamp_style;
+        self.lamp_styled(x, z, height, style);
     }
 
-    fn floor(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, skin: FloorSkin) {
+    pub(crate) fn lamp_styled(&mut self, x: f32, z: f32, height: f32, style: LampStyle) {
+        self.decor.lamps.push(Lamp { pos: V2::new(x, z), height, style });
+    }
+
+    pub(crate) fn zone(&mut self, name: &'static str, x0: f32, z0: f32, x1: f32, z1: f32) {
+        self.zones.push(zone(name, x0, z0, x1, z1));
+    }
+
+    pub(crate) fn floor(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, skin: FloorSkin) {
         self.decor.floors.push(FloorPatch { min: V2::new(x0, z0), max: V2::new(x1, z1), skin });
     }
 
-    fn finish(self, id: MapId, zones: Vec<Zone>, player_spawn: V2, enemy_spawns: Vec<V2>) -> Arena {
-        let nav = NavGrid::bake(&self.blocks, ARENA_HALF, 1.0, AGENT_RADIUS);
-        let mut arena = Arena { id, blocks: self.blocks, zones, player_spawn, enemy_spawns, nav, cover: Vec::new(), decor: self.decor };
+    pub(crate) fn finish(mut self, id: MapId, zones: Vec<Zone>, player_spawn: V2, enemy_spawns: Vec<V2>) -> Arena {
+        let nav = NavGrid::bake(&self.blocks, self.half, 1.0, AGENT_RADIUS);
+        // Rooms added with `zone()` come first: `zone_of` returns the first match.
+        self.zones.extend(zones);
+        let mut arena = Arena {
+            id,
+            half: self.half,
+            blocks: self.blocks,
+            zones: self.zones,
+            player_spawn,
+            enemy_spawns,
+            nav,
+            cover: Vec::new(),
+            decor: self.decor,
+        };
         arena.cover = arena.compute_cover();
         arena
     }
 }
 
-fn zone(name: &'static str, x0: f32, z0: f32, x1: f32, z1: f32) -> Zone {
+pub(crate) fn zone(name: &'static str, x0: f32, z0: f32, x1: f32, z1: f32) -> Zone {
     Zone { name, min: V2::new(x0, z0), max: V2::new(x1, z1) }
 }
 
@@ -338,7 +473,14 @@ impl Arena {
             MapId::Foundry => Arena::foundry(),
             MapId::Depot => Arena::depot(),
             MapId::Office => Arena::office(),
+            MapId::Township => crate::township::township(),
         }
+    }
+
+    /// Half extent of this map: outer walls are centred on ±half, so the playable floor is
+    /// ±(half - WALL_THICKNESS). Use this, not `ARENA_HALF` (the default size).
+    pub fn half(&self) -> f32 {
+        self.half
     }
 
     /// The original arena: "Foundry", an open mirror-symmetric yard.
@@ -387,7 +529,7 @@ impl Arena {
             zone("the inner west side", -14.0, -8.0, -8.0, 8.0),
             zone("the inner east side", 8.0, -8.0, 14.0, 8.0),
         ];
-        let b = Builder { blocks, decor: Decor::default() };
+        let b = Builder { half: ARENA_HALF, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead };
         b.finish(
             MapId::Foundry,
             zones,
@@ -520,6 +662,7 @@ impl Arena {
         let h = OFFICE_WALL_HEIGHT;
         let t = PARTITION_HALF;
         let mut b = Builder::new(h, Drywall);
+        b.lamp_style = LampStyle::Panel;
         b.roof(-31.0, -31.0, 31.0, 31.0, OFFICE_CEILING);
         // --- Separators between the back offices (north), the floor, and the lobby (south).
         b.wall_z(-22.0, -31.0, 31.0, &[-25.0, -17.0, -8.0, 8.0, 17.0, 25.0], h, Drywall);
@@ -548,7 +691,12 @@ impl Arena {
         // Conference room in the middle of the cubicles.
         b.wall_x(-5.0, -4.0 - t, 4.0 + t, &[0.0], h, Drywall);
         b.wall_x(5.0, -4.0 - t, 4.0 + t, &[-1.0], h, Drywall);
-        b.wall_z(-4.0, -5.0 + t, 5.0 - t, &[], h, Drywall);
+        // Its north wall is glazed: two interior windows onto the cubicles.
+        {
+            use crate::building::{Axis, Opening, WallLine};
+            let w = WallLine { axis: Axis::X, coord: -4.0, a0: -5.0 + t, a1: 5.0 - t, half_thickness: t, height: h, skin: Drywall, exterior: false };
+            b.wall_line(&w, &[Opening::window(-2.3, 3.0), Opening::window(2.3, 3.0)]);
+        }
         b.wall_z(4.0, -5.0 + t, 5.0 - t, &[2.0], h, Drywall);
         b.low(-2.5, -1.0, 2.5, 1.0, Desk);
         // Cubicle pods (desks with partitions).
@@ -733,7 +881,7 @@ impl Arena {
     }
 
     pub fn in_bounds(&self, p: V2) -> bool {
-        p.x.abs() < ARENA_HALF - AGENT_RADIUS && p.y.abs() < ARENA_HALF - AGENT_RADIUS
+        p.x.abs() < self.half - AGENT_RADIUS && p.y.abs() < self.half - AGENT_RADIUS
     }
 
     /// Push a point out of any block it overlaps (used by the 2D sim for collision).
@@ -751,7 +899,7 @@ impl Arena {
                 p.y += pz * d.y.signum();
             }
         }
-        let lim = ARENA_HALF - radius;
+        let lim = self.half - radius;
         V2::new(p.x.clamp(-lim, lim), p.y.clamp(-lim, lim))
     }
 }

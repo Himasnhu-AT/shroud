@@ -26,6 +26,10 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `textures/office_wall/*` | PaintedPlaster017 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedPlaster017 | CC0 1.0 |
 | `textures/ceiling/*` | OfficeCeiling004 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=OfficeCeiling004 | CC0 1.0 |
 | `textures/tiles/*` | Tiles107 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Tiles107 | CC0 1.0 |
+| `textures/brick/*` | Bricks076C (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Bricks076C | CC0 1.0 |
+| `textures/wood_floor/*` | WoodFloor051 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=WoodFloor051 | CC0 1.0 |
+| `textures/sidewalk/*` | PavingStones130 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PavingStones130 | CC0 1.0 |
+| `textures/roof_gravel/*` | Gravel022 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Gravel022 | CC0 1.0 |
 
 Notes:
 - ambientCG maps are renamed to `color.jpg`, `normal.jpg` (OpenGL convention), `rough.jpg` and `ao.jpg` and are otherwise unmodified. Mipmaps are built at load time (`gfx.rs`).

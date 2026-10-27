@@ -3,6 +3,7 @@
 
 pub mod arena;
 pub mod bandit;
+pub mod building;
 pub mod difficulty;
 pub mod encircle;
 pub mod evolve;
@@ -22,6 +23,7 @@ pub mod posture;
 pub mod search;
 pub mod sim;
 pub mod squad;
+pub mod township;
 pub mod trainer;
 pub mod utility;
 pub mod weapons;

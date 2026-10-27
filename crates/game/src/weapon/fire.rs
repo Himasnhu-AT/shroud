@@ -53,8 +53,10 @@ impl Surface {
     pub fn of_block(b: &Block) -> Surface {
         match b.skin {
             Skin::Crate | Skin::Desk => Surface::Wood,
-            Skin::Container | Skin::Barrel | Skin::Cabinet => Surface::Metal,
-            Skin::Drywall => Surface::Plaster,
+            Skin::Container | Skin::Barrel | Skin::Cabinet | Skin::Siding | Skin::Car | Skin::Shelf | Skin::Dumpster => {
+                Surface::Metal
+            }
+            Skin::Drywall | Skin::Plaster | Skin::Stucco => Surface::Plaster,
             Skin::Auto => match b.kind {
                 BlockKind::Tall => Surface::Metal,
                 _ => Surface::Concrete,
@@ -66,7 +68,7 @@ impl Surface {
 
 /// Bullets go through this block (if the gun can penetrate and it is thin enough there).
 pub fn penetrable(b: &Block) -> bool {
-    b.kind != BlockKind::Wall && (b.kind == BlockKind::Low || matches!(b.skin, Skin::Crate | Skin::Desk | Skin::Drywall | Skin::Cabinet))
+    b.kind != BlockKind::Wall && (b.kind == BlockKind::Low || matches!(b.skin, Skin::Crate | Skin::Desk | Skin::Drywall | Skin::Cabinet | Skin::Shelf | Skin::Car))
 }
 
 /// Thickest cover (metres along the bullet) a gun with this `penetration` gets through.

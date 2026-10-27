@@ -15,7 +15,7 @@
 //! - **Breachers**: frags flush a player camping cover, flashbangs go in before a flank or entry.
 //! - **Callouts**: short ASCII text events for the UI.
 
-use crate::arena::{ARENA_HALF, Arena, BlockKind};
+use crate::arena::{Arena, BlockKind, GRID_HALF};
 use crate::bandit::{self, ArmScore, CTX_DIM, LiveCtx, TacticsLearner};
 use crate::genome::Traits;
 use crate::grenade::{self, GrenadeKind};
@@ -177,8 +177,8 @@ pub fn tactical_cost<'a>(arena: &'a Arena, model: &'a PlayerModel, threat: V2, w
 // ---------------------------------------------------------------------------------------------
 // Belief grid.
 
-pub const BELIEF_W: usize = 16;
-const BELIEF_CELL: f32 = 2.0 * ARENA_HALF / BELIEF_W as f32;
+pub const BELIEF_W: usize = 24; // 4 m cells over 2 * GRID_HALF
+const BELIEF_CELL: f32 = 2.0 * GRID_HALF / BELIEF_W as f32;
 
 /// Decaying grid belief over the player's position (sum = 1). The particle filter is P2.
 #[derive(Clone, Debug)]
@@ -188,11 +188,11 @@ pub struct Belief {
 }
 
 pub fn cell_center(i: usize) -> V2 {
-    V2::new(-ARENA_HALF + ((i % BELIEF_W) as f32 + 0.5) * BELIEF_CELL, -ARENA_HALF + ((i / BELIEF_W) as f32 + 0.5) * BELIEF_CELL)
+    V2::new(-GRID_HALF + ((i % BELIEF_W) as f32 + 0.5) * BELIEF_CELL, -GRID_HALF + ((i / BELIEF_W) as f32 + 0.5) * BELIEF_CELL)
 }
 
 pub fn cell_of(p: V2) -> usize {
-    let c = |v: f32| (((v + ARENA_HALF) / BELIEF_CELL).floor().clamp(0.0, (BELIEF_W - 1) as f32)) as usize;
+    let c = |v: f32| (((v + GRID_HALF) / BELIEF_CELL).floor().clamp(0.0, (BELIEF_W - 1) as f32)) as usize;
     c(p.y) * BELIEF_W + c(p.x)
 }
 
