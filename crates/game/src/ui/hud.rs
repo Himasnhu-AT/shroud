@@ -441,20 +441,39 @@ fn update_hud(
         if *vis != want {
             *vis = want;
         }
-        let color = if marker.kill {
-            ENEMY
-        } else if marker.headshot {
-            ACCENT
-        } else {
-            Color::WHITE
-        };
-        tf.scale = Vec2::splat(if marker.kill { 1.35 } else { 1.0 });
-        for k in kids.iter() {
-            if let Ok(mut bg) = hit_bars.get_mut(k) {
-                bg.0 = color;
+        if show {
+            let (color, scale, alpha) = hit_marker_look(&marker);
+            let scale = Vec2::splat(scale);
+            if tf.scale != scale {
+                tf.scale = scale;
+            }
+            let color = color.with_alpha(alpha);
+            for k in kids.iter() {
+                if let Ok(mut bg) = hit_bars.get_mut(k)
+                    && bg.0 != color
+                {
+                    bg.0 = color;
+                }
             }
         }
     }
+}
+
+/// The hit marker's colour (white, headshot accent, kill red), scale and alpha: it punches
+/// out on the hit, settles, and fades over the last 40% of its time.
+fn hit_marker_look(m: &HitMarker) -> (Color, f32, f32) {
+    let life = if m.kill { crate::weapon::KILL_MARKER_S } else { crate::weapon::HIT_MARKER_S };
+    let k = (m.timer / life).clamp(0.0, 1.0);
+    let color = if m.kill {
+        ENEMY
+    } else if m.headshot {
+        ACCENT
+    } else {
+        Color::WHITE
+    };
+    let base = if m.kill { 1.35 } else { 1.0 };
+    let pop = 1.0 + 0.4 * (k - 0.6).max(0.0) / 0.4;
+    (color, base * pop, (k / 0.4).min(1.0))
 }
 
 fn update_pips(
@@ -620,6 +639,20 @@ fn animate_fx(
 
 #[cfg(test)]
 mod tests {
+    use super::{ENEMY, HitMarker, hit_marker_look};
+
+    #[test]
+    fn hit_marker_pops_then_fades() {
+        let hit = |t: f32, kill: bool| hit_marker_look(&HitMarker { timer: t, headshot: false, kill });
+        let fresh = hit(crate::weapon::HIT_MARKER_S, false);
+        let mid = hit(crate::weapon::HIT_MARKER_S * 0.5, false);
+        let end = hit(crate::weapon::HIT_MARKER_S * 0.1, false);
+        assert!(fresh.1 > 1.3 && (mid.1 - 1.0).abs() < 1e-5, "pops out then settles: {} {}", fresh.1, mid.1);
+        assert!(fresh.2 == 1.0 && mid.2 == 1.0 && end.2 < 0.5, "fades at the end: {}", end.2);
+        let kill = hit(crate::weapon::KILL_MARKER_S, true);
+        assert!(kill.1 > fresh.1 && kill.0 == ENEMY, "kills are bigger and red");
+    }
+
     #[test]
     fn clock_format() {
         assert_eq!(super::fmt_clock(0.0), "0:00");

@@ -127,6 +127,7 @@ fn state(world: &mut World, _: Value) -> Result<Value, String> {
         "spread_deg": w.spread.to_degrees(),
         "ads": w.ads,
         "scoped": w.scoped(),
+        "optic": w.sighted().map(|o| format!("{o:?}")),
         "reloading": w.reloading.is_some(),
         "reload_kind": format!("{:?}", w.reload_kind),
         "phase": format!("{:?}", w.phase),

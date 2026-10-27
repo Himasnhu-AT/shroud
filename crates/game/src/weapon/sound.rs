@@ -110,3 +110,23 @@ fn gun_sounds(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::sound_files;
+
+    #[test]
+    fn every_gun_sound_has_its_files() {
+        for &(name, n) in SOUNDS {
+            for f in sound_files(name, n) {
+                assert!(f.is_file(), "{name}: missing {}", f.display());
+            }
+        }
+        // Each gun's shot resolves to a file (the Kestrel's lives with the shared sounds).
+        for k in WeaponKind::ALL {
+            let name = shot_name(k);
+            assert!(sound_files(name, 1)[0].is_file(), "{k:?}: no {name}.ogg");
+        }
+    }
+}

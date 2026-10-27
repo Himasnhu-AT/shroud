@@ -403,7 +403,7 @@ pub fn fire_and_reload(
     for &(target, amount, headshot) in hits.iter() {
         out.damage.write(Damage { target, amount, source: player, headshot });
         let head = headshot || (marker.timer > 0.0 && marker.headshot);
-        *marker = HitMarker { timer: 0.18, headshot: head, kill: false };
+        *marker = HitMarker { timer: super::HIT_MARKER_S, headshot: head, kill: false };
     }
 }
 
