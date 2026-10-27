@@ -1,11 +1,11 @@
 //! The player model: a decayed profile of how the human plays (docs/PLAYER_MODEL.md).
 
-use crate::arena::{ARENA_HALF, Arena, Block, BlockKind};
+use crate::arena::{Arena, Block, BlockKind, GRID_HALF};
 use crate::math::V2;
 use serde::{Deserialize, Serialize};
 
-pub const HEAT_W: usize = 32; // 2 m cells over 64 m
-pub const ROUTE_W: usize = 8; // 8 m cells
+pub const HEAT_W: usize = 48; // 2 m cells over 2 * GRID_HALF = 96 m
+pub const ROUTE_W: usize = 12; // 8 m cells
 pub const RANGE_BINS: [f32; 6] = [5.0, 10.0, 15.0, 20.0, 30.0, f32::INFINITY];
 pub const RANGE_LABELS: [&str; 6] = ["0-5 m", "5-10 m", "10-15 m", "15-20 m", "20-30 m", "30+ m"];
 /// Compass names for 8 look sectors (x = east, z/y = south).
@@ -20,17 +20,17 @@ pub fn range_bin(d: f32) -> usize {
 }
 
 pub fn heat_idx(p: V2) -> usize {
-    let c = |v: f32| (((v + ARENA_HALF) / (2.0 * ARENA_HALF)) * HEAT_W as f32).floor().clamp(0.0, (HEAT_W - 1) as f32) as usize;
+    let c = |v: f32| (((v + GRID_HALF) / (2.0 * GRID_HALF)) * HEAT_W as f32).floor().clamp(0.0, (HEAT_W - 1) as f32) as usize;
     c(p.y) * HEAT_W + c(p.x)
 }
 
 pub fn heat_center(i: usize) -> V2 {
-    let cell = 2.0 * ARENA_HALF / HEAT_W as f32;
-    V2::new(-ARENA_HALF + ((i % HEAT_W) as f32 + 0.5) * cell, -ARENA_HALF + ((i / HEAT_W) as f32 + 0.5) * cell)
+    let cell = 2.0 * GRID_HALF / HEAT_W as f32;
+    V2::new(-GRID_HALF + ((i % HEAT_W) as f32 + 0.5) * cell, -GRID_HALF + ((i / HEAT_W) as f32 + 0.5) * cell)
 }
 
 pub fn route_idx(p: V2) -> usize {
-    let c = |v: f32| (((v + ARENA_HALF) / (2.0 * ARENA_HALF)) * ROUTE_W as f32).floor().clamp(0.0, (ROUTE_W - 1) as f32) as usize;
+    let c = |v: f32| (((v + GRID_HALF) / (2.0 * GRID_HALF)) * ROUTE_W as f32).floor().clamp(0.0, (ROUTE_W - 1) as f32) as usize;
     c(p.y) * ROUTE_W + c(p.x)
 }
 
@@ -665,6 +665,24 @@ fn blend(dst: &mut [f32], src: &[f32], a: f32) {
 }
 
 impl PlayerModel {
+    /// Resets any world grid whose size doesn't match the current `HEAT_W` / `ROUTE_W` (a
+    /// save from before the grids grew to cover big maps). Everything else is kept.
+    pub fn fit_grids(&mut self) {
+        let fresh = PlayerModel::default();
+        if self.heat.len() != fresh.heat.len() {
+            self.heat = fresh.heat;
+        }
+        if self.routes.len() != fresh.routes.len() {
+            self.routes = fresh.routes;
+        }
+        if self.death_spots.len() != fresh.death_spots.len() {
+            self.death_spots = fresh.death_spots;
+        }
+        if self.kill_spots.len() != fresh.kill_spots.len() {
+            self.kill_spots = fresh.kill_spots;
+        }
+    }
+
     /// How much enemies should trust this model (0 … 1).
     pub fn confidence(&self) -> f32 {
         1.0 - 0.6f32.powi(self.matches_observed as i32)

@@ -1,17 +1,18 @@
 //! Per-map look: material palettes (PBR with flat-colour fallbacks), how each block is
-//! drawn, and the map's light rig (sun, ambient, exposure, fog, lamp shadow budget).
+//! drawn, and the map's mood as an engine [`Look`] (sun, sky, fog, exposure, grading), plus
+//! the lamp shadow budget.
 
 use std::collections::HashMap;
 
 use avian3d::prelude::*;
-use bevy::camera::Exposure;
-use bevy::light::{AtmosphereEnvironmentMapLight, NotShadowCaster, light_consts::lux};
-use bevy::pbr::{DistanceFog, FogFalloff};
+use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use brain::arena::{Block, BlockKind, MapId, Skin};
+use brain::arena::{Arena, Block, BlockKind, BuildingUse, MapId, Skin};
+use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SunLook, ToneMap};
+use engine::render_budget::SceneryRanges;
 
 use super::{ArenaRes, Gfx};
-use crate::gfx::{FOG_COLOR, Sun, load_pbr, world_uv_cuboid};
+use crate::gfx::{load_pbr, world_uv_cuboid};
 use engine::settings::{CoreSettings as Settings, GraphicsQuality};
 
 /// A material recipe: texture set under `assets/textures/<tex>/`, tint, flat fallback
@@ -68,6 +69,28 @@ fn recipe(key: &str) -> Spec {
         "cabinet" => spec("", [1.0, 1.0, 1.0], [0.07, 0.075, 0.085], 0.45, 1.5),
         "planter" => spec("wall", [0.36, 0.36, 0.38], [0.25, 0.25, 0.27], 0.9, 1.0),
         "ceiling" => spec("ceiling", [1.0, 1.0, 1.0], [0.85, 0.85, 0.83], 1.0, 2.4),
+        // Township: brick, painted render in four colours, corrugated cladding, paving.
+        "town_ground" => spec("floor", [0.80, 0.77, 0.72], [0.46, 0.45, 0.43], 1.0, 4.0),
+        "town_wall" => spec("brick", [0.78, 0.70, 0.66], [0.45, 0.30, 0.26], 0.95, 1.0),
+        "brick" => spec("brick", [1.0, 0.94, 0.90], [0.55, 0.31, 0.25], 0.95, 0.9),
+        "plaster0" => spec("stucco", [0.66, 0.78, 0.90], [0.55, 0.64, 0.74], 1.0, 3.0),
+        "plaster1" => spec("stucco", [1.0, 0.88, 0.58], [0.86, 0.74, 0.46], 1.0, 3.0),
+        "plaster2" => spec("stucco", [0.72, 0.86, 0.66], [0.58, 0.70, 0.52], 1.0, 3.0),
+        "plaster3" => spec("stucco", [0.98, 0.93, 0.85], [0.84, 0.80, 0.72], 1.0, 3.0),
+        "siding" => spec("container", [0.62, 0.68, 0.70], [0.46, 0.50, 0.52], 0.55, 2.4),
+        "siding_b" => spec("container", [0.78, 0.74, 0.62], [0.58, 0.55, 0.46], 0.55, 2.4),
+        "town_concrete" => spec("wall", [0.90, 0.88, 0.84], [0.62, 0.61, 0.58], 0.9, 2.5),
+        "sidewalk" => spec("sidewalk", [0.92, 0.90, 0.86], [0.56, 0.55, 0.52], 1.0, 2.5),
+        "wood_floor" => spec("wood_floor", [0.95, 0.88, 0.80], [0.46, 0.33, 0.22], 0.8, 2.0),
+        "concrete_floor" => spec("floor", [0.95, 0.94, 0.92], [0.55, 0.55, 0.54], 0.7, 4.0),
+        "shelf" => spec("crate", [0.80, 0.80, 0.82], [0.45, 0.46, 0.48], 0.8, 1.2),
+        "plaster_in_house" => spec("office_wall", [0.98, 0.95, 0.88], [0.86, 0.83, 0.77], 1.0, 2.5),
+        "plaster_in_shop" => spec("office_wall", [0.96, 0.97, 0.98], [0.86, 0.87, 0.88], 1.0, 2.5),
+        "plaster_in_office" => spec("office_wall", [0.86, 0.90, 0.94], [0.76, 0.80, 0.84], 1.0, 2.5),
+        "plaster_in_shed" => spec("wall", [0.88, 0.88, 0.86], [0.60, 0.60, 0.58], 0.9, 2.5),
+        "ceiling_house" => spec("office_wall", [1.0, 0.99, 0.96], [0.90, 0.89, 0.86], 1.0, 2.5),
+        "ceiling_shed" => spec("container", [0.70, 0.72, 0.74], [0.50, 0.52, 0.54], 0.6, 2.4),
+        "canopy" => spec("", [1.0, 1.0, 1.0], [0.86, 0.86, 0.84], 0.5, 2.0),
         _ => spec("", [1.0, 1.0, 1.0], [0.6, 0.6, 0.6], 0.9, 2.0),
     }
 }
@@ -77,11 +100,37 @@ pub(crate) struct Palette {
     pub id: MapId,
     cache: HashMap<String, (Handle<StandardMaterial>, f32)>,
     cube: Option<Handle<Mesh>>,
+    /// Block index → index of the building whose shell it is.
+    pub shell_of: HashMap<usize, usize>,
+    /// Building index → its facade colour variant.
+    variant: Vec<usize>,
+    /// Shared car meshes (along z), by nothing: all cars share one body.
+    pub car: Option<Handle<Mesh>>,
 }
 
 impl Palette {
-    pub fn new(_g: &mut Gfx, id: MapId) -> Self {
-        Palette { id, cache: HashMap::new(), cube: None }
+    pub fn new(_g: &mut Gfx, arena: &Arena) -> Self {
+        let mut shell_of = HashMap::new();
+        for (bi, b) in arena.decor.buildings.iter().enumerate() {
+            for &i in &b.shell {
+                shell_of.insert(i, bi);
+            }
+        }
+        // Plaster houses cycle through the colours in build order.
+        let mut n = 0;
+        let variant = arena
+            .decor
+            .buildings
+            .iter()
+            .map(|b| {
+                let v = n;
+                if b.facade == Skin::Plaster {
+                    n += 1;
+                }
+                v
+            })
+            .collect();
+        Palette { id: arena.id, cache: HashMap::new(), cube: None, shell_of, variant, car: None }
     }
 
     /// A material from [`recipe`], cached by key.
@@ -125,10 +174,13 @@ impl Palette {
             MapId::Foundry => "foundry_floor",
             MapId::Depot => "sand",
             MapId::Office => "carpet",
+            MapId::Township => "town_ground",
         };
         self.mat(g, key)
     }
 
+    /// Lintel material for a doorway: Office drywall, else concrete (Township picks the wall's
+    /// own material in `map.rs`).
     pub fn header(&mut self, g: &mut Gfx) -> (Handle<StandardMaterial>, f32) {
         let key = match self.id {
             MapId::Office => "drywall",
@@ -140,12 +192,48 @@ impl Palette {
     pub fn roof(&mut self, g: &mut Gfx) -> (Handle<StandardMaterial>, f32) {
         let key = match self.id {
             MapId::Office => "ceiling",
+            MapId::Township => "canopy",
             _ => "roof_depot",
         };
         self.mat(g, key)
     }
 
-    fn block_key(&self, i: usize, b: &Block) -> String {
+    /// Ceiling (roof underside) material of a building.
+    pub fn ceiling_key(use_: BuildingUse) -> &'static str {
+        match use_ {
+            BuildingUse::House => "ceiling_house",
+            BuildingUse::Shop | BuildingUse::Office => "ceiling",
+            BuildingUse::Warehouse | BuildingUse::Workshop => "ceiling_shed",
+        }
+    }
+
+    /// Interior wall finish of a building.
+    pub fn lining_key(use_: BuildingUse) -> &'static str {
+        match use_ {
+            BuildingUse::House => "plaster_in_house",
+            BuildingUse::Shop => "plaster_in_shop",
+            BuildingUse::Office => "plaster_in_office",
+            BuildingUse::Warehouse | BuildingUse::Workshop => "plaster_in_shed",
+        }
+    }
+
+    /// Facade material key of building `bi`.
+    pub fn facade_key(&self, bi: usize, skin: Skin) -> String {
+        match skin {
+            Skin::Plaster => format!("plaster{}", self.variant.get(bi).copied().unwrap_or(0) % 4),
+            Skin::Siding => if bi.is_multiple_of(2) { "siding" } else { "siding_b" }.into(),
+            Skin::Brick => "brick".into(),
+            Skin::Concrete if self.id == MapId::Township => "town_concrete".into(),
+            Skin::Concrete => "concrete".into(),
+            Skin::Stucco => "stucco".into(),
+            _ => "town_concrete".into(),
+        }
+    }
+
+    pub(crate) fn block_key(&self, i: usize, b: &Block) -> String {
+        if let Some(&bi) = self.shell_of.get(&i) {
+            return self.facade_key(bi, b.skin);
+        }
         match b.skin {
             Skin::Auto => match b.kind {
                 BlockKind::Wall => "foundry_wall",
@@ -153,6 +241,7 @@ impl Palette {
                 BlockKind::Low => "foundry_low",
             }
             .into(),
+            Skin::Concrete if self.id == MapId::Township => "town_concrete".into(),
             Skin::Concrete => "concrete".into(),
             Skin::Stucco if b.kind == BlockKind::Wall => "stucco_outer".into(),
             Skin::Stucco => if i.is_multiple_of(2) { "stucco" } else { "stucco_b" }.into(),
@@ -163,9 +252,18 @@ impl Palette {
             Skin::Sandbag => "sandbag".into(),
             Skin::Drywall if b.kind == BlockKind::Wall => "drywall_outer".into(),
             Skin::Drywall => "drywall".into(),
-            Skin::Desk if is_cubicle(b) => "cubicle".into(),
+            Skin::Desk if is_cubicle(b) && self.id == MapId::Office => "cubicle".into(),
             Skin::Desk => "desk".into(),
             Skin::Cabinet => "cabinet".into(),
+            Skin::Brick if b.kind == BlockKind::Wall => "town_wall".into(),
+            Skin::Brick => "brick".into(),
+            Skin::Plaster => "plaster3".into(),
+            Skin::Siding => "siding".into(),
+            // Cars and dumpsters get their own meshes; the box material is a fallback.
+            Skin::Car => "cabinet".into(),
+            Skin::Dumpster => "dumpster".into(),
+            Skin::Shelf => "shelf".into(),
+            Skin::Planter => "planter".into(),
         }
     }
 }
@@ -189,14 +287,38 @@ fn barrel_radius(b: &Block) -> f32 {
 }
 
 /// Mesh, material and trims for block `i` (entity `e`, already spawned with its collider).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Block, size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette) {
+    let detail = g.quality != GraphicsQuality::Low;
+    // Props drawn from parts instead of their box (the block keeps only its collider).
+    if matches!(b.skin, Skin::Car | Skin::Dumpster | Skin::Shelf) {
+        commands.entity(e).insert(Visibility::default());
+    }
+    match b.skin {
+        Skin::Car => {
+            super::props::car(commands, e, i, b, size, g, p);
+            return;
+        }
+        Skin::Dumpster => {
+            super::props::dumpster(commands, e, size, g, p);
+            return;
+        }
+        Skin::Shelf => {
+            super::props::shelf(commands, e, size, g, p, detail);
+            return;
+        }
+        _ => {}
+    }
     let (mat, tile) = p.mat(g, &p.block_key(i, b));
     let mesh = match b.skin {
         Skin::Barrel => g.meshes.add(Cylinder::new(barrel_radius(b), b.height)),
         _ => g.meshes.add(world_uv_cuboid(size, center, tile)),
     };
     commands.entity(e).insert((Mesh3d(mesh), MeshMaterial3d(mat)));
-    let detail = g.quality != GraphicsQuality::Low;
+    // Small props don't cast shadows (perf rule); walls and big cover do.
+    if b.kind == BlockKind::Low && size.x.max(size.z) < 1.6 {
+        commands.entity(e).insert(NotShadowCaster);
+    }
     match (b.skin, b.kind) {
         // Foundry: glowing amber lip on low cover, cyan strip along the outer walls.
         (Skin::Auto, BlockKind::Low) => {
@@ -216,11 +338,17 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
                 commands.spawn((Mesh3d(ring.clone()), MeshMaterial3d(m.clone()), Transform::from_xyz(0.0, y, 0.0), NotShadowCaster, ChildOf(e)));
             }
         }
-        // Office planters: soil and a shrub on top (visual only; above cover height).
-        (Skin::Barrel, _) => {
+        // A big square planter is a fountain: water on top.
+        (Skin::Planter, _) if b.half.x.min(b.half.y) > 0.9 => {
+            let m = p.flat(g, "water", || StandardMaterial { base_color: Color::srgb(0.05, 0.12, 0.14), perceptual_roughness: 0.03, reflectance: 0.9, ..default() });
+            child_box(commands, e, p.cube(g), m, Vec3::Y * (size.y * 0.5 + 0.004), Vec3::new(size.x - 0.3, 0.01, size.z - 0.3));
+        }
+        // Office planters and Township planters: a shrub on top (visual only; above cover height).
+        (Skin::Barrel, _) | (Skin::Planter, _) => {
             let m = p.flat(g, "shrub", || StandardMaterial { base_color: Color::srgb(0.16, 0.32, 0.14), perceptual_roughness: 0.9, ..default() });
-            let shrub = g.meshes.add(Sphere::new(barrel_radius(b) * 1.1));
-            commands.spawn((Mesh3d(shrub), MeshMaterial3d(m), Transform::from_xyz(0.0, size.y * 0.5 + 0.25, 0.0).with_scale(Vec3::new(1.0, 1.3, 1.0)), ChildOf(e)));
+            let r = b.half.x.min(b.half.y).min(0.6);
+            let shrub = g.meshes.add(Sphere::new(r * 1.05));
+            commands.spawn((Mesh3d(shrub), MeshMaterial3d(m), Transform::from_xyz(0.0, size.y * 0.5 + r * 0.45, 0.0).with_scale(Vec3::new(1.0, 0.9, 1.0)), NotShadowCaster, ChildOf(e)));
         }
         // Depot buildings: cornice cap, and windows on tall facades.
         (Skin::Stucco, BlockKind::Tall) => {
@@ -230,7 +358,7 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
                 windows(commands, e, size, center, g, p);
             }
         }
-        // Office walls: skirting boards along both long faces.
+        // Interior partitions: skirting boards along both long faces.
         (Skin::Drywall, BlockKind::Tall) => {
             let m = p.flat(g, "skirting", || StandardMaterial { base_color: Color::srgb(0.16, 0.16, 0.17), perceptual_roughness: 0.6, ..default() });
             // Different heights for x- and z-running walls so crossing boards never share a top face.
@@ -286,11 +414,11 @@ fn rack_fronts(commands: &mut Commands, e: Entity, size: Vec3, g: &mut Gfx, p: &
     }
 }
 
-fn child_box(commands: &mut Commands, parent: Entity, mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, at: Vec3, scale: Vec3) {
+pub(crate) fn child_box(commands: &mut Commands, parent: Entity, mesh: Handle<Mesh>, mat: Handle<StandardMaterial>, at: Vec3, scale: Vec3) {
     commands.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_translation(at).with_scale(scale), NotShadowCaster, ChildOf(parent)));
 }
 
-/// Rows of dark glass windows with sills on a building's long faces (above head height).
+/// Rows of dark glass windows with sills on a Depot building's long faces (above head height).
 fn windows(commands: &mut Commands, e: Entity, size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette) {
     let glass = p.flat(g, "glass", || StandardMaterial {
         base_color: Color::srgb(0.06, 0.08, 0.10),
@@ -332,116 +460,120 @@ fn windows(commands: &mut Commands, e: Entity, size: Vec3, center: Vec3, g: &mut
     }
 }
 
-// ---------------------------------------------------------------- light rig
+// ---------------------------------------------------------------- the map's mood
 
-/// A map's lighting: sun, sky fill, exposure, fog.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MapLook {
-    /// Where the sun shines from (direction towards the sun), or `None` indoors.
-    pub sun_from: Option<Vec3>,
-    pub sun_lux: f32,
-    pub sun_color: Color,
-    pub ambient: Color,
-    pub ambient_brightness: f32,
-    pub ev100: f32,
-    pub env_intensity: f32,
-    pub fog: Color,
-    pub fog_start: f32,
-    pub fog_end: f32,
+/// Sun from a direction *towards* the sun (as the maps were first authored).
+fn sun_towards(to_sun: Vec3, base: SunLook) -> SunLook {
+    let s = to_sun.normalize();
+    SunLook { azimuth_deg: s.x.atan2(-s.z).to_degrees().rem_euclid(360.0), elevation_deg: s.y.asin().to_degrees(), ..base }
 }
 
-impl MapLook {
-    pub fn of(id: MapId) -> Self {
-        match id {
-            MapId::Foundry => MapLook {
-                sun_from: Some(Vec3::new(-30.0, 22.0, 26.0)),
-                sun_lux: lux::RAW_SUNLIGHT,
-                sun_color: Color::srgb(1.0, 0.93, 0.84),
-                ambient: Color::srgb(0.7, 0.78, 0.95),
-                ambient_brightness: 800.0,
-                ev100: 13.0,
-                env_intensity: 1.0,
-                fog: FOG_COLOR,
-                fog_start: 30.0,
-                fog_end: 180.0,
+/// The engine [`Look`] for a map. Arenas want short shadows (they are ≤ 90 m across) and
+/// three cascades; the fog end bounds what's drawn ([`fog_end`]).
+pub fn look_of(id: MapId) -> Look {
+    let base = Look::clear_day();
+    let arena_sun = SunLook { shadow_distance: 70.0, cascades: 3, first_cascade: 9.0, ..SunLook::default() };
+    let fog = |color: [f32; 3], start: f32, end: f32| FogLook {
+        mode: FogMode::Linear,
+        color: Rgb::new(color[0], color[1], color[2]),
+        sun_color: Rgb::new(1.0, 0.85, 0.65),
+        sun_amount: 0.35,
+        sun_exponent: 24.0,
+        start,
+        end,
+        ..FogLook::default()
+    };
+    let neutral = GradingLook { post_saturation: 1.05, midtones: GradeSection { contrast: 1.04, ..GradeSection::default() }, ..GradingLook::default() };
+    match id {
+        MapId::Foundry => Look {
+            name: "foundry".into(),
+            sun: sun_towards(Vec3::new(-30.0, 22.0, 26.0), SunLook { illuminance: 110_000.0, color: Rgb::new(1.0, 0.93, 0.84), ..arena_sun }),
+            ambient: AmbientLook { color: Rgb::new(0.7, 0.78, 0.95), brightness: 800.0, env_intensity: 1.0 },
+            fog: fog([0.58, 0.62, 0.70], 30.0, fog_end(id)),
+            exposure: ExposureLook { ev100: 13.0, ..ExposureLook::default() },
+            tonemapping: ToneMap::Agx,
+            grading: neutral,
+            ..base
+        },
+        // High, hot desert sun behind the attackers; dusty warm haze.
+        MapId::Depot => Look {
+            name: "depot".into(),
+            sun: sun_towards(Vec3::new(-20.0, 38.0, 30.0), SunLook { illuminance: 110_000.0, color: Rgb::new(1.0, 0.94, 0.85), ..arena_sun }),
+            ambient: AmbientLook { color: Rgb::new(0.86, 0.82, 0.78), brightness: 900.0, env_intensity: 1.0 },
+            fog: fog([0.80, 0.74, 0.64], 40.0, fog_end(id)),
+            exposure: ExposureLook { ev100: 13.2, ..ExposureLook::default() },
+            tonemapping: ToneMap::Agx,
+            grading: GradingLook { temperature: 0.03, ..neutral },
+            ..base
+        },
+        // Indoors: no sun, ceiling lamps do the work, exposure set for interiors.
+        MapId::Office => Look {
+            name: "office".into(),
+            sun: SunLook { enabled: false, shadows: false, ..arena_sun },
+            ambient: AmbientLook { color: Rgb::new(0.95, 0.93, 0.90), brightness: 150.0, env_intensity: 0.08 },
+            fog: fog([0.30, 0.30, 0.32], 60.0, fog_end(id)),
+            exposure: ExposureLook { ev100: 8.6, ..ExposureLook::default() },
+            tonemapping: ToneMap::Agx,
+            grading: neutral,
+            ..base
+        },
+        // Golden hour: low warm sun from the west-south-west raking across Main Street, long
+        // shadows, warm haze down the streets, lamps just coming on.
+        MapId::Township => Look {
+            name: "township_golden_hour".into(),
+            sun: SunLook {
+                azimuth_deg: 248.0,
+                elevation_deg: 18.0,
+                illuminance: 70_000.0,
+                color: Rgb::new(1.0, 0.77, 0.54),
+                shadow_distance: 80.0,
+                cascades: 3,
+                first_cascade: 10.0,
+                ..SunLook::default()
             },
-            // High, hot desert sun behind the attackers; dusty warm haze.
-            MapId::Depot => MapLook {
-                sun_from: Some(Vec3::new(-20.0, 38.0, 30.0)),
-                sun_lux: lux::RAW_SUNLIGHT,
-                sun_color: Color::srgb(1.0, 0.94, 0.85),
-                ambient: Color::srgb(0.86, 0.82, 0.78),
-                ambient_brightness: 900.0,
-                ev100: 13.2,
-                env_intensity: 1.0,
-                fog: Color::srgb(0.80, 0.74, 0.64),
-                fog_start: 40.0,
-                fog_end: 240.0,
+            // Warm-neutral fill: interiors get it too, and a sky-blue fill turns plaster lilac.
+            ambient: AmbientLook { color: Rgb::new(0.84, 0.80, 0.80), brightness: 600.0, env_intensity: 1.0 },
+            fog: FogLook {
+                sun_color: Rgb::new(1.0, 0.68, 0.38),
+                sun_amount: 0.6,
+                sun_exponent: 14.0,
+                ..fog([0.80, 0.70, 0.60], 60.0, fog_end(id))
             },
-            // Indoors: no sun, ceiling lamps do the work, exposure set for interiors.
-            MapId::Office => MapLook {
-                sun_from: None,
-                sun_lux: 0.0,
-                sun_color: Color::WHITE,
-                ambient: Color::srgb(0.95, 0.93, 0.90),
-                ambient_brightness: 150.0,
-                ev100: 8.6,
-                env_intensity: 0.08,
-                fog: Color::srgb(0.30, 0.30, 0.32),
-                fog_start: 60.0,
-                fog_end: 400.0,
-            },
-        }
+            exposure: ExposureLook { ev100: 12.4, ..ExposureLook::default() },
+            tonemapping: ToneMap::Agx,
+            grading: GradingLook { temperature: 0.07, post_saturation: 1.1, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
+            ..base
+        },
     }
 }
 
-/// Keeps the sun, ambient light and camera exposure/fog on the current map's look.
-/// Cheap: only writes what differs (other code may re-add camera components).
-pub(crate) fn apply_look(
-    arena: Res<ArenaRes>,
-    ambient: Option<ResMut<GlobalAmbientLight>>,
-    mut suns: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
-    mut cams: Query<(Option<&mut Exposure>, Option<&mut DistanceFog>, Option<&mut AtmosphereEnvironmentMapLight>), With<Camera3d>>,
-) {
-    let look = MapLook::of(arena.0.id);
-    for (mut sun, mut tf) in &mut suns {
-        let shadows = look.sun_from.is_some();
-        if sun.illuminance != look.sun_lux || sun.shadow_maps_enabled != shadows || sun.color != look.sun_color {
-            sun.illuminance = look.sun_lux;
-            sun.shadow_maps_enabled = shadows;
-            sun.color = look.sun_color;
-        }
-        if let Some(from) = look.sun_from {
-            let want = Transform::from_translation(from).looking_at(Vec3::ZERO, Vec3::Y);
-            if tf.rotation.angle_between(want.rotation) > 1e-3 {
-                *tf = want;
-            }
-        }
+/// Where a map's fog is opaque (nothing is drawn beyond it).
+pub fn fog_end(id: MapId) -> f32 {
+    match id {
+        MapId::Foundry => 180.0,
+        MapId::Depot => 240.0,
+        MapId::Office => 400.0,
+        MapId::Township => 300.0,
     }
-    if let Some(mut a) = ambient
-        && (a.color != look.ambient || a.brightness != look.ambient_brightness)
-    {
-        a.color = look.ambient;
-        a.brightness = look.ambient_brightness;
+}
+
+/// Render-budget ranges that fit a map: nothing inside it fades, loses its shadow or goes
+/// flat, even on Low (×0.6); scenery stops at the fog.
+pub fn scenery_ranges(arena: &Arena) -> SceneryRanges {
+    let diagonal = arena.half() * 2.0 * std::f32::consts::SQRT_2;
+    let near = (diagonal / 0.6).max(160.0);
+    SceneryRanges { shadow: near, small_props: near, far: near, view: fog_end(arena.id), ..default() }
+}
+
+/// Keeps the engine `Look` and the render-budget ranges on the current map.
+pub(crate) fn sync_look(arena: Res<ArenaRes>, look: Option<Res<Look>>, mut ranges: ResMut<SceneryRanges>, mut commands: Commands) {
+    let want = look_of(arena.0.id);
+    if look.is_none_or(|l| l.name != want.name) {
+        commands.insert_resource(want);
     }
-    for (exposure, fog, env) in &mut cams {
-        if let Some(mut x) = exposure
-            && x.ev100 != look.ev100
-        {
-            x.ev100 = look.ev100;
-        }
-        if let Some(mut f) = fog {
-            let falloff_ok = matches!(f.falloff, FogFalloff::Linear { start, end } if start == look.fog_start && end == look.fog_end);
-            if f.color != look.fog || !falloff_ok {
-                f.color = look.fog;
-                f.falloff = FogFalloff::Linear { start: look.fog_start, end: look.fog_end };
-            }
-        }
-        if let Some(mut e) = env
-            && e.intensity != look.env_intensity
-        {
-            e.intensity = look.env_intensity;
-        }
+    let r = scenery_ranges(&arena.0);
+    if *ranges != r {
+        *ranges = r;
     }
 }
 
@@ -484,6 +616,29 @@ pub(crate) fn apply_light_budget(
         let on = budget >= 10 && lamp.rank < 2;
         if l.shadow_maps_enabled != on {
             l.shadow_maps_enabled = on;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sun_conversion_matches_the_authored_direction() {
+        let s = sun_towards(Vec3::new(-30.0, 22.0, 26.0), SunLook::default());
+        let travel = s.direction();
+        assert!(travel.dot(-Vec3::new(-30.0, 22.0, 26.0).normalize()) > 0.999, "{travel:?}");
+    }
+
+    #[test]
+    fn every_map_has_a_look_and_ranges_cover_it() {
+        for id in MapId::ALL {
+            let l = look_of(id);
+            assert!(l.fog.end > l.fog.start);
+            let r = scenery_ranges(&Arena::build(id));
+            assert!(r.far * 0.6 >= Arena::build(id).half() * 2.0 * std::f32::consts::SQRT_2 - 1.0);
+            assert_eq!(r.view, fog_end(id));
         }
     }
 }

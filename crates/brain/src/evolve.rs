@@ -830,6 +830,7 @@ impl BrainState {
                 Ok(mut s) if s.version == SAVE_VERSION => {
                     // Saves from before loadouts load as-is; weapon genes get seeded.
                     s.migrate();
+                    s.player_model.fit_grids();
                     s
                 }
                 _ => {
