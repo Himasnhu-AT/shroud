@@ -6,6 +6,7 @@ pub mod debrief;
 pub mod feedback;
 pub mod hud;
 pub mod theme;
+pub mod weapon_hud;
 
 use bevy::prelude::*;
 
@@ -17,7 +18,7 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((callouts::CalloutsPlugin, hud::HudPlugin, debrief::DebriefPlugin, feedback::FeedbackPlugin))
+        app.add_plugins((callouts::CalloutsPlugin, hud::HudPlugin, debrief::DebriefPlugin, feedback::FeedbackPlugin, weapon_hud::WeaponHudPlugin))
             // The pause menu freezes weapons and the enemy AI (the engine already stops the
             // player's movement). Time<Virtual> is paused too, but frame-based logic would tick.
             .configure_sets(Update, (WeaponSet, EnemySet).run_if(not_paused));

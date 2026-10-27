@@ -8,6 +8,7 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
 mod assets;
+mod armed;
 mod audio;
 mod dev;
 mod enemy;

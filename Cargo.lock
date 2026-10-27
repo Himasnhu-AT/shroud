@@ -267,10 +267,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "ashlar-command"
+version = "0.1.0"
+source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "web-time",
+]
+
+[[package]]
 name = "ashlar-control"
 version = "0.1.0"
 dependencies = [
- "ashlar-command",
+ "ashlar-command 0.1.0",
+ "getrandom 0.4.3",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "ashlar-control"
+version = "0.1.0"
+source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
+dependencies = [
+ "ashlar-command 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
  "getrandom 0.4.3",
  "log",
  "serde",
@@ -281,13 +305,15 @@ dependencies = [
 [[package]]
 name = "ashlar-docs"
 version = "0.1.0"
+source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 
 [[package]]
 name = "ashlar-mcp"
 version = "0.1.0"
+source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 dependencies = [
- "ashlar-command",
- "ashlar-control",
+ "ashlar-command 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
+ "ashlar-control 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
  "ashlar-docs",
  "log",
  "serde",
@@ -298,6 +324,7 @@ dependencies = [
 [[package]]
 name = "ashlar-trace"
 version = "0.1.0"
+source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 dependencies = [
  "ashlar-trace-proto",
  "flate2",
@@ -313,6 +340,7 @@ dependencies = [
 [[package]]
 name = "ashlar-trace-proto"
 version = "0.1.0"
+source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 dependencies = [
  "serde",
 ]
@@ -2717,12 +2745,13 @@ dependencies = [
 name = "engine"
 version = "0.1.0"
 dependencies = [
- "ashlar-command",
- "ashlar-control",
+ "ashlar-command 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
+ "ashlar-control 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
  "ashlar-mcp",
  "ashlar-trace",
  "avian3d",
  "bevy",
+ "bytemuck",
  "directories",
  "libc",
  "rand 0.9.5",
@@ -2976,7 +3005,7 @@ dependencies = [
 name = "game"
 version = "0.1.0"
 dependencies = [
- "ashlar-control",
+ "ashlar-control 0.1.0",
  "avian3d",
  "bevy",
  "brain",

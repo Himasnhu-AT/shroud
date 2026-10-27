@@ -5,6 +5,11 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | File | Pack | Author | URL | License |
 |---|---|---|---|---|
 | `models/rifle.glb` | Blaster Kit 2.1 (model `blaster-e`, with its `scope` and `magazine` meshes) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/weapons/rifle.glb` | Copy of `models/rifle.glb` (Blaster Kit 2.1 `blaster-e` + `scope` + `magazine`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/weapons/pistol.glb` | Blaster Kit 2.1 (model `blaster-c`, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/weapons/smg.glb` | Blaster Kit 2.1 (model `blaster-j`, with its `magazine` mesh, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/weapons/shotgun.glb` | Blaster Kit 2.1 (model `blaster-l`, double barrel, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/weapons/marksman.glb` | Blaster Kit 2.1 (model `blaster-f`, with its `scope` and `magazine` meshes, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/enemy_rifle.glb` | Blaster Kit 2.1 (model `blaster-a`, with its `magazine` mesh) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-medium.glb` | Blaster Kit 2.1 (`crate-medium`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-small.glb` | Blaster Kit 2.1 (`crate-small`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
@@ -49,6 +54,19 @@ Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
 | `audio/round_won.ogg` | Interface Sounds `confirmation_002` + `003` | Kenney | https://kenney.nl/assets/interface-sounds |
 | `audio/round_lost.ogg` | Interface Sounds `bong_001`, pitched down | Kenney | https://kenney.nl/assets/interface-sounds |
 | `audio/ambient.ogg` | Sci-fi Sounds `spaceEngineLow_001`, lowpassed | Kenney | https://kenney.nl/assets/sci-fi-sounds |
+| `audio/pistol_shot.ogg` | `rifle_shot` pitched up ×1.3 and highpassed, + Impact `impactMetal_light_000` (pitched up) + Sci-fi `laserSmall_001` (pitched down, quiet); trimmed to 0.2 s | Kenney / this project | https://kenney.nl/assets/impact-sounds · https://kenney.nl/assets/sci-fi-sounds |
+| `audio/smg_shot.ogg` | `rifle_shot` pitched up ×1.5, highpassed, + Impact `impactMetal_light_002` click; short fade, 0.19 s | Kenney / this project | https://kenney.nl/assets/impact-sounds |
+| `audio/shotgun_shot.ogg` | Sci-fi `lowFrequency_explosion_000` (onset-trimmed, pitched down) + `rifle_shot` ×0.72 + Sci-fi `explosionCrunch_000` + Impact `impactMetal_heavy_000`, low-shelf boost and short echo | Kenney / this project | https://kenney.nl/assets/sci-fi-sounds · https://kenney.nl/assets/impact-sounds |
+| `audio/marksman_shot.ogg` | `rifle_shot` ×0.92 + Impact `impactMetal_heavy_001` (highpassed crack) + synthesized noise crack + Sci-fi `lowFrequency_explosion_001`, long multi-tap echo tail | Kenney / this project | same |
+| `audio/mag_out.ogg`, `mag_in.ogg`, `chamber.ogg` | Cut from `reload_start` (0.215–0.46 s) and `reload_end` (0.265–0.445 s, 0.435–0.81 s) | SpringySpringo (OpenGameArt) / this project | https://opengameart.org/content/gun-reload-sounds |
+| `audio/shotgun_pump.ogg` | Impact `impactMetal_medium_001` + `impactMetal_heavy_003` + `impactWood_light_001` (pitched down, 0.21 s apart) + Interface `scratch_002` slide | Kenney / this project | https://kenney.nl/assets/impact-sounds · https://kenney.nl/assets/interface-sounds |
+| `audio/shell_insert.ogg` | Impact `impactMetal_light_003` + `impactSoft_medium_000` + Interface `click_003` | Kenney / this project | same |
+| `audio/bolt_cycle.ogg` | Interface `switch_002` (bolt up) + `reload_end` slice (bolt back) + Interface `scratch_001` + Impact `impactMetal_medium_002` (bolt forward) | Kenney, SpringySpringo / this project | same · https://opengameart.org/content/gun-reload-sounds |
+| `audio/dry_fire.ogg` | Impact `impactMetal_light_004` pitched up ×1.8, highpassed, + Interface `click_002` | Kenney / this project | same |
+| `audio/weapon_draw.ogg` | Interface `scratch_003` + Impact `impactMetal_light_001/002` + `impactTin_medium_000` | Kenney / this project | same |
+| `audio/ads_in.ogg` | Interface `scratch_004` (lowpassed) + Impact `impactSoft_medium_001` + faint `impactMetal_light_000`; peak −12 dBFS on purpose (quiet) | Kenney / this project | same |
+| `audio/pickup.ogg` | Impact `impactMetal_medium_003` + `impactPlate_light_002` + `impactTin_medium_001` + Interface `scratch_005` | Kenney / this project | same |
+| `audio/casing_0..2.ogg` | Impact `impactMetal_light_000/001/003` and `impactGlass_light_001/002`, pitched up ×1.5–2.4, highpassed, layered as decaying bounces | Kenney / this project | https://kenney.nl/assets/impact-sounds |
 
 ## Fonts (`fonts/*.ttf`), SIL Open Font License 1.1
 Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back to Bevy's built-in font if these are missing.

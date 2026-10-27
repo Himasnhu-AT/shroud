@@ -1,5 +1,6 @@
 //! Sound: gunshots (player flat, enemies spatial), hit/headshot/kill feedback, hurt, low-HP
-//! heartbeat, footsteps (player and enemies), reload foley, round stingers and an ambient bed.
+//! heartbeat, footsteps (player and enemies), round stingers and an ambient bed. The player's
+//! guns (shots, reloads, foley) are `weapon::sound`.
 //!
 //! Everything is driven by existing messages and state; nothing here touches gameplay. Loading,
 //! volumes (master x effects / ambience, live), muting (`--headless`, `--mute`, test runs unless
@@ -17,7 +18,7 @@ use crate::enemy::{Enemy, EnemyCombat};
 use crate::match_flow::MatchFlow;
 use crate::player::Player;
 use crate::state::GameState;
-use crate::weapon::{Damage, Dummy, Health, Rifle, ShotFired, Tracer, WeaponSet};
+use crate::weapon::{Damage, Dummy, Health, ShotFired, Tracer, WeaponSet};
 
 /// Shroud's sounds live in the engine's library.
 pub(crate) type Sfx = SoundLibrary;
@@ -81,7 +82,6 @@ impl Plugin for AudioPlugin {
                     shot_sounds,
                     tracer_sounds,
                     damage_sounds,
-                    reload_sounds,
                     player_footsteps,
                     enemy_footsteps,
                     heartbeat,
@@ -130,9 +130,8 @@ fn shot_sounds(
 ) {
     let Ok(player) = player.single() else { return };
     for s in shots.read() {
-        if s.by == player {
-            play(&mut commands, &sfx, &master, "rifle_shot", 0.9, None);
-        } else {
+        // The player's guns are voiced per gun (`weapon::sound`).
+        if s.by != player {
             play(&mut commands, &sfx, &master, "enemy_shot", 1.0, Some(s.origin));
         }
     }
@@ -195,30 +194,6 @@ fn damage_sounds(
             }
         }
     }
-}
-
-fn reload_sounds(
-    mut commands: Commands,
-    sfx: Res<Sfx>,
-    master: Res<Volumes>,
-    rifle: Query<&Rifle, With<Player>>,
-    mut prev: Local<Option<bool>>,
-    mut prev_ammo: Local<u32>,
-) {
-    let Ok(r) = rifle.single() else { return };
-    let reloading = r.reloading.is_some();
-    if let Some(was) = *prev {
-        if !was && reloading {
-            if *prev_ammo == 0 {
-                play(&mut commands, &sfx, &master, "empty_click", 0.7, None);
-            }
-            play(&mut commands, &sfx, &master, "reload_start", 0.8, None);
-        } else if was && !reloading {
-            play(&mut commands, &sfx, &master, "reload_end", 0.9, None);
-        }
-    }
-    *prev = Some(reloading);
-    *prev_ammo = r.ammo;
 }
 
 fn player_footsteps(
