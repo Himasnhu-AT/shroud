@@ -3,7 +3,9 @@
 
 use crate::arena::Arena;
 use crate::limits::Limits;
-use crate::math::{V2, angle_diff, rng_from_seed};
+use crate::loadout::{self, GunState};
+use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
+use crate::weapons::WeaponKind;
 use crate::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
 use crate::squad::{MemberView, SquadCoordinator, UtilityBudget};
 use crate::utility::Goal;
@@ -16,10 +18,13 @@ use rand::Rng;
 pub const DT: f32 = 0.05;
 pub const ROUND_TIME: f32 = 60.0;
 pub const HP: f32 = 100.0;
+/// Legacy single-gun numbers (the rifle's); guns now come from `weapons.rs` / `loadout.rs`.
 pub const PLAYER_DAMAGE: f32 = 25.0;
 pub const FIRE_INTERVAL: f32 = 0.1;
 pub const MAG: u32 = 30;
 pub const RELOAD_S: f32 = 2.0;
+/// Share of the ghost's hits that are headshots.
+pub const GHOST_HEADSHOT: f32 = 0.12;
 pub const WALK: f32 = 4.0;
 pub const SPRINT: f32 = 6.0;
 pub const CROUCH_SPEED: f32 = 2.0;
@@ -70,15 +75,16 @@ pub(crate) struct Body {
     pub(crate) vel: V2,
     pub(crate) hp: f32,
     pub(crate) crouched: bool,
-    pub(crate) ammo: u32,
-    pub(crate) reload_t: f32,
-    fire_cd: f32,
+    pub(crate) gun: GunState,
     pub(crate) hit_t: f32,
 }
 
 impl Body {
-    pub(crate) fn new(pos: V2) -> Self {
-        Body { pos, vel: V2::ZERO, hp: HP, crouched: false, ammo: MAG, reload_t: 0.0, fire_cd: 0.0, hit_t: 99.0 }
+    pub(crate) fn with_gun(pos: V2, kind: WeaponKind) -> Self {
+        Body { pos, vel: V2::ZERO, hp: HP, crouched: false, gun: GunState::new(kind), hit_t: 99.0 }
+    }
+    pub(crate) fn reloading(&self) -> bool {
+        self.gun.reloading()
     }
     pub(crate) fn alive(&self) -> bool {
         self.hp > 0.0
@@ -88,24 +94,70 @@ impl Body {
     }
     /// Advance weapon timers; returns true if a shot can be fired now (and consumes it).
     pub(crate) fn try_fire(&mut self, want: bool) -> bool {
-        self.fire_cd -= DT;
-        if self.reload_t > 0.0 {
-            self.reload_t -= DT;
-            if self.reload_t <= 0.0 {
-                self.ammo = MAG;
-            }
-            return false;
-        }
-        if want && self.fire_cd <= 0.0 && self.ammo > 0 {
-            self.fire_cd = FIRE_INTERVAL;
-            self.ammo -= 1;
-            if self.ammo == 0 {
-                self.reload_t = RELOAD_S;
-            }
-            return true;
-        }
-        false
+        self.gun.tick(DT, want)
     }
+}
+
+/// The pellets of one enemy trigger pull with `kind`, aimed along `dir` with `pitch` error:
+/// how much damage reaches a body at `to` (height `h`).
+#[allow(clippy::too_many_arguments)]
+fn enemy_volley(kind: WeaponKind, from: V2, dir: V2, pitch: f32, spread: f32, to: V2, h: f32, limits: &Limits, rng: &mut BrainRng) -> f32 {
+    let spec = kind.spec();
+    let d = from.dist(to);
+    if d > spec.max_range {
+        return 0.0;
+    }
+    let base = dir.angle();
+    let mut dmg = 0.0;
+    for _ in 0..spec.pellets {
+        let (yaw, pe) = if spread > 0.0 { (base + gauss(rng) * spread, pitch + gauss(rng) * spread * 0.6) } else { (base, pitch) };
+        if ray_hits(from, V2::from_angle(yaw), pe, to, h) {
+            dmg += loadout::enemy_damage(kind, d, limits);
+        }
+    }
+    dmg
+}
+
+/// Two enemy guns facing off in the open at `dist` m, both in view from the start, with a trait
+/// aim error of `aim_deg` (before gun handling) under `limits`. The share of `rounds` won by `a`
+/// (a draw after 40 s counts half). Same ballistics as `run_round`.
+pub fn duel(a: WeaponKind, b: WeaponKind, dist: f32, aim_deg: f32, limits: &Limits, rounds: u32, seed: u64) -> f32 {
+    let mut rng = rng_from_seed(seed);
+    let mut won = 0.0;
+    for _ in 0..rounds {
+        let mut bodies = [Body::with_gun(V2::ZERO, a), Body::with_gun(V2::new(dist, 0.0), b)];
+        // Each side's reaction (s) before it starts aiming in.
+        let react = [0.2 + 0.1 * rand::Rng::random::<f32>(&mut rng), 0.2 + 0.1 * rand::Rng::random::<f32>(&mut rng)];
+        let mut t = 0.0;
+        while t < 40.0 && bodies[0].alive() && bodies[1].alive() {
+            t += DT;
+            let mut dmg = [0.0f32; 2];
+            for s in 0..2 {
+                let o = 1 - s;
+                let kind = bodies[s].gun.held;
+                let h = loadout::handling(kind);
+                let on = (t - react[s]).max(0.0);
+                if !bodies[s].try_fire(on >= h.ads_gate_s && t >= react[s]) {
+                    continue;
+                }
+                let settle = 1.0 + crate::mind::SETTLE_SPREAD * (1.0 - (on / h.settle_s.max(0.05)).min(1.0));
+                let sigma = aim_deg.to_radians() * loadout::aim_mult_at(kind, dist) * settle;
+                let to = (bodies[o].pos - bodies[s].pos).norm();
+                let dir = V2::from_angle(to.angle() + gauss(&mut rng) * sigma);
+                let pitch = gauss(&mut rng) * sigma * 0.6;
+                let (from, at, hgt) = (bodies[s].pos, bodies[o].pos, bodies[o].height());
+                dmg[o] += enemy_volley(kind, from, dir, pitch, loadout::pellet_spread(kind), at, hgt, limits, &mut rng);
+            }
+            bodies[0].hp -= dmg[0];
+            bodies[1].hp -= dmg[1];
+        }
+        won += match (bodies[0].alive(), bodies[1].alive()) {
+            (true, false) => 1.0,
+            (false, true) => 0.0,
+            _ => 0.5,
+        };
+    }
+    won / rounds.max(1) as f32
 }
 
 /// Does a ray from `from` along `dir` (with vertical error) hit a body at `to`?
@@ -160,7 +212,7 @@ pub fn run_round_opts(
     utility: UtilityBudget,
 ) -> RoundResult {
     let n = minds.len();
-    let mut enemies: Vec<Body> = arena.enemy_spawns.iter().take(n).map(|&p| Body::new(p)).collect();
+    let mut enemies: Vec<Body> = arena.enemy_spawns.iter().take(n).zip(&minds).map(|(&p, m)| Body::with_gun(p, m.weapon())).collect();
     let mut looks: Vec<V2> = vec![V2::new(0.0, 1.0); n];
     let mut stats = vec![EnemyStats::default(); n];
     let mut last_seen: Vec<f32> = vec![99.0; n];
@@ -182,6 +234,9 @@ pub fn run_round_opts(
     // Utility: grenades in flight, and how long the ghost stays flashed.
     let mut grenades: Vec<SimGrenade> = Vec::new();
     let mut blind_t = 0.0f32;
+    // Damage per enemy from one ghost trigger pull (reused).
+    let mut ghost_dmg: Vec<f32> = Vec::with_capacity(n);
+
 
     while t < ROUND_TIME && ghost.body.alive() && enemies.iter().any(Body::alive) {
         t += DT;
@@ -242,7 +297,7 @@ pub fn run_round_opts(
                 dt: DT,
                 pos: enemies[i].pos,
                 hp: enemies[i].hp / HP,
-                ammo_frac: if enemies[i].reload_t > 0.0 { 0.0 } else { enemies[i].ammo as f32 / MAG as f32 },
+                ammo_frac: enemies[i].gun.ammo_frac(),
                 crouched: enemies[i].crouched,
                 player_visible: sees,
                 player_pos: shared.0,
@@ -253,10 +308,13 @@ pub fn run_round_opts(
                 heard_shot: heard[i],
                 allies,
                 taking_fire: enemies[i].hit_t < 0.6,
-                player_reloading: ghost.body.reload_t > 0.0,
+                player_reloading: ghost.body.reloading(),
                 player_hurt: ghost.body.hit_t < 0.8,
                 squad_alert: board.alert,
                 token_denied: !squad.tokens.get(i).copied().unwrap_or(true),
+                weapon: enemies[i].gun.held,
+                primary_ammo: enemies[i].gun.primary_frac(),
+                busy_s: enemies[i].gun.busy_s(),
             };
             let act = minds[i].think(&obs, &cx);
             let e = &mut enemies[i];
@@ -266,14 +324,22 @@ pub fn run_round_opts(
             e.vel = act.move_dir * speed;
             e.pos = arena.resolve_collision(e.pos + e.vel * DT, BODY_RADIUS);
             e.hit_t += DT;
-            if act.reload && e.reload_t <= 0.0 && e.ammo < MAG {
-                e.reload_t = RELOAD_S;
+            if let Some(k) = act.weapon {
+                e.gun.switch_to(k);
             }
+            if act.reload {
+                e.gun.start_reload();
+            }
+            let kind = e.gun.held;
             enemy_fired[i] = e.try_fire(act.fire);
             // Pre-fire at a spot hits only if he really is there (in the open).
             let can_hit = sees || act.prefire.is_some() && arena.line_of_sight(e.pos, e.crouched, ghost.body.pos, ghost.body.crouched);
-            if enemy_fired[i] && can_hit && ray_hits(e.pos, act.shot_dir, act.shot_pitch_err, ghost.body.pos, ghost.body.height()) {
-                let dmg = limits.damage_per_hit;
+            let dmg = if enemy_fired[i] && can_hit {
+                enemy_volley(kind, e.pos, act.shot_dir, act.shot_pitch_err, act.spread, ghost.body.pos, ghost.body.height(), &limits, &mut rng)
+            } else {
+                0.0
+            };
+            if dmg > 0.0 {
                 squad.player_damaged(dmg);
                 ghost.body.hp -= dmg;
                 ghost.body.hit_t = 0.0;
@@ -348,6 +414,7 @@ pub fn run_round_opts(
                     crouched: e.crouched,
                     visible: e.alive() && blind_t <= 0.0 && visible(arena, &ghost.body, look, e, true),
                     fired: enemy_fired[i],
+                    loud: perception::gunshot_range(e.gun.held) * HEARING_RANGE / GUNSHOT_RANGE,
                 }
             })
             .collect();
@@ -372,13 +439,13 @@ pub fn run_round_opts(
         let gp = ghost.body.pos;
         let mut sounds = Vec::with_capacity(3);
         if act.shot.is_some() {
-            sounds.push((Sound::Gunshot, gp, GUNSHOT_RANGE));
+            sounds.push((Sound::Gunshot, gp, perception::gunshot_range(ghost.body.gun.held)));
         }
         let steps = perception::footstep_range(act.vel.len(), ghost.body.crouched);
         if steps > 0.0 {
             sounds.push((Sound::Footstep, gp, steps));
         }
-        if ghost.body.reload_t > 0.0 {
+        if ghost.body.reloading() {
             sounds.push((Sound::Reload, gp, RELOAD_RANGE));
         }
         for i in (0..n).filter(|&i| enemies[i].alive()) {
@@ -391,33 +458,53 @@ pub fn run_round_opts(
         }
         if let Some(shot) = act.shot {
             let from = ghost.body.pos;
-            let hit = match shot.scripted_hit {
-                Some(h) => h.then_some(shot.target),
-                None => (0..n)
-                    .filter(|&j| {
-                        let e = &enemies[j];
-                        e.alive()
-                            && ray_hits(from, shot.dir, shot.pitch_err, e.pos, e.height())
-                            && arena.line_of_sight(from, ghost.body.crouched, e.pos, e.crouched)
-                    })
-                    .min_by(|&x, &y| enemies[x].pos.dist(from).total_cmp(&enemies[y].pos.dist(from))),
-            };
+            // The ghost carries the player's favourite gun: its pellets resolve one by one.
+            let spec = ghost.body.gun.held.spec();
+            let pellet_cone = if spec.pellets > 1 { spec.spread_hip * 0.5 } else { 0.0 };
+            ghost_dmg.clear();
+            ghost_dmg.resize(n, 0.0);
+            let pellets = if shot.scripted_hit.is_some() { 1 } else { spec.pellets };
+            for _ in 0..pellets {
+                let (dir, pitch) = if pellet_cone > 0.0 {
+                    (V2::from_angle(shot.dir.angle() + gauss(&mut rng) * pellet_cone), shot.pitch_err + gauss(&mut rng) * pellet_cone * 0.6)
+                } else {
+                    (shot.dir, shot.pitch_err)
+                };
+                let hit = match shot.scripted_hit {
+                    Some(h) => h.then_some(shot.target),
+                    None => (0..n)
+                        .filter(|&j| {
+                            let e = &enemies[j];
+                            e.alive() && ray_hits(from, dir, pitch, e.pos, e.height()) && arena.line_of_sight(from, ghost.body.crouched, e.pos, e.crouched)
+                        })
+                        .min_by(|&x, &y| enemies[x].pos.dist(from).total_cmp(&enemies[y].pos.dist(from))),
+                };
+                if let Some(j) = hit {
+                    let base = spec.damage_at(enemies[j].pos.dist(from));
+                    ghost_dmg[j] += if rng.random::<f32>() < GHOST_HEADSHOT { base * spec.headshot_mult } else { base };
+                }
+            }
             let mut killed = false;
-            if let Some(j) = hit {
+            let mut any_hit = false;
+            for j in 0..n {
+                let dmg = ghost_dmg[j];
+                if dmg <= 0.0 {
+                    continue;
+                }
+                any_hit = true;
                 let e = &mut enemies[j];
-                let dmg = if rng.random::<f32>() < 0.12 { PLAYER_DAMAGE * 2.0 } else { PLAYER_DAMAGE };
                 e.hp -= dmg;
                 e.hit_t = 0.0;
                 stats[j].damage_taken += dmg;
                 // Damage is a sense: everyone learns where the shot came from, now.
                 squad.reveal(j, from, arena);
-                killed = !e.alive();
-                if killed {
+                if !e.alive() {
+                    killed = true;
                     last_ally_death = t;
                 }
             }
             let dist = enemies[shot.target].pos.dist(from);
-            ghost.on_shot(dist, hit.is_some(), killed, &view);
+            ghost.on_shot(dist, any_hit, killed, &view);
         }
         ghost.body.pos = arena.resolve_collision(ghost.body.pos + ghost.body.vel * DT, BODY_RADIUS);
     }

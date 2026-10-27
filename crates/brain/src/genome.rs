@@ -3,7 +3,9 @@
 
 use crate::limits::Limits;
 use crate::math::{BrainRng, gauss};
+use crate::loadout::{self, PREF_COUNT};
 use crate::squad::PEF_TERMS;
+use crate::weapons::WeaponKind;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +60,10 @@ pub struct TraitGenome {
     /// Position-evaluation weights w_k (one shared set; see `squad::PEF_LABELS`), in [0, 1].
     #[serde(default = "default_pef")]
     pub pef: [f32; PEF_TERMS],
+    /// Weapon preference genes, one per `WeaponKind::PRIMARIES` (`loadout.rs`), in [0, 1].
+    /// Saves from before loadouts have none: `UNSET_LOADOUT` until `fill_loadout` seeds them.
+    #[serde(default = "unset_loadout")]
+    pub loadout: [f32; PREF_COUNT],
     pub fitness: f32,
     /// How many evaluations contributed to `fitness` (for averaging).
     pub evals: u32,
@@ -78,6 +84,40 @@ pub struct Traits {
     pub prediction_trust: f32,
     /// Position-evaluation weights w_k in [0, 2] (`squad::pef_score`).
     pub pef: [f32; PEF_TERMS],
+    /// The primary this enemy carries (its preference until the squad hands out guns).
+    pub weapon: WeaponKind,
+    /// The genome's own preferred range (6..30 m) before fitting it to the gun.
+    pub base_range: f32,
+    /// Weapon preference genes (`loadout::assign` reads them).
+    pub loadout: [f32; PREF_COUNT],
+}
+
+impl Traits {
+    /// Carry `kind`: the preferred range moves into that gun's band.
+    pub fn with_weapon(mut self, kind: WeaponKind) -> Self {
+        self.weapon = kind;
+        self.preferred_range = loadout::fit_range(kind, self.base_range);
+        self
+    }
+}
+
+/// Marker for "no weapon genes yet" (old saves); never a valid gene vector.
+pub const UNSET_LOADOUT: [f32; PREF_COUNT] = [-1.0; PREF_COUNT];
+
+fn unset_loadout() -> [f32; PREF_COUNT] {
+    UNSET_LOADOUT
+}
+
+/// Weapon genes derived from the trait genes (their own stream, so adding them changed neither
+/// the trait nor the PEF genes a seed produces). Old saves get theirs from this too.
+pub fn seeded_loadout(genes: &[f32; GENE_COUNT]) -> [f32; PREF_COUNT] {
+    let seed = genes.iter().fold(0x0001_0AD0_u64, |h, g| h.rotate_left(11) ^ f32::to_bits(*g) as u64);
+    let mut r = crate::math::rng_from_seed(seed);
+    let mut out = [0.0; PREF_COUNT];
+    for g in &mut out {
+        *g = r.random();
+    }
+    out
 }
 
 fn default_pef() -> [f32; PEF_TERMS] {
@@ -98,7 +138,15 @@ impl TraitGenome {
         for g in &mut pef {
             *g = prng.random();
         }
-        TraitGenome { genes, pef, fitness: 0.0, evals: 0 }
+        let loadout = seeded_loadout(&genes);
+        TraitGenome { genes, pef, loadout, fitness: 0.0, evals: 0 }
+    }
+
+    /// Old saves: give genomes without weapon genes their seeded ones.
+    pub fn fill_loadout(&mut self) {
+        if self.loadout.iter().any(|g| *g < 0.0) {
+            self.loadout = seeded_loadout(&self.genes);
+        }
     }
 
     pub fn get(&self, g: Gene) -> f32 {
@@ -108,9 +156,16 @@ impl TraitGenome {
     /// Decode genes to real values. Higher ReactionTime/AimError genes mean *better* (faster, tighter).
     pub fn decode(&self, limits: &Limits) -> Traits {
         let g = |x: Gene| self.get(x);
+        let loadout = if self.loadout.iter().any(|g| *g < 0.0) { seeded_loadout(&self.genes) } else { self.loadout };
+        // Everyone decodes as a rifleman; `loadout::equip` hands out the squad's guns.
+        let weapon = WeaponKind::Rifle;
+        let base_range = 6.0 + 24.0 * g(Gene::PreferredRange);
         Traits {
             aggression: g(Gene::Aggression),
-            preferred_range: 6.0 + 24.0 * g(Gene::PreferredRange),
+            preferred_range: loadout::fit_range(weapon, base_range),
+            weapon,
+            base_range,
+            loadout,
             flank_bias: g(Gene::FlankBias),
             cover_affinity: g(Gene::CoverAffinity),
             reaction_time: 0.7 - (0.7 - limits.min_reaction_s) * g(Gene::ReactionTime),
@@ -132,11 +187,19 @@ impl TraitGenome {
         for (i, g) in pef.iter_mut().enumerate() {
             *g = if rng.random::<bool>() { a.pef[i] } else { b.pef[i] };
         }
-        TraitGenome { genes, pef, fitness: 0.0, evals: 0 }
+        // The weapon genes travel as one block (a loadout is a coherent preference), from a
+        // parent chosen by its own coin flip.
+        let mut la = a.clone();
+        let mut lb = b.clone();
+        la.fill_loadout();
+        lb.fill_loadout();
+        let loadout = if rng.random::<bool>() { la.loadout } else { lb.loadout };
+        TraitGenome { genes, pef, loadout, fitness: 0.0, evals: 0 }
     }
 
     pub fn mutate(&mut self, rate: f32, sigma: f32, rng: &mut BrainRng) {
-        for g in self.genes.iter_mut().chain(self.pef.iter_mut()) {
+        self.fill_loadout();
+        for g in self.genes.iter_mut().chain(self.pef.iter_mut()).chain(self.loadout.iter_mut()) {
             if rng.random::<f32>() < rate {
                 *g = (*g + gauss(rng) * sigma).clamp(0.0, 1.0);
             }

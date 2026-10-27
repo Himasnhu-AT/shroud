@@ -259,6 +259,9 @@ pub struct MatchTelemetry {
     /// Individual reaction times (s), for the log-normal reaction model.
     #[serde(default)]
     pub reactions: Vec<f32>,
+    /// Shots fired per gun (`WeaponKind::ALL` order).
+    #[serde(default)]
+    pub weapon_shots: [f32; 5],
     /// Rounds played this match.
     #[serde(default)]
     pub rounds: u32,
@@ -290,6 +293,7 @@ impl Default for MatchTelemetry {
             trajectory: Vec::new(),
             shot_log: Vec::new(),
             reactions: Vec::new(),
+            weapon_shots: [0.0; 5],
             rounds: 0,
             last_route: None,
         }
@@ -321,6 +325,10 @@ impl MatchTelemetry {
                 self.strafe_samples += 1.0;
             }
         }
+    }
+    /// The player fired gun `kind` (once per trigger pull).
+    pub fn shot_with(&mut self, kind: crate::weapons::WeaponKind) {
+        self.weapon_shots[crate::loadout::kind_index(kind)] += 1.0;
     }
     pub fn shot(&mut self, dist: f32, hit: bool, headshot: bool) {
         let b = range_bin(dist);
@@ -582,6 +590,10 @@ pub struct PlayerModel {
     /// Ghost v2 behaviour parameters, calibrated to real outcomes after each match.
     #[serde(default)]
     pub ghost: crate::ghost::GhostParams,
+    /// Share of shots per gun (`WeaponKind::ALL` order), EMA over matches. The trainer ghost
+    /// carries the favourite.
+    #[serde(default)]
+    pub weapon_use: [f32; 5],
 }
 
 fn one() -> f32 {
@@ -636,6 +648,7 @@ impl Default for PlayerModel {
             ghost_skill: 1.0,
             situations: SituationModel::default(),
             ghost: crate::ghost::GhostParams::default(),
+            weapon_use: [0.0; 5],
         }
     }
 }
@@ -713,8 +726,35 @@ impl PlayerModel {
             let hits: f32 = t.hits.iter().sum();
             self.overall_accuracy += (hits / shots - self.overall_accuracy) * a;
         }
+        let gun_shots: f32 = t.weapon_shots.iter().sum();
+        if gun_shots >= 5.0 {
+            for (u, s) in self.weapon_use.iter_mut().zip(t.weapon_shots) {
+                *u += (s / gun_shots - *u) * a;
+            }
+        }
         self.matches_observed += 1;
     }
+
+    /// The gun the player fires most (the rifle until there is data).
+    pub fn favourite_weapon(&self) -> crate::weapons::WeaponKind {
+        let total: f32 = self.weapon_use.iter().sum();
+        if total < 0.2 {
+            return crate::weapons::WeaponKind::Rifle;
+        }
+        let k = (0..5).max_by(|&a, &b| self.weapon_use[a].total_cmp(&self.weapon_use[b]).then(b.cmp(&a))).unwrap_or(2);
+        crate::weapons::WeaponKind::ALL[k]
+    }
+
+    /// Typical engagement distance (m): the shot-weighted mean over range bins (15 m with no data).
+    pub fn engagement_range(&self) -> f32 {
+        let mids = [3.0, 7.5, 12.5, 17.5, 25.0, 35.0];
+        let n: f32 = self.shots.iter().sum();
+        if n < 1.0 {
+            return 15.0;
+        }
+        self.shots.iter().zip(mids).map(|(s, m)| s * m).sum::<f32>() / n
+    }
+
 
     pub fn accuracy_at(&self, dist: f32) -> f32 {
         self.accuracy[range_bin(dist)]

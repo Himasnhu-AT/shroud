@@ -20,6 +20,8 @@ fn run_play(play: Play, player: V2, secs: f32, seed: u64) -> (Vec<Frame>, Vec<Ca
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let mut minds: Vec<EnemyMind> = BrainState::new(seed).squad_minds(seed);
+    // Rifles only: these tests check play geometry, not loadouts (tests/loadouts.rs).
+    minds.iter_mut().for_each(|m| m.set_weapon(brain::weapons::WeaponKind::Rifle));
     let n = minds.len();
     let mut pos: Vec<V2> = a.enemy_spawns.iter().take(n).copied().collect();
     let mut looks = vec![V2::new(0.0, 1.0); n];

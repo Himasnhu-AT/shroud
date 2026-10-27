@@ -1,6 +1,8 @@
 //! Utility AI: score tactical goals and pick one (docs/AI.md §2).
 
 use crate::genome::Traits;
+use crate::loadout;
+use crate::weapons::WeaponKind;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,14 +68,27 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
     let tok = if i.token || i.dist < 12.0 { 1.0 } else { 0.45 };
     // Windows to push: reloading, hurt, low.
     let window = if i.player_reloading { 0.6 } else { 0.0 } + if i.player_hurt { 0.25 } else { 0.0 } + if i.player_hp < 0.4 { 0.25 } else { 0.0 };
+    // The gun: how well it works at this range (a shotgun at 30 m wants to close in, a
+    // marksman at 5 m wants out).
+    let gun_q = loadout::range_quality(t.weapon, i.dist);
+    let (closer, rusher, marksman) = match t.weapon {
+        WeaponKind::Shotgun => (1.0, 0.5, false),
+        WeaponKind::Smg => (0.6, 1.0, false),
+        WeaponKind::Marksman => (0.0, 0.0, true),
+        _ => (0.0, 0.0, false),
+    };
     match goal {
         Goal::Attack if i.visible => {
             // Well beyond preferred range: close in (Push) rather than plink from afar.
             let too_far = ((i.dist - t.preferred_range - 6.0).max(0.0) / 15.0).min(1.0);
-            (0.45 + 0.3 * t.aggression + 0.15 * i.hp + 0.2 * range_fit - 0.45 * too_far) * tok
+            (0.45 + 0.3 * t.aggression + 0.15 * i.hp + 0.2 * range_fit - 0.45 * too_far) * tok * (0.55 + 0.45 * gun_q)
+        }
+        Goal::Push if seen_recently && marksman => {
+            // Marksmen don't charge; they take the window from where they are.
+            (0.1 + 0.2 * t.aggression + 0.5 * window) * tok
         }
         Goal::Push if seen_recently => {
-            let far = if i.dist > t.preferred_range + 4.0 { 0.25 } else { 0.0 };
+            let far = if i.dist > t.preferred_range + 4.0 { 0.25 + 0.3 * closer * (1.0 - gun_q) } else { 0.0 };
             // He's badly hurt and just broke line of sight: run him down before he heals up
             // behind cover (any healthy member, token or not).
             let finish = !i.visible && i.player_hp < 0.35 && i.time_since_seen < 4.0 && i.hp > 0.4;
@@ -87,11 +102,13 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
             let support = if i.allies_engaged > 0 { 1.0 } else { 0.3 };
             let crowd = if i.flankers >= 2 { 0.6 } else { 0.0 };
             let reposition = if i.token { 0.0 } else { 0.4 };
-            0.1 + 0.6 * t.flank_bias * support - crowd + reposition
+            0.1 + 0.6 * t.flank_bias * support - crowd + reposition + 0.2 * rusher - if marksman { 0.3 } else { 0.0 }
         }
         Goal::TakeCover => {
             let pressure = if i.player_reloading { 0.0 } else if i.taking_fire { 0.8 } else { 0.25 * i.player_aiming_at_me.max(0.0) * i.visible as u8 as f32 };
-            pressure * (0.15 + 0.45 * t.cover_affinity) + (1.0 - i.hp) * 0.3 * t.cover_affinity
+            // A marksman caught close falls back to cover rather than duel at shotgun range.
+            let caught_close = if marksman && i.visible && i.dist < 10.0 { 0.35 } else { 0.0 };
+            pressure * (0.15 + 0.45 * t.cover_affinity) + (1.0 - i.hp) * 0.3 * t.cover_affinity + caught_close
         }
         Goal::Retreat if i.hp < t.retreat_health * RETREAT_SCALE => 0.95,
         Goal::Ambush if !i.visible && !i.combat && i.time_since_seen > 1.5 => 0.1 + 0.8 * t.prediction_trust * i.model_confidence,

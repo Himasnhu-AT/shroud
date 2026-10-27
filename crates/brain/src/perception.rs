@@ -58,6 +58,18 @@ impl Sound {
     }
 }
 
+/// Open-air range (m) at which a shot from gun `kind` is still heard. Scaled from the gun's
+/// `loudness_m` so the rifle keeps the original `GUNSHOT_RANGE` (a pistol carries less, a
+/// shotgun or marksman rifle more).
+pub fn gunshot_range(kind: crate::weapons::WeaponKind) -> f32 {
+    gunshot_range_m(kind.spec().loudness_m)
+}
+
+/// `gunshot_range` from a raw `loudness_m` (e.g. the game's `ShotFired::loudness_m`).
+pub fn gunshot_range_m(loudness_m: f32) -> f32 {
+    loudness_m * GUNSHOT_RANGE / crate::weapons::RIFLE.loudness_m
+}
+
 /// A sound a listener picked up.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Heard {
