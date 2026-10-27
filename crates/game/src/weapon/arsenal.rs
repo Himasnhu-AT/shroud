@@ -49,6 +49,25 @@ pub fn draw_time(kind: WeaponKind) -> f32 {
     }
 }
 
+/// An optic whose model would block the view when aimed (looking into the back of the scope).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Optic {
+    /// Kestrel: wide low-power optic, red dot in a ring.
+    Reflex,
+    /// Longbow: magnified scope, black surround, hairline reticle.
+    Scope,
+}
+
+impl Optic {
+    pub fn of(kind: WeaponKind) -> Option<Optic> {
+        match kind {
+            WeaponKind::Rifle => Some(Optic::Reflex),
+            WeaponKind::Marksman => Some(Optic::Scope),
+            _ => None,
+        }
+    }
+}
+
 /// A gun's ammo while it is in a slot.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GunState {
@@ -175,9 +194,15 @@ impl Weapon {
         self.reloading.map(|left| (1.0 - left / self.reload_total.max(1e-3)).clamp(0.0, 1.0))
     }
 
-    /// Fully aimed through a scope (viewmodel hidden, overlay shown).
+    /// Fully aimed through the Longbow's scope (breathing sway, black scope overlay).
     pub fn scoped(&self) -> bool {
-        self.kind == WeaponKind::Marksman && self.ads > 0.92
+        self.sighted() == Some(Optic::Scope)
+    }
+
+    /// Fully aimed through an optic: the viewmodel is hidden and the optic's overlay is the
+    /// sight picture (the Kestrel's low-power optic, the Longbow's scope). Iron sights: None.
+    pub fn sighted(&self) -> Option<Optic> {
+        Optic::of(self.kind).filter(|_| self.ads > 0.92)
     }
 
     pub fn ready(&self) -> bool {
@@ -486,5 +511,24 @@ mod tests {
         w.ads = 1.0;
         assert!((zoom_of(Some(&w)) - WeaponKind::Marksman.spec().ads_zoom).abs() < 1e-5);
         assert!(w.scoped());
+    }
+
+    #[test]
+    fn scoped_guns_aim_through_their_optic() {
+        // Guns whose optic would block the view (looking into the back of the scope model)
+        // hide the viewmodel aimed and show the optic overlay; iron-sight guns keep the model.
+        for kind in WeaponKind::ALL {
+            let mut w = Weapon::new(GunState::full(kind));
+            w.ads = 1.0;
+            let want = match kind {
+                WeaponKind::Rifle => Some(Optic::Reflex),
+                WeaponKind::Marksman => Some(Optic::Scope),
+                _ => None,
+            };
+            assert_eq!(w.sighted(), want, "{kind:?}");
+            assert_eq!(w.scoped(), kind == WeaponKind::Marksman);
+            w.ads = 0.5;
+            assert_eq!(w.sighted(), None, "{kind:?} half aimed");
+        }
     }
 }

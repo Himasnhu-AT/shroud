@@ -13,7 +13,7 @@ use super::theme::*;
 use crate::player::Player;
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
-use crate::weapon::arsenal::{ReloadKind, Weapon};
+use crate::weapon::arsenal::{Optic, ReloadKind, Weapon};
 use crate::weapon::pickups::PickupFocus;
 use crate::weapon::{Arsenal, WeaponKind, WeaponSet, class_label};
 
@@ -54,6 +54,8 @@ struct ReloadFill;
 struct Warning;
 #[derive(Component)]
 struct Scope;
+#[derive(Component)]
+struct ReflexSight;
 #[derive(Component)]
 struct Prompt;
 #[derive(Component)]
@@ -187,15 +189,11 @@ fn spawn(mut commands: Commands) {
         ))
     };
     let full = || Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
+    let overlay = || Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() };
+    // Overlays sit under their siblings (ZIndex -1) so the ammo panel and the warnings stay
+    // readable while aimed.
     commands
-        .spawn((
-            Scope,
-            Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
-            mask(),
-            Visibility::Hidden,
-            Pickable::IGNORE,
-            ChildOf(root),
-        ))
+        .spawn((Scope, overlay(), mask(), ZIndex(-1), Visibility::Hidden, Pickable::IGNORE, ChildOf(root)))
         .with_children(|s| {
             s.spawn((full(), mask(), Pickable::IGNORE));
             s.spawn((full(), mask(), Pickable::IGNORE));
@@ -225,6 +223,49 @@ fn spawn(mut commands: Commands) {
                     Pickable::IGNORE,
                 ));
             }
+        });
+
+    // Kestrel optic: a wide eyepiece (dark housing, the world still readable at the rim), a
+    // red dot in a thin ring, short stadia either side.
+    let red = Color::srgba(1.0, 0.16, 0.1, 0.95);
+    let housing = BackgroundGradient::from(RadialGradient::new(
+        UiPosition::CENTER,
+        RadialGradientShape::ClosestSide,
+        vec![
+            ColorStop::new(Color::NONE, percent(0)),
+            ColorStop::new(Color::NONE, percent(84)),
+            ColorStop::new(Color::srgba(0.0, 0.0, 0.0, 0.35), percent(88)),
+            ColorStop::new(Color::srgba(0.02, 0.02, 0.025, 0.97), percent(92)),
+            ColorStop::new(Color::srgba(0.02, 0.02, 0.025, 0.93), percent(100)),
+        ],
+    ));
+    commands
+        .spawn((ReflexSight, overlay(), housing, ZIndex(-1), Visibility::Hidden, Pickable::IGNORE, ChildOf(root)))
+        .with_children(|s| {
+            s.spawn((
+                Node { position_type: PositionType::Absolute, width: px(5), height: px(5), border_radius: BorderRadius::MAX, ..default() },
+                BackgroundColor(red),
+                Pickable::IGNORE,
+            ));
+            s.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: px(66),
+                    height: px(66),
+                    border: UiRect::all(px(2)),
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                },
+                BorderColor::all(red.with_alpha(0.8)),
+                Pickable::IGNORE,
+            ));
+            // Stadia: a gap, then a short bar each side (row), and one below (column).
+            s.spawn((Node { position_type: PositionType::Absolute, column_gap: px(120), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                for _ in 0..2 {
+                    r.spawn((Node { width: px(36), height: px(2), ..default() }, BackgroundColor(red.with_alpha(0.7)), Pickable::IGNORE));
+                }
+            });
+            s.spawn((Node { position_type: PositionType::Absolute, top: percent(50), margin: UiRect::top(px(60)), width: px(2), height: px(30), ..default() }, BackgroundColor(red.with_alpha(0.7)), Pickable::IGNORE));
         });
 }
 
@@ -433,13 +474,24 @@ fn crosshair_spread(
     }
 }
 
-fn scope_overlay(player: Query<&Weapon, With<Player>>, mut scope: Query<&mut Visibility, With<Scope>>) {
-    let on = player.single().is_ok_and(|w| w.scoped());
-    let want = if on { Visibility::Inherited } else { Visibility::Hidden };
-    for mut v in &mut scope {
+/// The aimed gun's optic overlay (Longbow scope or Kestrel optic), if any.
+fn scope_overlay(
+    player: Query<&Weapon, With<Player>>,
+    mut scope: Query<&mut Visibility, (With<Scope>, Without<ReflexSight>)>,
+    mut reflex: Query<&mut Visibility, (With<ReflexSight>, Without<Scope>)>,
+) {
+    let optic = player.single().ok().and_then(|w| w.sighted());
+    let show = |on: bool, v: &mut Visibility| {
+        let want = if on { Visibility::Inherited } else { Visibility::Hidden };
         if *v != want {
             *v = want;
         }
+    };
+    for mut v in &mut scope {
+        show(optic == Some(Optic::Scope), &mut v);
+    }
+    for mut v in &mut reflex {
+        show(optic == Some(Optic::Reflex), &mut v);
     }
 }
 
