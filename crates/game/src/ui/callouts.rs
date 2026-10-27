@@ -1,32 +1,47 @@
-//! Squad callouts as subtitles: small lines at the bottom-left ("Bravo: Flanking north"),
-//! newest at the bottom, each fading out over `LIFE_S`. Fed by [`Callout`] messages.
+//! Squad callouts as subtitles: small lines at the bottom-left ("BRAVO (MARKSMAN) Flanking
+//! north"), newest at the bottom, each fading out over `LIFE_S`. Fed by [`Callout`] messages.
+//! Also the player's own intel lines ("Marksman on the west lane", blue): when a squad member
+//! with a special loadout first engages you, once per enemy per round, rate-limited.
+
+use std::collections::HashMap;
 
 use bevy::prelude::*;
+use brain::loadout::Role;
 
 use super::theme::*;
-use crate::enemy::Callout;
+use crate::enemy::{Callout, Enemy, EnemyCombat};
+use crate::map::{ArenaRes, to_ground};
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
 
 const LIFE_S: f32 = 2.5;
 const FADE_S: f32 = 0.6;
 const MAX_LINES: usize = 4;
+/// Least time between two intel lines (s).
+const INTEL_GAP_S: f32 = 3.0;
+
+/// A line of intel for the player (not a squad callout: no radio click, blue).
+#[derive(Message, Clone, Debug)]
+pub struct Intel(pub String);
 
 pub struct CalloutsPlugin;
 
 impl Plugin for CalloutsPlugin {
     fn build(&self, app: &mut App) {
         // Like the HUD: spawned per round so it binds to the player camera.
-        app.add_systems(OnEnter(GameState::Playing), spawn_root.run_if(has_visuals))
-            .add_systems(Update, (add_lines, fade_lines).chain().run_if(has_visuals));
+        app.add_message::<Intel>()
+            .add_systems(OnEnter(GameState::Playing), spawn_root.run_if(has_visuals))
+            .add_systems(Update, intel.run_if(in_state(GameState::Playing)).run_if(has_visuals))
+            .add_systems(Update, (add_lines, fade_lines).chain().after(intel).run_if(has_visuals));
     }
 }
 
 #[derive(Component)]
 struct CalloutRoot;
 
+/// Age (s) and accent colour of a subtitle line.
 #[derive(Component)]
-struct CalloutLine(f32);
+struct CalloutLine(f32, Color);
 
 fn spawn_root(mut commands: Commands) {
     commands.spawn((
@@ -37,7 +52,7 @@ fn spawn_root(mut commands: Commands) {
         Node {
             position_type: PositionType::Absolute,
             left: px(40),
-            bottom: px(150),
+            bottom: px(182),
             flex_direction: FlexDirection::Column,
             row_gap: px(4),
             ..default()
@@ -46,9 +61,41 @@ fn spawn_root(mut commands: Commands) {
     ));
 }
 
+/// Intel: a rusher / breacher / marksman engaging you is called out with where it is.
+fn intel(
+    time: Res<Time>,
+    arena: Res<ArenaRes>,
+    enemies: Query<(Entity, &EnemyCombat, &Transform), With<Enemy>>,
+    mut out: MessageWriter<Intel>,
+    mut seen: Local<HashMap<Entity, bool>>,
+    mut last: Local<f32>,
+) {
+    let now = time.elapsed_secs();
+    for (e, c, tf) in &enemies {
+        let sees = c.sees_player && !c.dead;
+        // `false` = not called yet, `true` = called this round (entities are new each round).
+        let called = seen.entry(e).or_insert(false);
+        if !sees || *called || c.role == Role::Rifleman || now - *last < INTEL_GAP_S {
+            continue;
+        }
+        *called = true;
+        *last = now;
+        let pos = to_ground(tf.translation);
+        let text = match arena.0.zone_of(pos) {
+            Some(z) => format!("{} on {}", c.role.label(), z.name),
+            None => format!("{} has eyes on you", c.role.label()),
+        };
+        out.write(Intel(text));
+    }
+    if seen.len() > 16 {
+        seen.retain(|e, _| enemies.contains(*e));
+    }
+}
+
 fn add_lines(
     mut commands: Commands,
     mut msgs: MessageReader<Callout>,
+    mut intel: MessageReader<Intel>,
     root: Query<Entity, With<CalloutRoot>>,
     lines: Query<(Entity, &CalloutLine)>,
     settings: Res<ShroudSettings>,
@@ -59,12 +106,30 @@ fn add_lines(
         for m in msgs.read() {
             log.log("callout", || serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": false }));
         }
+        intel.clear();
         return;
     };
+    if msgs.is_empty() && intel.is_empty() {
+        return;
+    }
     let mut count = lines.iter().count();
     let mut oldest: Vec<(Entity, f32)> = lines.iter().map(|(e, l)| (e, l.0)).collect();
     oldest.sort_by(|a, b| b.1.total_cmp(&a.1));
-    for m in msgs.read() {
+    // Callouts are ASCII by contract; keep it that way for the font.
+    let clean = |t: &str| t.chars().filter(|c| c.is_ascii()).collect::<String>();
+    let items: Vec<(String, String, Color)> = msgs
+        .read()
+        .map(|m| {
+            log.log("callout", || serde_json::json!({ "speaker": m.speaker, "role": m.role, "text": m.text, "shown": true }));
+            let who = match m.role {
+                Some(r) => format!("{} ({})", clean(m.speaker), r),
+                None => clean(m.speaker),
+            };
+            (who.to_uppercase(), clean(&m.text), ENEMY)
+        })
+        .chain(intel.read().map(|i| ("INTEL".to_string(), clean(&i.0), INTEL)))
+        .collect();
+    for (who, what, color) in items {
         if count >= MAX_LINES
             && let Some((e, _)) = oldest.first().copied()
         {
@@ -72,12 +137,9 @@ fn add_lines(
             oldest.remove(0);
             count -= 1;
         }
-        log.log("callout", || serde_json::json!({ "speaker": m.speaker, "text": m.text, "shown": true }));
-        // Callouts are ASCII by contract; keep it that way for the font.
-        let clean = |t: &str| t.chars().filter(|c| c.is_ascii()).collect::<String>();
         commands
             .spawn((
-                CalloutLine(0.0),
+                CalloutLine(0.0, color),
                 // Dark backing so lines stay readable over the red damage vignette.
                 Node {
                     padding: UiRect::new(px(10), px(12), px(4), px(5)),
@@ -87,13 +149,13 @@ fn add_lines(
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.02, 0.03, 0.05, BG_ALPHA)),
-                BorderColor::all(ENEMY),
+                BorderColor::all(color),
                 Pickable::IGNORE,
                 ChildOf(root),
             ))
             .with_children(|l| {
-                l.spawn((text(clean(m.speaker).to_uppercase(), label(SIZE_LABEL + 1.0), ENEMY), TextShadow::default()));
-                l.spawn((text(clean(&m.text), body(SIZE_BODY - 1.0), TEXT), TextShadow::default()));
+                l.spawn((text(who, label(SIZE_LABEL + 1.0), color), TextShadow::default()));
+                l.spawn((text(what, body(SIZE_BODY - 1.0), TEXT), TextShadow::default()));
             });
         count += 1;
     }
@@ -114,7 +176,8 @@ fn fade_lines(
         } else {
             let a = ((LIFE_S - l.0) / FADE_S).min(1.0);
             bg.0.set_alpha(a * BG_ALPHA);
-            *border = BorderColor::all(ENEMY.with_alpha(a));
+            *border = BorderColor::all(l.1.with_alpha(a));
+
             for k in kids.iter() {
                 if let Ok(mut t) = texts.get_mut(k) {
                     t.0.set_alpha(a);

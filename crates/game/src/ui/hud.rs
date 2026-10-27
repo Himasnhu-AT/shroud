@@ -1,10 +1,7 @@
 //! In-game HUD: crosshair + hit marker, health bar, ammo (mag ticks, reload progress),
 //! round score + timer + enemy pips at the top, kill feed, and round start / round over banners.
 
-use std::collections::HashMap;
-
 use bevy::prelude::*;
-use brain::squad::callsign;
 
 use super::theme::*;
 use crate::enemy::{Enemy, EnemyCombat, Squad};
@@ -12,7 +9,7 @@ use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
-use crate::weapon::{Damage, Health, HitMarker, MAG_SIZE, RELOAD_TIME, Rifle, WeaponSet};
+use crate::weapon::{Health, HitMarker, MAG_SIZE, RELOAD_TIME, Rifle, WeaponSet};
 
 pub struct HudPlugin;
 
@@ -28,7 +25,8 @@ impl Plugin for HudPlugin {
             )
             .add_systems(
                 Update,
-                (tick_clock, (update_hud, update_pips, kill_feed, round_over_banner).run_if(has_visuals))
+                // (The kill feed lines are `ui::killfeed`'s, spawned into the `KillFeed` node.)
+                (tick_clock, (update_hud, update_pips, round_over_banner).run_if(has_visuals))
                     .after(WeaponSet)
                     .run_if(in_state(GameState::Playing)),
             )
@@ -95,8 +93,9 @@ struct Pips;
 struct Pip(usize);
 #[derive(Component)]
 struct HitMarkerUi;
+/// Top-right anchor for the kill feed (`ui::killfeed` fills it).
 #[derive(Component)]
-struct KillFeed;
+pub struct KillFeed;
 #[derive(Component)]
 struct RoundStartBanner;
 
@@ -509,7 +508,9 @@ fn update_hud(
         set(&mut t, if mp && flow.round > 1 { format!("ROUND {} \u{b7} MATCH POINT", flow.round) } else { format!("ROUND {}", flow.round.max(1)) });
     }
     if let Ok(mut t) = texts.p4().single_mut() {
-        set(&mut t, fmt_clock(clock.0));
+        // Counts down to the round time limit.
+        set(&mut t, fmt_clock(crate::match_flow::ROUND_TIME_S - clock.0));
+
     }
     if let Ok(mut t) = texts.p5().single_mut() {
         set(&mut t, format!("SQUAD GEN {}  \u{b7}  {}", info.generation, settings.difficulty.label().to_uppercase()));
@@ -548,76 +549,6 @@ fn update_pips(
             bg.0 = b;
             *border = BorderColor::all(o);
         }
-    }
-}
-
-fn kill_feed(
-    mut commands: Commands,
-    mut dmg: MessageReader<Damage>,
-    player: Query<(Entity, &Health), With<Player>>,
-    enemies: Query<(Entity, &Enemy, &EnemyCombat)>,
-    feed: Query<(Entity, Option<&Children>), With<KillFeed>>,
-    mut seen: Local<HashMap<Entity, bool>>,
-    mut last_hit: Local<HashMap<Entity, (bool, Entity)>>,
-    mut player_dead: Local<bool>,
-) {
-    let Ok((feed, kids)) = feed.single() else {
-        seen.clear();
-        *player_dead = false;
-        return;
-    };
-    for d in dmg.read() {
-        last_hit.insert(d.target, (d.headshot, d.source));
-    }
-    let mut lines: Vec<(String, Color, String, Color, bool)> = Vec::new();
-    for (e, enemy, c) in &enemies {
-        let was = seen.insert(e, c.dead).unwrap_or(c.dead);
-        if c.dead && !was {
-            let head = last_hit.get(&e).is_some_and(|h| h.0);
-            lines.push(("YOU".into(), FRIENDLY, callsign(enemy.slot).to_uppercase(), ENEMY, head));
-        }
-    }
-    if let Ok((pe, hp)) = player.single() {
-        if hp.is_dead() && !*player_dead {
-            let killer = last_hit
-                .get(&pe)
-                .and_then(|(_, src)| enemies.get(*src).ok())
-                .map_or("SQUAD".to_string(), |(_, en, _)| callsign(en.slot).to_uppercase());
-            lines.push((killer, ENEMY, "YOU".into(), FRIENDLY, last_hit.get(&pe).is_some_and(|h| h.0)));
-        }
-        *player_dead = hp.is_dead();
-    }
-    seen.retain(|e, _| enemies.contains(*e));
-    let existing = kids.map_or(0, |k| k.len());
-    for (i, (who, wc, whom, vc, head)) in lines.into_iter().enumerate() {
-        if existing + i >= 5
-            && let Some(old) = kids.and_then(|k| k.first())
-        {
-            commands.entity(*old).despawn();
-        }
-        commands
-            .spawn((
-                Fx { t: 0.0, life: Some(5.0), fade_in: 0.12, fade_out: 0.6, from_scale: 1.12 },
-                Node { align_items: AlignItems::Center, column_gap: px(10), padding: UiRect::axes(px(12), px(5)), ..default() },
-                UiTransform::IDENTITY,
-                BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.7)),
-                Pickable::IGNORE,
-                ChildOf(feed),
-            ))
-            .with_children(|l| {
-                l.spawn(text(who, label(SIZE_LABEL + 2.0), wc));
-                // A small rifle-ish glyph: a bar with a stock.
-                l.spawn((Node { width: px(26), height: px(4), ..default() }, BackgroundColor(TEXT_MUTED), Pickable::IGNORE));
-                if head {
-                    l.spawn((
-                        Node { padding: UiRect::axes(px(5), px(0)), ..default() },
-                        BackgroundColor(ACCENT.with_alpha(0.9)),
-                        Pickable::IGNORE,
-                        children![text("HS", label(SIZE_TINY), BG)],
-                    ));
-                }
-                l.spawn(text(whom, label(SIZE_LABEL + 2.0), vc));
-            });
     }
 }
 

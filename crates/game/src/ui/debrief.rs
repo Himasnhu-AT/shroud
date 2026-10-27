@@ -76,6 +76,10 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
         .collect();
 
     let card = last.0.as_ref().and_then(|s| s.card.clone());
+    // What the squad will carry next match, and why (the learned loadout).
+    let loadout_note = last.0.as_ref().and_then(|s| s.loadout_note.clone());
+    let loadout_line = last.0.as_ref().map(|s| loadout_summary(&s.next_loadout)).filter(|l| !l.is_empty());
+    let show_loadout = loadout_note.is_some() || loadout_line.is_some();
     let deltas = if deltas.is_empty() { vec!["No change".into()] } else { deltas };
     let history = if history.is_empty() { vec!["-".into()] } else { history };
     let color = if won { FRIENDLY } else { ENEMY };
@@ -114,6 +118,17 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                                 h.spawn(text(gen_line, body(SIZE_SMALL), TEXT_MUTED));
                             }
                         });
+                    if show_loadout {
+                        root.spawn(card_panel()).with_children(|p| {
+                            p.spawn(eyebrow("Their loadout", ENEMY));
+                            if let Some(note) = loadout_note {
+                                p.spawn(text(note, body_bold(SIZE_BODY + 2.0), TEXT));
+                            }
+                            if let Some(line) = loadout_line {
+                                p.spawn(text(line, label(SIZE_LABEL), TEXT_MUTED));
+                            }
+                        });
+                    }
                     if let Some(card) = card {
                         root.spawn(card_panel()).with_children(|p| {
                             p.spawn(eyebrow("Their plan this match", ACCENT));
@@ -133,7 +148,8 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                     }
                     root.spawn(card_panel()).with_children(|p| {
                         p.spawn(eyebrow("What to work on", INTEL));
-                        for (i, line) in insights.iter().take(4).enumerate() {
+                        // (One line fewer when the loadout panel takes its place on screen.)
+                        for (i, line) in insights.iter().take(if show_loadout { 3 } else { 4 }).enumerate() {
                             p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
                                 r.spawn((Node { width: px(24), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
                                     .with_child(text(format!("0{}", i + 1), label(SIZE_LABEL), INTEL));
@@ -183,6 +199,28 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
 }
 
 const PANEL_W: f32 = 1100.0;
+
+/// "NEXT SQUAD: 2 RIFLEMEN  ·  1 BREACHER  ·  1 MARKSMAN" (most common role first).
+fn loadout_summary(kinds: &[brain::weapons::WeaponKind]) -> String {
+    use brain::loadout::Role;
+    let mut counts: Vec<(Role, usize)> = Role::ALL.iter().map(|&r| (r, kinds.iter().filter(|&&k| Role::of(k) == r).count())).filter(|(_, n)| *n > 0).collect();
+    if counts.is_empty() {
+        return String::new();
+    }
+    // Most common first; ties keep role order (rifleman, rusher, breacher, marksman).
+    counts.sort_by_key(|c| std::cmp::Reverse(c.1));
+    let parts: Vec<String> = counts
+        .iter()
+        .map(|(r, n)| {
+            let name = r.label();
+            // Rifleman -> Riflemen, Marksman -> Marksmen.
+            let plural = if *n == 1 { name.to_string() } else if let Some(s) = name.strip_suffix("man") { format!("{s}men") } else { format!("{name}s") };
+            format!("{n} {plural}")
+        })
+        .collect();
+    format!("NEXT SQUAD: {}", parts.join("  \u{b7}  ").to_uppercase())
+}
+
 
 fn card_panel() -> impl Bundle {
     (
@@ -237,5 +275,17 @@ fn input(
     } else if to_menu {
         flow.abandon();
         app_state.set(AppState::MainMenu);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use brain::weapons::WeaponKind;
+
+    #[test]
+    fn loadout_summary_counts_roles() {
+        let s = super::loadout_summary(&[WeaponKind::Rifle, WeaponKind::Marksman, WeaponKind::Rifle, WeaponKind::Shotgun]);
+        assert_eq!(s, "NEXT SQUAD: 2 RIFLEMEN  \u{b7}  1 BREACHER  \u{b7}  1 MARKSMAN");
+        assert!(super::loadout_summary(&[]).is_empty());
     }
 }
