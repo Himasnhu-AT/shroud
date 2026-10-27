@@ -655,7 +655,7 @@ fn think_and_act(
         let pitch = (aim_pt.y - muzzle.y).atan2(horiz) + act.shot_pitch_err;
         let dir = Vec3::new(act.shot_dir.x * pitch.cos(), pitch.sin(), act.shot_dir.y * pitch.cos());
         let Ok(dir3) = Dir3::new(dir) else { continue };
-        shots_out.write(ShotFired { origin: muzzle, dir, by: e });
+        shots_out.write(ShotFired::new(muzzle, dir, e, crate::weapon::WeaponKind::Rifle));
         let hit = spatial.cast_ray(muzzle, dir3, brain::sim::VISION_RANGE, true, &filter);
         // Tracer: stop where the bullet stops, but never near the player's eye.
         let mut len = hit.map_or(60.0, |h| h.distance);

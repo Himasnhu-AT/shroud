@@ -12,7 +12,7 @@ path = "src/main.rs"
 brain = { path = "../brain" }
 # The game shell: window, settings, menus, pause, UI kit, input, audio, FPS controller, render
 # budget; devtools/trace only through the `dev` feature below.
-engine = { path = "/Users/himanshu/codes/game/engine", default-features = false, features = ["physics", "fps"] }
+engine = { path = "/Users/himanshu/codes/game/engine", default-features = false, features = ["physics", "fps", "vfx"] }
 bevy = { version = "=0.19.1", features = ["jpeg"] }
 avian3d = "=0.7.0"
 rand.workspace = true

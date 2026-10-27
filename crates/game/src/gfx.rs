@@ -13,7 +13,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use engine::gfx::QualityPreset;
 use engine::render_budget::SceneryRanges;
 
-pub use engine::gfx::{FaceCamera, PendingMips, Sun, load_pbr, world_uv_cuboid};
+pub use engine::gfx::{PendingMips, Sun, load_pbr, world_uv_cuboid};
 
 use crate::state::has_visuals;
 
@@ -67,10 +67,7 @@ pub struct FxAssets {
     pub cube: Handle<Mesh>,
     pub flash: Handle<StandardMaterial>,
     pub tracer: Handle<StandardMaterial>,
-    pub spark: Handle<StandardMaterial>,
     pub decal: Handle<StandardMaterial>,
-    /// Soft round sprite for dust/blood puffs (cloned per puff to fade).
-    pub puff_tex: Handle<Image>,
 }
 
 fn tex(size: u32, f: impl Fn(f32, f32) -> [f32; 4]) -> Image {
@@ -113,11 +110,6 @@ fn init_fx_assets(
         // Premultiplied for additive blending.
         [i, (0.85 + 0.15 * core) * i, (0.55 + 0.45 * core) * i, i]
     }));
-    let puff_tex = images.add(tex(64, |u, v| {
-        let r = (u * u + v * v).sqrt();
-        let a = (1.0 - r).max(0.0).powf(1.6);
-        [1.0, 1.0, 1.0, a]
-    }));
     // Bullet hole: dark core, scorched soft ring.
     let decal_tex = images.add(tex(64, |u, v| {
         let r = (u * u + v * v).sqrt();
@@ -149,10 +141,6 @@ fn init_fx_assets(
             base_color: Color::srgb(6.0, 4.0, 1.6),
             ..glow(LinearRgba::NONE, None)
         }),
-        spark: mats.add(StandardMaterial {
-            base_color: Color::srgb(9.0, 5.0, 1.5),
-            ..glow(LinearRgba::NONE, None)
-        }),
         decal: mats.add(StandardMaterial {
             base_color: Color::WHITE,
             base_color_texture: Some(decal_tex),
@@ -161,7 +149,6 @@ fn init_fx_assets(
             depth_bias: 8.0,
             ..default()
         }),
-        puff_tex,
     };
     commands.insert_resource(fx);
 }

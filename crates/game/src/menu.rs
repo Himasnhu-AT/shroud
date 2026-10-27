@@ -21,7 +21,17 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         if let Some(mut b) = app.world_mut().get_resource_mut::<engine::input::Bindings>() {
-            for (action, keys) in [("Fire", "Left mouse"), ("Reload", "R"), ("Perf overlay", "F2"), ("Enemy debug view", "F3")] {
+            for (action, keys) in [
+                ("Fire", "Left mouse"),
+                ("Aim down sights", "Right mouse (hold)"),
+                ("Reload", "R"),
+                ("Primary / sidearm", "1 / 2, mouse wheel"),
+                ("Last weapon", "Q"),
+                ("Inspect", "V"),
+                ("Pick up gun", "E (hold)"),
+                ("Perf overlay", "F2"),
+                ("Enemy debug view", "F3"),
+            ] {
                 b.set(action, keys);
             }
         }
@@ -130,7 +140,7 @@ fn viewmodel_only_in_rounds(
 fn build_setup(world: &mut World, root: Entity) {
     let t = world.resource::<Theme>().clone();
     let reg = world.resource::<SettingsRegistry>();
-    let (Some(diff), Some(map)) = (reg.field("difficulty").cloned(), reg.field("map").cloned()) else { return };
+    let (Some(diff), Some(map), Some(gun)) = (reg.field("difficulty").cloned(), reg.field("map").cloned(), reg.field("primary").cloned()) else { return };
     world.commands().entity(root).with_children(|p| {
         menu_backdrop(p, &t, 0.0, 1.0);
         p.spawn(menu_column(GAP_M)).with_children(|col| {
@@ -143,10 +153,13 @@ fn build_setup(world: &mut World, root: Entity) {
             col.spawn(spacer(0.0));
             col.spawn(eyebrow("Map", t.text_muted));
             card_row(col, &t, &map, 2, 368.0);
+            col.spawn(spacer(0.0));
+            col.spawn(eyebrow("Primary weapon", t.text_muted));
+            card_row(col, &t, &gun, 3, 272.0);
             col.spawn(spacer(GAP_L - GAP_M));
             col.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|r| {
-                action_button(r, &t, "Start match", MenuAction::Custom("start_match"), Some(3), true, 320.0);
-                action_button(r, &t, "Back", UiAction::Back, Some(4), false, 160.0);
+                action_button(r, &t, "Start match", MenuAction::Custom("start_match"), Some(4), true, 320.0);
+                action_button(r, &t, "Back", UiAction::Back, Some(5), false, 160.0);
             });
         });
         spawn_footer(p, &t, &[("W / S", "Row"), ("A / D", "Choose"), ("Enter", "Start"), ("Esc", "Back")]);

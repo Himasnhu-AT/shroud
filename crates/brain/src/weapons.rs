@@ -102,7 +102,8 @@ pub struct WeaponSpec {
     pub ads_time_s: f32,
     /// Move speed multiplier carrying this gun.
     pub move_mult: f32,
-    /// Bullets go through thin cover (low walls, partitions, crates) losing this fraction of damage.
+    /// Bullets go through thin cover (low walls, partitions, crates) keeping up to this fraction of
+    /// their damage (less through thicker cover; see the game's `weapon::fire`).
     /// 0 = no penetration.
     pub penetration: f32,
     /// How far an unsuppressed shot is heard, metres.
