@@ -678,7 +678,7 @@ fn think_and_act(
         if Dir3::new(dir).is_err() {
             continue;
         }
-        shots_out.write(ShotFired { origin: muzzle, dir, by: e });
+        shots_out.write(ShotFired::new(muzzle, dir, e, kind));
         // Every pellet is its own ray inside the gun's cone; one tracer per shot (three for a
         // shotgun blast), damage summed into one hit per trigger pull.
         let spec = kind.spec();

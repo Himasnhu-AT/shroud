@@ -3,5 +3,4 @@
 
 pub use engine::paths::AssetsDir;
 
-pub const RIFLE_MODEL: &str = "models/rifle.glb";
 pub const ENEMY_MODEL: &str = "models/enemy.glb";

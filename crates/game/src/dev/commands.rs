@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use crate::enemy::debug::DebugOverlay;
 use crate::player::{ExternalControl, Player, PlayerIntent, PlayerSet};
 use crate::state::{AppState, GameState};
-use crate::weapon::{Damage, Health, RELOAD_TIME, Rifle, ShotFired, WeaponSet};
+use crate::weapon::{Damage, FireMode, Health, Rifle, ShotFired, WeaponSet};
 
 const MAX_PITCH: f32 = 1.54;
 /// `player.fire` gives up after this long (e.g. no ammo and reloading forever).
@@ -61,6 +61,10 @@ struct Fire {
 #[derive(Resource, Default)]
 struct HeldCrouch(bool);
 
+/// `player.reload`: press R for one frame.
+#[derive(Resource, Default)]
+struct ReloadPress(bool);
+
 /// `player.god`: the player's health is refilled every frame.
 #[derive(Resource, Default)]
 pub struct GodMode(pub bool);
@@ -70,6 +74,7 @@ pub(super) fn register(app: &mut App) {
         .init_resource::<FireJob>()
         .init_resource::<HeldCrouch>()
         .init_resource::<GodMode>()
+        .init_resource::<ReloadPress>()
         .configure_sets(Update, ControlDrive.after(PlayerSet::Input).before(PlayerSet::Move))
         .add_systems(Update, (drive_player.in_set(ControlDrive), (observe_fire, god_mode).after(WeaponSet)));
 
@@ -111,7 +116,7 @@ pub(super) fn register(app: &mut App) {
         )
         .add_deferred_control_command(
             "player.fire",
-            "Fire the rifle",
+            "Fire the gun in hand (semi-auto and pump/bolt guns get one trigger pull per shot)",
             params(&[("shots", "integer", "shots to fire (default 1)")]),
             player_fire,
         )
@@ -196,6 +201,8 @@ fn game_state(world: &mut World, _: Value) -> Result<Value, String> {
                 "pos": v3(tf.translation),
                 "hp": hp.map(|h| h.hp),
                 "ammo": rifle.map(|r| r.ammo),
+                "weapon": rifle.map(|r| format!("{:?}", r.kind)),
+                "reserve": rifle.map(|r| r.reserve),
                 "reloading": rifle.is_some_and(|r| r.reloading.is_some()),
                 "yaw": look.yaw,
                 "pitch": look.pitch,
@@ -335,15 +342,20 @@ fn drive_player(
     real: Res<Time<Real>>,
     state: Option<Res<State<GameState>>>,
     held: Res<HeldCrouch>,
+    mut reload: ResMut<ReloadPress>,
     mut moves: ResMut<MoveJob>,
     mut fires: ResMut<FireJob>,
     mut intent: ResMut<PlayerIntent>,
     mut external: ResMut<ExternalControl>,
     mut pending: ResMut<PendingReplies>,
-    mut players: Query<(&Transform, &mut FpsInput), With<Player>>,
+    mut players: Query<(&Transform, &mut FpsInput, Option<&Rifle>), With<Player>>,
+    // (trigger pulse for non-auto guns, reload pressed last frame)
+    mut pulse: Local<(bool, bool)>,
 ) {
     let is_playing = state.is_some_and(|s| *s.get() == GameState::Playing);
-    let Ok((tf, mut input)) = players.single_mut() else { return };
+    let Ok((tf, mut input, gun)) = players.single_mut() else { return };
+    // Auto guns hold the trigger; the others need it released between shots.
+    let auto = gun.is_none_or(|g| g.kind.spec().mode == FireMode::Auto);
     let pos = v3(tf.translation);
     let driving = moves.0.is_some() || fires.0.is_some() || held.0;
 
@@ -385,12 +397,21 @@ fn drive_player(
             fires.0 = None;
             intent.fire = false;
         } else {
-            intent.fire = true;
+            pulse.0 = !pulse.0;
+            intent.fire = auto || pulse.0;
         }
     }
 
     if held.0 {
         input.crouch = true;
+    }
+    // A one-frame press: clear our own press next frame (headless has no keyboard to do it).
+    if std::mem::take(&mut pulse.1) {
+        intent.reload = false;
+    }
+    if std::mem::take(&mut reload.0) {
+        intent.reload = true;
+        pulse.1 = true;
     }
     let driving = moves.0.is_some() || fires.0.is_some() || held.0;
     if external.0 != driving {
@@ -432,11 +453,13 @@ fn god_mode(god: Res<GodMode>, mut players: Query<&mut Health, With<Player>>) {
 
 fn player_reload(world: &mut World, _: Value) -> Result<Value, String> {
     let e = player_entity(world)?;
-    let mut rifle = world.get_mut::<Rifle>(e).ok_or("no rifle")?;
-    if rifle.reloading.is_none() && rifle.ammo < rifle.mag {
-        rifle.reloading = Some(RELOAD_TIME);
+    let gun = world.get::<Rifle>(e).ok_or("no gun")?;
+    let (ammo, can) = (gun.ammo, gun.reloading.is_none() && gun.ammo < gun.mag && gun.reserve > 0);
+    if can {
+        // One frame of R through the same path as the key.
+        world.resource_mut::<ReloadPress>().0 = true;
     }
-    Ok(json!({"ammo": rifle.ammo, "reloading": rifle.reloading.is_some()}))
+    Ok(json!({"ammo": ammo, "reloading": can}))
 }
 
 fn player_crouch(world: &mut World, p: Value) -> Result<Value, String> {

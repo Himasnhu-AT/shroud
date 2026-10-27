@@ -101,3 +101,59 @@ fn control_port_drives_the_game() {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
+
+#[test]
+fn arsenal_over_the_control_port() {
+    let (mut game, port, key_file) = launch();
+    let mut c = Client::connect(port, key_file.parent().expect("key dir")).expect("connect");
+    c.set_timeout(Duration::from_secs(30));
+    exec(&mut c, "game.start", json!({}));
+    std::thread::sleep(Duration::from_millis(300));
+    exec(&mut c, "enemy.freeze", json!({"on": true}));
+
+    // Default loadout: Kestrel rifle + pistol.
+    let s = exec(&mut c, "weapon.state", json!({}));
+    assert_eq!(s["kind"], json!("Rifle"), "{s}");
+    assert_eq!(s["slots"][1]["kind"], json!("Pistol"), "{s}");
+
+    // Pump shotgun: one trigger pull per shot, one shell gone per shot.
+    exec(&mut c, "weapon.give", json!({"kind": "shotgun"}));
+    std::thread::sleep(Duration::from_millis(900));
+    let fired = exec(&mut c, "player.fire", json!({"shots": 2}));
+    assert_eq!(fired["shots"], json!(2), "{fired}");
+    let s = exec(&mut c, "weapon.state", json!({}));
+    assert_eq!(s["kind"], json!("Shotgun"), "{s}");
+    assert_eq!(s["ammo"], json!(4), "{s}");
+
+    // ADS tightens the cone.
+    let hip = s["spread"].as_f64().expect("spread");
+    exec(&mut c, "weapon.ads", json!({"on": true}));
+    std::thread::sleep(Duration::from_millis(600));
+    let aimed = exec(&mut c, "weapon.state", json!({}));
+    assert!(aimed["spread"].as_f64().expect("spread") < hip, "{aimed} vs hip {hip}");
+    exec(&mut c, "weapon.ads", json!({"on": false}));
+
+    // Sidearm; the shotgun keeps its shells in its slot.
+    exec(&mut c, "weapon.switch", json!({"slot": 2}));
+    std::thread::sleep(Duration::from_millis(900));
+    let s = exec(&mut c, "weapon.state", json!({}));
+    assert_eq!(s["kind"], json!("Pistol"), "{s}");
+    assert_eq!(s["slots"][0]["ammo"], json!(4), "{s}");
+    let fired = exec(&mut c, "player.fire", json!({"shots": 3}));
+    assert_eq!(fired["shots"], json!(3), "{fired}");
+
+    // Walk-over ammo: a dropped pistol tops up the reserve.
+    let before = exec(&mut c, "weapon.state", json!({}))["reserve"].as_u64().expect("reserve");
+    let p = pos(&exec(&mut c, "game.state", json!({})));
+    exec(&mut c, "weapon.drop_pickup", json!({"kind": "pistol", "x": p[0], "z": p[2]}));
+    std::thread::sleep(Duration::from_millis(300));
+    let after = exec(&mut c, "weapon.state", json!({}))["reserve"].as_u64().expect("reserve");
+    assert!(after > before, "reserve {before} -> {after}");
+
+    exec(&mut c, "game.quit", json!({}));
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while game.0.try_wait().expect("wait").is_none() {
+        assert!(Instant::now() < deadline, "game did not exit after game.quit");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}

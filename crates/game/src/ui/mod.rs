@@ -9,6 +9,7 @@ pub mod killfeed;
 pub mod round_summary;
 pub mod scoreboard;
 pub mod theme;
+pub mod weapon_hud;
 
 use bevy::prelude::*;
 
@@ -20,7 +21,7 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((callouts::CalloutsPlugin, hud::HudPlugin, debrief::DebriefPlugin, feedback::FeedbackPlugin))
+        app.add_plugins((callouts::CalloutsPlugin, hud::HudPlugin, debrief::DebriefPlugin, feedback::FeedbackPlugin, weapon_hud::WeaponHudPlugin))
             .add_plugins((killfeed::KillFeedPlugin, scoreboard::ScoreboardPlugin, round_summary::RoundSummaryPlugin))
             // The pause menu freezes weapons and the enemy AI (the engine already stops the
             // player's movement). Time<Virtual> is paused too, but frame-based logic would tick.

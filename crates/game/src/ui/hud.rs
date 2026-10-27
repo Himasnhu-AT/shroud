@@ -1,5 +1,6 @@
-//! In-game HUD: crosshair + hit marker, health bar, ammo (mag ticks, reload progress),
-//! round score + timer + enemy pips at the top, kill feed, and round start / round over banners.
+//! In-game HUD: crosshair + hit marker, health bar, round score + timer + enemy pips at the top,
+//! kill feed, and round start / round over banners. The weapon panel, dynamic crosshair spread,
+//! scope and pickup prompt are `ui::weapon_hud`.
 
 use bevy::prelude::*;
 
@@ -9,7 +10,7 @@ use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
-use crate::weapon::{Health, HitMarker, MAG_SIZE, RELOAD_TIME, Rifle, WeaponSet};
+use crate::weapon::{Health, HitMarker, WeaponSet};
 
 pub struct HudPlugin;
 
@@ -70,16 +71,6 @@ struct HpFill;
 #[derive(Component)]
 struct HpGhost;
 #[derive(Component)]
-struct AmmoText;
-#[derive(Component)]
-struct AmmoTick(u32);
-#[derive(Component)]
-struct AmmoTicks;
-#[derive(Component)]
-struct ReloadBar;
-#[derive(Component)]
-struct ReloadFill;
-#[derive(Component)]
 struct ScoreText(bool);
 #[derive(Component)]
 struct RoundText;
@@ -103,7 +94,7 @@ struct RoundStartBanner;
 #[derive(Component)]
 pub struct CrosshairUi;
 #[derive(Component)]
-struct CrosshairBar;
+pub struct CrosshairBar;
 
 /// Fade/scale animation for banners and kill-feed lines.
 #[derive(Component)]
@@ -347,48 +338,10 @@ fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<S
                 });
         });
 
-    // Bottom-right: ammo.
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                right: px(40),
-                bottom: px(40),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::FlexEnd,
-                row_gap: px(8),
-                padding: UiRect::new(px(22), px(18), px(10), px(14)),
-                ..default()
-            },
-            hud_panel_gradient(false),
-            Pickable::IGNORE,
-            ChildOf(root),
-        ))
-        .with_children(|a| {
-            a.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_S), ..default() }, Pickable::IGNORE))
-                .with_children(|r| {
-                    r.spawn(text("RIFLE", label(SIZE_TINY + 1.0), TEXT_MUTED));
-                    r.spawn((AmmoText, text("30", display(64.0), TEXT), Node { margin: UiRect::bottom(px(-10)), ..default() }));
-                    r.spawn(text(format!("/ {MAG_SIZE}"), display(26.0), TEXT_MUTED));
-                    r.spawn(text("\u{221e}", body_bold(22.0), TEXT_DIM));
-                });
-            a.spawn((AmmoTicks, Node { column_gap: px(2), height: px(12), ..default() }, Pickable::IGNORE)).with_children(|t| {
-                for i in 0..MAG_SIZE {
-                    t.spawn((AmmoTick(i), Node { width: px(4), height: px(12), ..default() }, BackgroundColor(TEXT), Pickable::IGNORE));
-                }
-            });
-            a.spawn((
-                ReloadBar,
-                Node { width: px(MAG_SIZE as f32 * 6.0 - 2.0), height: px(12), display: Display::None, ..default() },
-                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.1)),
-                Pickable::IGNORE,
-            ))
-            .with_child((ReloadFill, Node { width: percent(0), height: percent(100), ..default() }, BackgroundColor(ACCENT), Pickable::IGNORE));
-        });
 }
 
 /// Dark wash behind a bottom HUD block, fading towards the screen centre.
-fn hud_panel_gradient(left: bool) -> BackgroundGradient {
+pub fn hud_panel_gradient(left: bool) -> BackgroundGradient {
     let (a, b) = (Color::srgba(0.02, 0.03, 0.05, 0.62), Color::srgba(0.02, 0.03, 0.05, 0.0));
     BackgroundGradient::from(LinearGradient::new(
         if left { std::f32::consts::FRAC_PI_2 } else { -std::f32::consts::FRAC_PI_2 },
@@ -430,10 +383,9 @@ fn update_hud(
     clock: Res<RoundClock>,
     settings: Res<ShroudSettings>,
     marker: Res<HitMarker>,
-    player: Query<(&Health, Option<&Rifle>), With<Player>>,
+    player: Query<&Health, With<Player>>,
     mut texts: ParamSet<(
         Query<(&mut Text, &mut TextColor), With<HpText>>,
-        Query<(&mut Text, &mut TextColor), With<AmmoText>>,
         Query<(&mut Text, &ScoreText)>,
         Query<&mut Text, With<RoundText>>,
         Query<&mut Text, With<TimerText>>,
@@ -442,13 +394,9 @@ fn update_hud(
     mut bars: ParamSet<(
         Query<(&mut Node, &mut BackgroundColor), With<HpFill>>,
         Query<&mut Node, With<HpGhost>>,
-        Query<(&AmmoTick, &mut BackgroundColor)>,
-        Query<&mut Node, With<AmmoTicks>>,
-        Query<&mut Node, With<ReloadBar>>,
-        Query<&mut Node, With<ReloadFill>>,
     )>,
     mut hit: Query<(&mut Visibility, &mut UiTransform, &Children), With<HitMarkerUi>>,
-    mut hit_bars: Query<&mut BackgroundColor, (Without<AmmoTick>, Without<HpFill>)>,
+    mut hit_bars: Query<&mut BackgroundColor, Without<HpFill>>,
     mut ghost: Local<f32>,
 ) {
     fn set(t: &mut Text, s: String) {
@@ -456,7 +404,7 @@ fn update_hud(
             t.0 = s;
         }
     }
-    if let Ok((hp, rifle)) = player.single() {
+    if let Ok(hp) = player.single() {
         let frac = (hp.hp / hp.max).clamp(0.0, 1.0);
         let low = frac < crate::audio::LOW_HP_FRAC;
         if let Ok((mut t, mut c)) = texts.p0().single_mut() {
@@ -472,47 +420,19 @@ fn update_hud(
         if let Ok(mut n) = bars.p1().single_mut() {
             n.width = percent(*ghost * 100.0);
         }
-        if let Some(r) = rifle {
-            if let Ok((mut t, mut c)) = texts.p1().single_mut() {
-                set(&mut t, r.ammo.to_string());
-                c.0 = if r.ammo == 0 { ENEMY } else if r.ammo * 5 <= r.mag { ACCENT } else { TEXT };
-            }
-            for (tick, mut bg) in &mut bars.p2() {
-                let c = if tick.0 < r.ammo { TEXT } else { Color::srgba(1.0, 1.0, 1.0, 0.14) };
-                if bg.0 != c {
-                    bg.0 = c;
-                }
-            }
-            let reloading = r.reloading;
-            let (ticks_d, bar_d) = if reloading.is_some() { (Display::None, Display::Flex) } else { (Display::Flex, Display::None) };
-            if let Ok(mut n) = bars.p3().single_mut()
-                && n.display != ticks_d
-            {
-                n.display = ticks_d;
-            }
-            if let Ok(mut n) = bars.p4().single_mut()
-                && n.display != bar_d
-            {
-                n.display = bar_d;
-            }
-            if let (Some(left), Ok(mut n)) = (reloading, bars.p5().single_mut()) {
-                n.width = percent((1.0 - left / RELOAD_TIME).clamp(0.0, 1.0) * 100.0);
-            }
-        }
     }
-    for (mut t, s) in &mut texts.p2() {
+    for (mut t, s) in &mut texts.p1() {
         set(&mut t, if s.0 { info.round_score.0 } else { info.round_score.1 }.to_string());
     }
-    if let Ok(mut t) = texts.p3().single_mut() {
+    if let Ok(mut t) = texts.p2().single_mut() {
         let mp = flow.player_rounds + 1 >= ROUNDS_TO_WIN || flow.enemy_rounds + 1 >= ROUNDS_TO_WIN;
         set(&mut t, if mp && flow.round > 1 { format!("ROUND {} \u{b7} MATCH POINT", flow.round) } else { format!("ROUND {}", flow.round.max(1)) });
     }
-    if let Ok(mut t) = texts.p4().single_mut() {
+    if let Ok(mut t) = texts.p3().single_mut() {
         // Counts down to the round time limit.
         set(&mut t, fmt_clock(crate::match_flow::ROUND_TIME_S - clock.0));
-
     }
-    if let Ok(mut t) = texts.p5().single_mut() {
+    if let Ok(mut t) = texts.p4().single_mut() {
         set(&mut t, format!("SQUAD GEN {}  \u{b7}  {}", info.generation, settings.difficulty.label().to_uppercase()));
     }
     if let Ok((mut vis, mut tf, kids)) = hit.single_mut() {
