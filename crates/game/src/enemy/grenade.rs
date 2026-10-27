@@ -126,7 +126,7 @@ fn spawn_grenades(
                 })
                 .clone();
             let mat = if t.kind == GrenadeKind::Frag { frag_mat } else { flash_mat };
-            e.insert((Mesh3d(mesh), MeshMaterial3d(mat)));
+            e.insert((Mesh3d(mesh), MeshMaterial3d(mat), engine::render_budget::Actor));
             if t.kind == GrenadeKind::Frag {
                 e.with_child((FuseLight, PointLight { color: Color::srgb(1.0, 0.15, 0.1), intensity: 0.0, range: 3.0, ..default() }, Transform::default()));
             }
@@ -311,6 +311,7 @@ fn spawn_blast(
             MeshMaterial3d(materials.add(StandardMaterial { base_color: color.into(), unlit: true, alpha_mode: AlphaMode::Add, ..default() })),
             Transform::from_translation(at).with_scale(Vec3::splat(0.1)),
             bevy::light::NotShadowCaster,
+            engine::render_budget::Actor,
             DespawnOnExit(GameState::Playing),
         ))
         .with_child(PointLight { color: light, intensity, range: 14.0, ..default() });

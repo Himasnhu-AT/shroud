@@ -96,7 +96,7 @@ pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mu
     let slots = (0..POOL)
         .map(|_| {
             let e = commands
-                .spawn((Name::new("casing"), Mesh3d(mesh.clone()), MeshMaterial3d(brass.clone()), Transform::default(), Visibility::Hidden, NotShadowCaster))
+                .spawn((Name::new("casing"), Mesh3d(mesh.clone()), MeshMaterial3d(brass.clone()), Transform::default(), Visibility::Hidden, NotShadowCaster, engine::render_budget::Actor))
                 .id();
             Slot { e, pos: Vec3::ZERO, vel: Vec3::ZERO, rot: Quat::IDENTITY, spin: Vec3::ZERO, age: 0.0, size: Vec3::ONE, live: false, resting: false }
         })

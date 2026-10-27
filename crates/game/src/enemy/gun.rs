@@ -159,6 +159,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
                 Transform::default(),
                 Visibility::Hidden,
                 bevy::light::NotShadowCaster,
+                engine::render_budget::Actor,
             ))
             .id()
     };

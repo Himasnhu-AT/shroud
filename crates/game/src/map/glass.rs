@@ -190,6 +190,7 @@ fn shatter(
                 MeshMaterial3d(a.mat.clone()),
                 Transform::from_translation(at).with_scale(Vec3::new(s, s * (0.6 + rnd()), 0.006)).with_rotation(Quat::from_rotation_y(rnd() * 6.3)),
                 NotShadowCaster,
+                engine::render_budget::Actor,
             ));
         }
     }

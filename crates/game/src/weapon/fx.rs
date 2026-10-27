@@ -308,7 +308,7 @@ fn impact_fx(
         let tf = Transform { translation: hit.pos + n * 0.004, rotation, scale: Vec3::splat(size) };
         let mat = wfx.holes[hole_index(hit.surface)].clone();
         if decals.ents.len() < MAX_DECALS {
-            let e = commands.spawn((Name::new("Bullet hole"), Mesh3d(wfx.quad.clone()), MeshMaterial3d(mat), tf, Visibility::Inherited, NotShadowCaster)).id();
+            let e = commands.spawn((Name::new("Bullet hole"), Mesh3d(wfx.quad.clone()), MeshMaterial3d(mat), tf, Visibility::Inherited, NotShadowCaster, engine::render_budget::Actor)).id();
             decals.ents.push(e);
         } else {
             let i = decals.next % MAX_DECALS;
@@ -332,7 +332,7 @@ fn impact_fx(
         let slot = TracerSlot { e: Entity::PLACEHOLDER, from: t.from, dir: (t.to - t.from) / len, len, age: 0.0, live: true };
         if tracers.slots.len() < TRACER_POOL {
             let e = commands
-                .spawn((Name::new("Tracer"), Mesh3d(wfx.cube.clone()), MeshMaterial3d(wfx.tracer.clone()), Transform::from_translation(t.from).with_scale(Vec3::ZERO), NotShadowCaster))
+                .spawn((Name::new("Tracer"), Mesh3d(wfx.cube.clone()), MeshMaterial3d(wfx.tracer.clone()), Transform::from_translation(t.from).with_scale(Vec3::ZERO), NotShadowCaster, engine::render_budget::Actor))
                 .id();
             tracers.slots.push(TracerSlot { e, ..slot });
         } else {
