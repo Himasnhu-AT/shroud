@@ -167,20 +167,29 @@ fn fade_lines(
     mut commands: Commands,
     time: Res<Time>,
     mut lines: Query<(Entity, &mut CalloutLine, &mut BackgroundColor, &mut BorderColor, &Children)>,
-    mut texts: Query<&mut TextColor>,
+    mut texts: Query<(&mut TextColor, Option<&mut TextShadow>)>,
 ) {
     for (e, mut l, mut bg, mut border, kids) in &mut lines {
         l.0 += time.delta_secs();
         if l.0 >= LIFE_S {
             commands.entity(e).despawn();
-        } else {
-            let a = ((LIFE_S - l.0) / FADE_S).min(1.0);
-            bg.0.set_alpha(a * BG_ALPHA);
-            *border = BorderColor::all(l.1.with_alpha(a));
+            continue;
+        }
+        let a = ((LIFE_S - l.0) / FADE_S).min(1.0);
+        // Fully visible until the fade starts: skip the writes so nothing is marked changed.
+        if a >= 1.0 && bg.0.alpha() >= BG_ALPHA {
+            continue;
+        }
+        bg.0.set_alpha(a * BG_ALPHA);
+        *border = BorderColor::all(l.1.with_alpha(a));
 
-            for k in kids.iter() {
-                if let Ok(mut t) = texts.get_mut(k) {
-                    t.0.set_alpha(a);
+        for k in kids.iter() {
+            if let Ok((mut t, shadow)) = texts.get_mut(k) {
+                t.0.set_alpha(a);
+                // The shadow must fade with the text, or it reads as a second copy of the line.
+                if let Some(mut sh) = shadow {
+                    let base = TextShadow::default().color.alpha();
+                    sh.color.set_alpha(base * a);
                 }
             }
         }
