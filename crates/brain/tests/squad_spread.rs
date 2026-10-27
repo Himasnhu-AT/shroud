@@ -321,11 +321,12 @@ fn contact_encircles() {
     let mut overlap = 0.0;
     for (id, n, m, found) in t10.iter() {
         assert_eq!(*found, SEEDS.len(), "{id:?} x{n}: the squad should find him every time");
-        // Big maps (Township, 90 m): found and routes are graded; the ring isn't yet (x6 closes
-        // to ~110 deg at 2x time, x4 to ~195 deg: four members on 90 m of streets and houses).
-        if Arena::build(*id).half() <= brain::arena::ARENA_HALF {
-            assert!(m.max_gap < 180.0, "{id:?} x{n}: they should come from several sides (max gap {:.0} deg)", m.max_gap);
-        }
+        // Big maps (Township, 90 m) are graded at ~2x the time. Before staging scaled with the
+        // cutoffs' routes and x4 kept one shooter there, Township x4 closed only to ~195 deg
+        // (two shooters and two cutoffs that peeked before they got round); now ~140 deg.
+        let big = Arena::build(*id).half() > brain::arena::ARENA_HALF;
+        let limit = if big && *n == 4 { 160.0 } else { 180.0 };
+        assert!(m.max_gap < limit, "{id:?} x{n}: they should come from several sides (max gap {:.0} deg)", m.max_gap);
         overlap += m.overlap / t10.len() as f32;
     }
     // Before: 22% of walked cells shared on average.
@@ -375,10 +376,12 @@ fn debug_encircle_trace() {
     let id = match std::env::var("MAP").as_deref() {
         Ok("depot") => MapId::Depot,
         Ok("office") => MapId::Office,
+        Ok("township") => MapId::Township,
         _ => MapId::Foundry,
     };
+    let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
     let a = Arena::build(id);
-    let mut w = World::new(&a, 4, 1, Difficulty::Regular);
+    let mut w = World::new(&a, 4, seed, Difficulty::Regular);
     let player = hideout(&a);
     let mut t = 0.0;
     let mut c0: Option<f32> = None;
@@ -400,7 +403,18 @@ fn debug_encircle_trace() {
                 w.minds.iter().map(|m| m.goal().label()).collect::<Vec<_>>(),
                 roles,
             );
-            if t - c0.unwrap_or(0.0) > 10.0 {
+            if k.is_multiple_of(40) && c0.is_some() {
+                let p = player;
+                eprintln!(
+                    "   shooters {:?} sectors {:?} bearings {:?} gap {:.0}",
+                    w.squad.shooters,
+                    w.squad.sector_of,
+                    w.pos.iter().map(|q| (*q - p).angle().to_degrees().round()).collect::<Vec<_>>(),
+                    max_gap_deg(p, &w.pos)
+                );
+            }
+            let lim = 10.0 * brain::search::map_scale(&a).powi(2);
+            if t - c0.unwrap_or(0.0) > lim {
                 break;
             }
         }

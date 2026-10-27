@@ -474,8 +474,8 @@ fn animate_viewmodel(
     if *tf != new_tf {
         *tf = new_tf;
     }
-    // Hidden behind the scope.
-    let want_vis = if w.scoped() { Visibility::Hidden } else { Visibility::Inherited };
+    // Hidden behind the optic (its overlay is the sight picture).
+    let want_vis = if w.sighted().is_some() { Visibility::Hidden } else { Visibility::Inherited };
     if *vis != want_vis {
         *vis = want_vis;
     }

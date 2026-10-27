@@ -161,6 +161,10 @@ pub struct Hitbox {
     pub head: bool,
 }
 
+/// How long the hit marker shows after a hit, and after a kill (it pops and fades out).
+pub const HIT_MARKER_S: f32 = 0.22;
+pub const KILL_MARKER_S: f32 = 0.4;
+
 /// Last time the player hit something; the HUD shows a marker while `timer > 0`.
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct HitMarker {
@@ -189,7 +193,7 @@ pub fn apply_damage(
         if h.is_dead() {
             if players.contains(d.source) {
                 marker.kill = true;
-                marker.timer = 0.3;
+                marker.timer = KILL_MARKER_S;
             }
             if dummy {
                 h.hp = h.max;
