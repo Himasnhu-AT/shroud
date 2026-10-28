@@ -68,12 +68,12 @@ fn cook_set(set: &Path) -> usize {
     let mut total = 0;
     let color = image::open(source(set, "color").unwrap()).expect("color").to_rgba8();
     let levels = color_mips(&color);
-    total += write_ktx2(&set.join("color.ktx2"), VK_BC7_SRGB, &levels, |l| encode_bc7(l));
+    total += write_ktx2(&set.join("color.ktx2"), VK_BC7_SRGB, &levels, encode_bc7);
 
     if let Some(p) = source(set, "normal") {
         let n = image::open(p).expect("normal").to_rgb8();
         let levels = normal_mips(&n);
-        total += write_ktx2(&set.join("normal.ktx2"), VK_BC5_UNORM, &levels, |l| encode_bc5(l));
+        total += write_ktx2(&set.join("normal.ktx2"), VK_BC5_UNORM, &levels, encode_bc5);
     }
 
     let (w, h) = color.dimensions();
@@ -92,7 +92,7 @@ fn cook_set(set: &Path) -> usize {
         *px = image::Rgba([ao.get_pixel(x, y)[0], rough.get_pixel(x, y)[0], 0, 255]);
     }
     let levels = linear_mips(&orm);
-    total += write_ktx2(&set.join("orm.ktx2"), VK_BC5_UNORM, &levels, |l| encode_bc5(l));
+    total += write_ktx2(&set.join("orm.ktx2"), VK_BC5_UNORM, &levels, encode_bc5);
     total
 }
 
