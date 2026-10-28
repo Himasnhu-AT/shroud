@@ -597,43 +597,89 @@ pub(crate) fn sync_look(arena: Res<ArenaRes>, look: Option<Res<Look>>, mut range
     }
 }
 
-/// A map lamp; the first `budget` (by `rank`) cast shadows.
+/// A map lamp; the nearest few cast shadows (see [`apply_light_budget`]).
 #[derive(Component, Clone, Copy, Debug)]
-pub(crate) struct MapLamp {
-    pub rank: usize,
-}
+pub(crate) struct MapLamp;
 
-/// How many map lamps may cast shadows at a quality level.
-pub(crate) fn shadow_budget(q: GraphicsQuality) -> usize {
+/// Shadow budget for map lamps at a quality level: (spot shadows, point-light cube shadows).
+/// Spot shadows are layers of the sun's shadow texture (same resolution), and a cube costs six
+/// views, so both stay small. The picks go to the lamps nearest the camera (see [`pick_shadowed`]).
+pub(crate) fn shadow_budget(q: GraphicsQuality) -> (usize, usize) {
     match q {
-        GraphicsQuality::Low => 0,
-        GraphicsQuality::Medium => 3,
-        GraphicsQuality::High => 6,
-        GraphicsQuality::Ultra => 10,
+        GraphicsQuality::Low => (0, 0),
+        GraphicsQuality::Medium => (2, 0),
+        GraphicsQuality::High => (4, 0),
+        GraphicsQuality::Ultra => (6, 1),
     }
 }
 
-/// Applies the shadow budget when lamps spawn or the quality setting changes.
+/// Lamps farther than this from the camera never get a shadow (a lamp's range is 12-14 m).
+const LAMP_SHADOW_DIST: f32 = 25.0;
+/// A shadowed lamp keeps its slot until it is this much farther than a challenger (hysteresis,
+/// so shadows don't swap back and forth while the player stands between two lamps).
+const SWAP_MARGIN: f32 = 1.25;
+/// How often the picks are re-ranked.
+const RERANK_S: f32 = 0.25;
+
+/// Choose up to `k` lamps to shadow from `(lamp, distance)` pairs: nearest first, but lamps that
+/// already have a shadow (`current`) keep it unless a candidate is clearly closer. Lamps beyond
+/// `max_d` are dropped (with the same margin for ones already shadowed).
+pub(crate) fn pick_shadowed(current: &[usize], dists: &[(usize, f32)], k: usize, max_d: f32) -> Vec<usize> {
+    if k == 0 {
+        return Vec::new();
+    }
+    let held = |i: usize| current.contains(&i);
+    // Held lamps compete as if they were closer by the margin.
+    let mut ranked: Vec<(usize, f32)> = dists
+        .iter()
+        .filter(|&&(i, d)| d <= if held(i) { max_d * SWAP_MARGIN } else { max_d })
+        .map(|&(i, d)| (i, if held(i) { d / SWAP_MARGIN } else { d }))
+        .collect();
+    ranked.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+    let mut out: Vec<usize> = ranked.into_iter().take(k).map(|(i, _)| i).collect();
+    out.sort_unstable();
+    out
+}
+
+/// Gives the lamp shadow budget to the lamps nearest the camera, re-ranked a few times a second
+/// with hysteresis (Unreal and Godot both size local-light shadows by how close or big the light
+/// is on screen; authoring order put shadows on far corners of the map while nearby lamps had none).
 pub(crate) fn apply_light_budget(
+    time: Res<Time<Real>>,
     settings: Option<Res<Settings>>,
     added: Query<(), Added<MapLamp>>,
-    mut spots: Query<(&MapLamp, &mut SpotLight)>,
-    mut points: Query<(&MapLamp, &mut PointLight)>,
+    cam: Query<&GlobalTransform, With<engine::gfx::MainCamera>>,
+    mut spots: Query<(Entity, &GlobalTransform, &mut SpotLight), With<MapLamp>>,
+    mut points: Query<(Entity, &GlobalTransform, &mut PointLight), (With<MapLamp>, Without<SpotLight>)>,
+    mut next: Local<f32>,
 ) {
-    let changed = settings.as_ref().is_some_and(|s| s.is_changed());
-    if !changed && added.is_empty() {
+    let now = time.elapsed_secs();
+    let changed = settings.as_ref().is_some_and(|s| s.is_changed()) || !added.is_empty();
+    if !changed && now < *next {
         return;
     }
-    let budget = shadow_budget(settings.map(|s| s.quality).unwrap_or_default());
-    for (lamp, mut l) in &mut spots {
-        let on = lamp.rank < budget;
+    *next = now + RERANK_S;
+    let Some(eye) = cam.iter().next().map(|t| t.translation()) else {
+        return;
+    };
+    let (k_spot, k_point) = shadow_budget(settings.map(|s| s.quality).unwrap_or_default());
+    // Entities index the candidates; `index()` is stable for a lamp's lifetime.
+    let rank = |q: &mut dyn Iterator<Item = (Entity, Vec3, bool)>, k: usize| -> Vec<Entity> {
+        let all: Vec<(Entity, Vec3, bool)> = q.collect();
+        let current: Vec<usize> = all.iter().enumerate().filter(|(_, c)| c.2).map(|(i, _)| i).collect();
+        let dists: Vec<(usize, f32)> = all.iter().enumerate().map(|(i, c)| (i, c.1.distance(eye))).collect();
+        pick_shadowed(&current, &dists, k, LAMP_SHADOW_DIST).into_iter().map(|i| all[i].0).collect()
+    };
+    let on_spots = rank(&mut spots.iter().map(|(e, t, l)| (e, t.translation(), l.shadow_maps_enabled)), k_spot);
+    for (e, _, mut l) in &mut spots {
+        let on = on_spots.contains(&e);
         if l.shadow_maps_enabled != on {
             l.shadow_maps_enabled = on;
         }
     }
-    // Point-light shadows cost six renders each: only on Ultra, and only the first two.
-    for (lamp, mut l) in &mut points {
-        let on = budget >= 10 && lamp.rank < 2;
+    let on_points = rank(&mut points.iter().map(|(e, t, l)| (e, t.translation(), l.shadow_maps_enabled)), k_point);
+    for (e, _, mut l) in &mut points {
+        let on = on_points.contains(&e);
         if l.shadow_maps_enabled != on {
             l.shadow_maps_enabled = on;
         }
@@ -643,6 +689,24 @@ pub(crate) fn apply_light_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lamp_shadows_go_to_the_nearest_with_hysteresis() {
+        let d = [(0, 3.0), (1, 10.0), (2, 5.0), (3, 30.0)];
+        // Nearest two, far one excluded.
+        assert_eq!(pick_shadowed(&[], &d, 2, 25.0), vec![0, 2]);
+        assert_eq!(pick_shadowed(&[], &d, 9, 25.0), vec![0, 1, 2]);
+        assert!(pick_shadowed(&[0], &d, 0, 25.0).is_empty());
+        // Lamp 1 holds its slot against lamp 2 that is only a little closer...
+        let near = [(1, 6.0), (2, 5.5)];
+        assert_eq!(pick_shadowed(&[1], &near, 1, 25.0), vec![1]);
+        // ...but loses it to one that is clearly closer.
+        let far = [(1, 9.0), (2, 5.0)];
+        assert_eq!(pick_shadowed(&[1], &far, 1, 25.0), vec![2]);
+        // A held lamp slightly past the cutoff keeps its shadow; a new one doesn't get one.
+        assert_eq!(pick_shadowed(&[3], &[(3, 27.0)], 1, 25.0), vec![3]);
+        assert!(pick_shadowed(&[], &[(3, 27.0)], 1, 25.0).is_empty());
+    }
 
     #[test]
     fn sun_conversion_matches_the_authored_direction() {

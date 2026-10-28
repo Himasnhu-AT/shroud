@@ -154,7 +154,7 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
                 commands.spawn((
                     Name::new(format!("Lamp light {rank}")),
                     ArenaPiece,
-                    MapLamp { rank },
+                    MapLamp,
                     SpotLight {
                         color: Color::srgb(1.0, 0.95, 0.88),
                         intensity: 200_000.0,
@@ -209,7 +209,7 @@ fn point(commands: &mut Commands, rank: usize, pos: Vec3, color: Color, intensit
     commands.spawn((
         Name::new(format!("Lamp light {rank}")),
         ArenaPiece,
-        MapLamp { rank },
+        MapLamp,
         PointLight { color, intensity, range, radius: 0.1, shadow_maps_enabled: false, ..default() },
         Transform::from_translation(pos),
     ));
