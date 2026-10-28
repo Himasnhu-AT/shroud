@@ -619,6 +619,16 @@ pub(crate) fn shadow_budget(q: GraphicsQuality) -> (usize, usize) {
     }
 }
 
+/// Lamp shadow budget after the governor's game level: level 1 keeps two thirds of the spots and
+/// drops the point cube, level 2 and up keeps a third.
+pub(crate) fn governed(k_spot: usize, k_point: usize, game_level: u8) -> (usize, usize) {
+    match game_level {
+        0 => (k_spot, k_point),
+        1 => (k_spot * 2 / 3, 0),
+        _ => (k_spot / 3, 0),
+    }
+}
+
 /// Lamps farther than this from the camera never get a shadow (a lamp's range is 12-14 m).
 const LAMP_SHADOW_DIST: f32 = 25.0;
 /// A shadowed lamp keeps its slot until it is this much farther than a challenger (hysteresis,
@@ -657,10 +667,11 @@ pub(crate) fn apply_light_budget(
     cam: Query<&GlobalTransform, With<engine::gfx::MainCamera>>,
     mut spots: Query<(Entity, &GlobalTransform, &mut SpotLight), With<MapLamp>>,
     mut points: Query<(Entity, &GlobalTransform, &mut PointLight), (With<MapLamp>, Without<SpotLight>)>,
+    governor: Option<Res<engine::render_budget::GovernorState>>,
     mut next: Local<f32>,
 ) {
     let now = time.elapsed_secs();
-    let changed = settings.as_ref().is_some_and(|s| s.is_changed()) || !added.is_empty();
+    let changed = settings.as_ref().is_some_and(|s| s.is_changed()) || !added.is_empty() || governor.as_ref().is_some_and(|g| g.is_changed());
     if !changed && now < *next {
         return;
     }
@@ -669,6 +680,8 @@ pub(crate) fn apply_light_budget(
         return;
     };
     let (k_spot, k_point) = shadow_budget(settings.map(|s| s.quality).unwrap_or_default());
+    // The engine governor's game steps (`GovernorStep::Game(n)`) trim lamp shadows under load.
+    let (k_spot, k_point) = governed(k_spot, k_point, governor.map_or(0, |g| g.game_level));
     // Entities index the candidates; `index()` is stable for a lamp's lifetime.
     let rank = |q: &mut dyn Iterator<Item = (Entity, Vec3, bool)>, k: usize| -> Vec<Entity> {
         let all: Vec<(Entity, Vec3, bool)> = q.collect();
@@ -712,6 +725,14 @@ mod tests {
         // A held lamp slightly past the cutoff keeps its shadow; a new one doesn't get one.
         assert_eq!(pick_shadowed(&[3], &[(3, 27.0)], 1, 25.0), vec![3]);
         assert!(pick_shadowed(&[], &[(3, 27.0)], 1, 25.0).is_empty());
+    }
+
+    #[test]
+    fn governor_game_levels_trim_lamp_shadows() {
+        assert_eq!(governed(6, 1, 0), (6, 1));
+        assert_eq!(governed(6, 1, 1), (4, 0));
+        assert_eq!(governed(6, 1, 2), (2, 0));
+        assert_eq!(governed(0, 0, 2), (0, 0));
     }
 
     #[test]
