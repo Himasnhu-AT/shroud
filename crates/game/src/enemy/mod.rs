@@ -24,7 +24,7 @@ pub use brain::loadout::{GunState, Role};
 use crate::armed::Armed;
 use crate::assets::{AssetsDir, ENEMY_MODEL};
 use crate::map::{ArenaRes, to_ground, to_world};
-use crate::player::{Player, PlayerSet, collide_and_slide};
+use crate::player::{Player, collide_and_slide};
 use engine::fps::FpsMotor;
 use crate::save::Brain;
 use crate::settings::ShroudSettings;
@@ -58,15 +58,17 @@ impl Plugin for EnemyPlugin {
             .add_message::<Callout>()
             .init_resource::<EnemyFreeze>()
             .init_resource::<LeanOverride>()
-            .configure_sets(
-                Update,
-                // Paused (Esc menu): the AI doesn't advance.
-                EnemySet.after(PlayerSet::Move).before(WeaponSet).run_if(in_state(GameState::Playing).and_then(not_paused)),
-            )
+            // The AI and enemy movement run on the fixed physics tick (Godot's
+            // `_physics_process`, Unreal's async physics tick): their raycasts and capsule
+            // slides no longer scale with frame rate, and hitboxes move before the physics
+            // step, so the collider tree bullets test is never a tick stale. Rendering eases
+            // between ticks (`TransformInterpolation` on the enemy and its model).
+            // Paused (Esc menu): the AI doesn't advance.
+            .configure_sets(FixedUpdate, EnemySet.run_if(in_state(GameState::Playing).and_then(not_paused)))
             .init_resource::<Inbox>()
             .init_resource::<AiTimings>()
             .add_systems(
-                Update,
+                FixedUpdate,
                 (collect_inbox, start_ai_clock, think_and_act, stop_ai_clock, sync_pose).chain().in_set(EnemySet),
             )
             .add_systems(Update, enemy_deaths.after(WeaponSet).run_if(in_state(GameState::Playing)))
@@ -86,7 +88,7 @@ pub struct Callout {
     pub role: Option<&'static str>,
 }
 
-/// Enemy AI runs here: after player movement, before weapons apply damage.
+/// Enemy AI and movement (`FixedUpdate`, before the physics step).
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EnemySet;
 
@@ -275,6 +277,7 @@ pub fn spawn_squad(
                 Name::new(format!("Enemy {slot}")),
                 Enemy { slot },
                 engine::render_budget::Actor,
+                TransformInterpolation,
                 Armed(kind),
                 EnemyCombat {
                     gun: GunState::new(kind),
@@ -328,6 +331,8 @@ pub fn spawn_squad(
         if let Some(scene) = &model {
             commands.spawn((
                 ModelRoot,
+                // Its lean roll changes on the fixed tick: ease it too.
+                TransformInterpolation,
                 bevy::world_serialization::WorldAssetRoot(scene.clone()),
                 Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
                 ChildOf(root),

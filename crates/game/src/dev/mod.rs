@@ -97,7 +97,7 @@ fn build_dev(app: &mut App) {
 
     // F3 is the enemy debug view; the perf overlay stays on F2.
     app.insert_resource(PerfOverlayKey(KeyCode::F2))
-        .perf_span(Update, EnemySet, "ai")
+        .perf_span(FixedUpdate, EnemySet, "ai")
         .perf_span(Update, WeaponSet, "weapons")
         .declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset"])
         .add_systems(Update, watch_events);
