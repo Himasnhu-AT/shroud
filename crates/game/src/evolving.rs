@@ -70,7 +70,7 @@ fn start(
         .name("evolve".into())
         .spawn(move || {
             let arena = Arena::build(map);
-            let summary = state.evolve_merged(&report, trained, &arena, &EvolveConfig::default(), |f| p.store((f * 100.0) as u32, Ordering::Relaxed));
+            let summary = state.evolve_merged(&report, trained, &arena, &EvolveConfig { worker_init: Some(utility_priority), ..EvolveConfig::default() }, |f| p.store((f * 100.0) as u32, Ordering::Relaxed));
             (state, summary)
         })
         .ok();
@@ -175,5 +175,16 @@ fn update_label(
         if t.0 != s {
             t.0 = s.clone();
         }
+    }
+}
+
+/// Evolution runs on several cores while the debrief is up. Utility QoS keeps it off the
+/// frame's critical path (main and render threads always win) without the heavy throttling of
+/// background priority, so the fixed time budget still gets most of its work done.
+fn utility_priority() {
+    // SAFETY: sets the calling thread's own QoS class; failure is harmless.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_UTILITY, 0);
     }
 }

@@ -22,7 +22,8 @@ impl Plugin for TrainerTaskPlugin {
         app.insert_resource(BackgroundTrainer { checkpoint, ..default() })
             .add_systems(OnEnter(AppState::MainMenu), start)
             .add_systems(OnEnter(GameState::Debrief), start)
-            .add_systems(OnEnter(GameState::Playing), stop);
+            .add_systems(OnEnter(GameState::Playing), stop)
+            .add_systems(Update, reap);
     }
 }
 
@@ -30,6 +31,8 @@ impl Plugin for TrainerTaskPlugin {
 #[derive(Resource, Default)]
 pub struct BackgroundTrainer {
     running: Option<TrainerHandle>,
+    /// `running` was asked to stop and is winding down (finishing its sim round, saving).
+    stopping: bool,
     /// Stopped session, kept to resume (or merge) while the brain hasn't moved on.
     parked: Option<Trainer>,
     /// Rounds simulated in background sessions since the last merge (for the UI).
@@ -61,6 +64,7 @@ impl BackgroundTrainer {
     }
 
     fn halt(&mut self, log: &Dev) {
+        self.stopping = false;
         let Some(h) = self.running.take() else { return };
         if let Some(t) = h.finish() {
             let win = t.last.map_or(0.0, |s| s.champion_win);
@@ -85,6 +89,11 @@ fn lower_priority() {
 }
 
 fn start(mut bg: ResMut<BackgroundTrainer>, brain: Res<Brain>, headless: Res<Headless>, log: Dev) {
+    // A trainer still winding down from the last match: collect it first (between matches,
+    // so waiting is fine).
+    if bg.stopping {
+        bg.halt(&log);
+    }
     if headless.0 || engine::cli::dev_flag("no-trainer") || bg.running.is_some() || !brain.state.evaluated {
         return;
     }
@@ -106,6 +115,18 @@ fn start(mut bg: ResMut<BackgroundTrainer>, brain: Res<Brain>, headless: Res<Hea
     }
 }
 
-fn stop(mut bg: ResMut<BackgroundTrainer>, log: Dev) {
-    bg.halt(&log);
+/// A match is starting: ask the trainer to stop without waiting for it. Joining here blocked the
+/// main thread for the rest of its sim round plus a checkpoint save, right as the round began.
+fn stop(mut bg: ResMut<BackgroundTrainer>) {
+    if let Some(h) = &bg.running {
+        h.cancel();
+        bg.stopping = true;
+    }
+}
+
+/// Collect a stopped trainer once its thread has actually finished (the join is then instant).
+fn reap(mut bg: ResMut<BackgroundTrainer>, log: Dev) {
+    if bg.stopping && bg.running.as_ref().is_some_and(TrainerHandle::is_finished) {
+        bg.halt(&log);
+    }
 }

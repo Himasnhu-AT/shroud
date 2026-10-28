@@ -125,7 +125,13 @@ pub struct EnemyAnimationPlugin;
 
 impl Plugin for EnemyAnimationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, load.run_if(has_visuals))
+        // Few characters on screen: keep full-rate animation out to mid range (the engine's
+        // default tiers, made for crowds, halved the rate of enemies 15-35 m away).
+        app.insert_resource(engine::anim::AnimConfig {
+            lod: engine::anim::AnimLod { distances: [40.0, 80.0, 150.0], ..default() },
+            ..default()
+        })
+        .add_systems(Startup, load.run_if(has_visuals))
             .add_systems(
                 Update,
                 (build_def, request, link, resolve_bones, drive).chain().run_if(has_visuals).run_if(resource_exists::<EnemyAnims>),

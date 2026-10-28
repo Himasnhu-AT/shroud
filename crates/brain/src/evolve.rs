@@ -367,6 +367,8 @@ pub struct EvolveConfig {
     /// Successive-halving rungs (survivors double their rounds each rung).
     pub rungs: usize,
     pub threads: usize,
+    /// Run on each worker thread before it simulates (e.g. lower its priority).
+    pub worker_init: Option<fn()>,
 }
 
 impl Default for EvolveConfig {
@@ -378,6 +380,7 @@ impl Default for EvolveConfig {
             squads: 8,
             rungs: 3,
             threads: std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 6),
+            worker_init: None,
         }
     }
 }
@@ -647,7 +650,7 @@ impl BrainState {
         let mut sim_win_rate = self.champion.as_ref().map_or(0.0, |c| c.score.win_rate());
         let mut gens = 0;
         let limits = Limits::for_generation(self.generation + 1);
-        let par = Parallel { threads: cfg.threads, ..Default::default() };
+        let par = Parallel { threads: cfg.threads, worker_init: cfg.worker_init, ..Default::default() };
         while gens < cfg.max_neat_generations && (gens == 0 || start.elapsed() < cfg.budget) {
             let frac = (gens as f32 / cfg.max_neat_generations as f32).max(start.elapsed().as_secs_f32() / cfg.budget.as_secs_f32());
             if let Some(r) = self.train_generation(arena, limits, cfg, team_spirit(frac), &par, &mut rng) {
