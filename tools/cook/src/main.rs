@@ -7,6 +7,7 @@
 //!   short and shade flat/sparkly).
 //! - `orm.ktx2`    BC5: R = ambient occlusion (white if the set has none), G = roughness. Used
 //!   for both the occlusion and metallic-roughness slots (metallic is 0, so B is unused).
+//! - `color.avg`   the colour map's average in linear light ("r g b"), for far-detail tints.
 //!
 //! Every level is zstd-supercompressed. About 4x less VRAM and texture bandwidth than RGBA8,
 //! and loading skips JPEG decode + CPU mip generation.
@@ -59,7 +60,8 @@ fn source(set: &Path, map: &str) -> Option<PathBuf> {
 fn up_to_date(set: &Path) -> bool {
     let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
     let newest_src = ["color", "normal", "rough", "ao"].iter().filter_map(|m| source(set, m)).filter_map(|p| mtime(&p)).max();
-    let oldest_out = ["color", "normal", "orm"].iter().map(|m| mtime(&set.join(format!("{m}.ktx2")))).collect::<Option<Vec<_>>>().and_then(|v| v.into_iter().min());
+    let outs = ["color.ktx2", "normal.ktx2", "orm.ktx2", "color.avg"];
+    let oldest_out = outs.iter().map(|m| mtime(&set.join(m))).collect::<Option<Vec<_>>>().and_then(|v| v.into_iter().min());
     matches!((newest_src, oldest_out), (Some(s), Some(o)) if o >= s)
 }
 
@@ -69,6 +71,10 @@ fn cook_set(set: &Path) -> usize {
     let color = image::open(source(set, "color").unwrap()).expect("color").to_rgba8();
     let levels = color_mips(&color);
     total += write_ktx2(&set.join("color.ktx2"), VK_BC7_SRGB, &levels, encode_bc7);
+    // Linear-light average colour: the engine tints far-detail versions with it (BC7 has no CPU
+    // pixels to average at load).
+    let avg = average_linear(&color);
+    std::fs::write(set.join("color.avg"), format!("{:.4} {:.4} {:.4}\n", avg[0], avg[1], avg[2])).expect("write color.avg");
 
     if let Some(p) = source(set, "normal") {
         let n = image::open(p).expect("normal").to_rgb8();
@@ -150,6 +156,17 @@ fn chain(w: u32, h: u32, base: Vec<[f32; 4]>, fix: impl Fn([f32; 4]) -> [f32; 4]
         (cw, ch) = (nw, nh);
     }
     levels
+}
+
+fn average_linear(img: &RgbaImage) -> [f32; 3] {
+    let mut acc = [0.0f64; 3];
+    for p in img.pixels() {
+        for c in 0..3 {
+            acc[c] += srgb_to_linear(p[c]) as f64;
+        }
+    }
+    let n = (img.width() * img.height()).max(1) as f64;
+    acc.map(|v| (v / n) as f32)
 }
 
 fn color_mips(img: &RgbaImage) -> Vec<RgbaImage> {
