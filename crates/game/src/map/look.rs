@@ -12,7 +12,7 @@ use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, Gr
 use engine::render_budget::SceneryRanges;
 
 use super::{ArenaRes, Gfx};
-use crate::gfx::{load_pbr, world_uv_cuboid};
+use crate::gfx::load_pbr;
 use engine::settings::{CoreSettings as Settings, GraphicsQuality};
 
 /// A material recipe: texture set under `assets/textures/<tex>/`, tint, flat fallback
@@ -297,8 +297,11 @@ fn barrel_radius(b: &Block) -> f32 {
 }
 
 /// Mesh, material and trims for block `i` (entity `e`, already spawned with its collider).
+/// `walls` / `small` collect the plain box of a block into map-wide meshes, one per material
+/// (shadow-casting / not): hundreds of unique world-UV boxes otherwise each cost a draw in every
+/// view (main, prepass and up to ~25 shadow views) and can't be instanced.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Block, size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette) {
+pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Block, size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette, walls: &mut super::dressing::Batch, small: &mut super::dressing::Batch) {
     let detail = g.quality != GraphicsQuality::Low;
     // Props drawn from parts instead of their box (the block keeps only its collider).
     if matches!(b.skin, Skin::Car | Skin::Dumpster | Skin::Shelf) {
@@ -319,18 +322,21 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         }
         _ => {}
     }
-    let (mat, tile) = p.mat(g, &p.block_key(i, b));
-    let mesh = match b.skin {
-        Skin::Barrel => {
-            let (r, h) = (barrel_radius(b), b.height);
-            p.shape(g, &format!("barrel {r:.3} {h:.3}"), || Cylinder::new(r, h).mesh().resolution(20).into())
-        }
-        _ => g.meshes.add(world_uv_cuboid(size, center, tile)),
-    };
-    commands.entity(e).insert((Mesh3d(mesh), MeshMaterial3d(mat.clone())));
+    let key = p.block_key(i, b);
+    let (mat, _) = p.mat(g, &key);
     // Small props don't cast shadows (perf rule); walls and big cover do.
-    if b.kind == BlockKind::Low && size.x.max(size.z) < 1.6 {
-        commands.entity(e).insert(NotShadowCaster);
+    let small_prop = b.kind == BlockKind::Low && size.x.max(size.z) < 1.6;
+    if b.skin == Skin::Barrel {
+        let (r, h) = (barrel_radius(b), b.height);
+        let mesh = p.shape(g, &format!("barrel {r:.3} {h:.3}"), || Cylinder::new(r, h).mesh().resolution(20).into());
+        commands.entity(e).insert((Mesh3d(mesh), MeshMaterial3d(mat.clone())));
+        if small_prop {
+            commands.entity(e).insert(NotShadowCaster);
+        }
+    } else {
+        // The box joins a merged mesh; the block keeps its collider and parents its trims.
+        if small_prop { small.add(g, p, &key, size, center) } else { walls.add(g, p, &key, size, center) }
+        commands.entity(e).insert(Visibility::default());
     }
     match (b.skin, b.kind) {
         // Foundry: glowing amber lip on low cover, cyan strip along the outer walls.

@@ -194,6 +194,8 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
 
     // Small static wall pieces (window sills, Township lintels) merged per material.
     let mut merged = dressing::Batch::default();
+    // Small low cover merged without shadows.
+    let mut small = dressing::Batch::default();
     for (i, b) in arena.blocks.iter().enumerate() {
         let size = Vec3::new(b.half.x * 2.0, b.height, b.half.y * 2.0);
         let kind_name = match b.kind {
@@ -216,7 +218,7 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
                 let key = p.block_key(i, b);
                 merged.add(g, p, &key, size, center);
             } else {
-                look::dress_block(commands, id, i, b, size, center, g, p);
+                look::dress_block(commands, id, i, b, size, center, g, p, &mut merged, &mut small);
             }
         }
     }
@@ -270,6 +272,7 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
     }
 
     if let (Some(g), Some(p)) = (gfx, pal.as_mut()) {
+        small.spawn(commands, g, p, "Low cover", false);
         dressing::spawn(commands, arena, g, p, merged);
     }
 }
