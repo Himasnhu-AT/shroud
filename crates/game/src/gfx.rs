@@ -27,7 +27,8 @@ impl Plugin for GfxPlugin {
             // Arenas are at most ~91 m corner to corner: even on Low (x0.6) nothing inside one
             // fades, loses its shadow or goes flat; scenery stops at the fog.
             .insert_resource(SceneryRanges { shadow: 160.0, small_props: 160.0, far: 160.0, view: FOG_END, ..default() })
-            .add_systems(Startup, (sky_and_sun, init_fx_assets).run_if(has_visuals));
+            .add_systems(Startup, (sky_and_sun, init_fx_assets).run_if(has_visuals))
+            .add_systems(Update, mip_gltf_images.run_if(has_visuals));
     }
 }
 
@@ -138,4 +139,24 @@ fn init_fx_assets(
         }),
     };
     commands.insert_resource(fx);
+}
+
+/// Bevy's glTF loader builds no mip chain, so model textures (weapons, props, enemy guns)
+/// alias and shimmer at distance. Build one on the CPU when such an image finishes loading.
+fn mip_gltf_images(mut events: MessageReader<AssetEvent<Image>>, server: Res<AssetServer>, mut images: ResMut<Assets<Image>>) {
+    for ev in events.read() {
+        let AssetEvent::LoadedWithDependencies { id } = ev else {
+            continue;
+        };
+        let from_gltf = server.get_path(*id).is_some_and(|p| p.path().extension().is_some_and(|e| e == "glb" || e == "gltf"));
+        if !from_gltf {
+            continue;
+        }
+        // Check first: `get_mut` alone marks the image changed and re-uploads it.
+        if images.get(*id).is_some_and(|img| img.texture_descriptor.mip_level_count == 1)
+            && let Some(mut img) = images.get_mut(*id)
+        {
+            engine::gfx::build_mips(&mut img);
+        }
+    }
 }

@@ -79,7 +79,7 @@ fn muzzle_def(name: &str, smoke: u32, size: f32, sparks: u32, light: f32) -> Eff
         gravity: Vec3::new(0.0, 0.35, 0.0),
         drag: 2.2,
         size: (size * 0.7, size),
-        size_over_life: Curve::linear(0.7, 3.2),
+        size_over_life: Curve::linear(0.7, 2.4),
         color_over_life: Gradient::srgb(&[(0.0, [0.7, 0.7, 0.7], 0.0), (0.1, [0.65, 0.65, 0.66], 0.28), (1.0, [0.6, 0.6, 0.62], 0.0)]),
         rotation: (0.0, std::f32::consts::TAU),
         spin: (-0.6, 0.6),
@@ -112,7 +112,7 @@ fn dust_def(name: &str, rgb: [f32; 3], count: u32, size: f32, debris: Option<([f
         gravity: Vec3::new(0.0, -0.4, 0.0),
         drag: 3.0,
         size: (size * 0.6, size),
-        size_over_life: Curve::linear(0.5, 2.6),
+        size_over_life: Curve::linear(0.5, 2.0),
         color_over_life: Gradient::srgb(&[(0.0, rgb, 0.75), (1.0, rgb, 0.0)]),
         rotation: (0.0, std::f32::consts::TAU),
         spin: (-1.0, 1.0),
@@ -154,15 +154,17 @@ fn dust_def(name: &str, rgb: [f32; 3], count: u32, size: f32, debris: Option<([f
     def
 }
 
+// Puff counts and sizes are kept low: smoke and dust are alpha-blended at full resolution and
+// sit 0.5-2 m from the camera, so each extra puff is a large slice of screen overdraw indoors.
 fn register_effects(library: Option<ResMut<VfxLibrary>>) {
     let Some(mut lib) = library else { return };
     let defs = [
-        muzzle_def("muzzle_light", 3, 0.09, 5, 0.0),
-        muzzle_def("muzzle_rifle", 4, 0.12, 7, 0.0),
-        muzzle_def("muzzle_shotgun", 8, 0.2, 14, 0.0),
-        muzzle_def("muzzle_marksman", 7, 0.18, 10, 0.0),
-        dust_def("impact_concrete", [0.62, 0.6, 0.56], 6, 0.22, Some(([0.45, 0.44, 0.42], 5, MeshShape::Shard)), 3),
-        dust_def("impact_plaster", [0.88, 0.86, 0.82], 8, 0.26, Some(([0.9, 0.88, 0.85], 4, MeshShape::Cube)), 0),
+        muzzle_def("muzzle_light", 2, 0.08, 5, 0.0),
+        muzzle_def("muzzle_rifle", 2, 0.1, 7, 0.0),
+        muzzle_def("muzzle_shotgun", 4, 0.16, 14, 0.0),
+        muzzle_def("muzzle_marksman", 4, 0.15, 10, 0.0),
+        dust_def("impact_concrete", [0.62, 0.6, 0.56], 4, 0.22, Some(([0.45, 0.44, 0.42], 5, MeshShape::Shard)), 3),
+        dust_def("impact_plaster", [0.88, 0.86, 0.82], 5, 0.26, Some(([0.9, 0.88, 0.85], 4, MeshShape::Cube)), 0),
         dust_def("impact_metal", [0.4, 0.4, 0.42], 2, 0.12, None, 12),
         dust_def("impact_wood", [0.55, 0.42, 0.28], 4, 0.18, Some(([0.62, 0.45, 0.26], 7, MeshShape::Shard)), 0),
         dust_def("impact_suit", [0.3, 0.32, 0.36], 2, 0.15, None, 9),
