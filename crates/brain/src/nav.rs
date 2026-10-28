@@ -3,8 +3,53 @@
 
 use crate::arena::{Block, BlockKind};
 use crate::math::V2;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+
+/// Per-thread A* buffers, reused across searches. Entries are valid only where `stamp == epoch`,
+/// so a search starts by bumping `epoch` instead of allocating and clearing ~100 KB per call.
+#[derive(Default)]
+struct Scratch {
+    g: Vec<f32>,
+    came: Vec<u32>,
+    stamp: Vec<u32>,
+    closed: Vec<u32>,
+    epoch: u32,
+    open: BinaryHeap<Node>,
+}
+
+impl Scratch {
+    fn begin(&mut self, n: usize) {
+        if self.g.len() != n || self.epoch == u32::MAX {
+            self.g = vec![f32::INFINITY; n];
+            self.came = vec![u32::MAX; n];
+            self.stamp = vec![0; n];
+            self.closed = vec![0; n];
+            self.epoch = 0;
+        }
+        self.epoch += 1;
+        self.open.clear();
+    }
+
+    fn g(&self, i: usize) -> f32 {
+        if self.stamp[i] == self.epoch { self.g[i] } else { f32::INFINITY }
+    }
+
+    fn came(&self, i: usize) -> usize {
+        if self.stamp[i] == self.epoch && self.came[i] != u32::MAX { self.came[i] as usize } else { usize::MAX }
+    }
+
+    fn set(&mut self, i: usize, g: f32, came: usize) {
+        self.stamp[i] = self.epoch;
+        self.g[i] = g;
+        self.came[i] = if came == usize::MAX { u32::MAX } else { came as u32 };
+    }
+}
+
+thread_local! {
+    static SCRATCH: RefCell<Scratch> = RefCell::new(Scratch::default());
+}
 
 #[derive(Clone, Debug)]
 pub struct NavGrid {
@@ -121,20 +166,26 @@ impl NavGrid {
         if start == goal {
             return Some(vec![goal_pos]);
         }
-        let n = self.w * self.w;
-        let mut g = vec![f32::INFINITY; n];
-        let mut came = vec![usize::MAX; n];
-        let mut open = BinaryHeap::new();
-        g[start] = 0.0;
+        SCRATCH.with_borrow_mut(|sc| self.search(sc, from, start, goal, goal_pos, extra))
+    }
+
+    fn search(&self, sc: &mut Scratch, from: V2, start: usize, goal: usize, goal_pos: V2, extra: Option<&dyn Fn(V2) -> f32>) -> Option<Vec<V2>> {
+        sc.begin(self.w * self.w);
+        sc.set(start, 0.0, usize::MAX);
         let h = |i: usize| self.center(i).dist(goal_pos);
-        open.push(Node { f: h(start), idx: start });
+        sc.open.push(Node { f: h(start), idx: start });
         let w = self.w as i64;
-        while let Some(Node { idx, .. }) = open.pop() {
+        while let Some(Node { idx, .. }) = sc.open.pop() {
+            // Stale heap entry: this cell was already expanded with a better cost.
+            if sc.closed[idx] == sc.epoch {
+                continue;
+            }
+            sc.closed[idx] = sc.epoch;
             if idx == goal {
                 let mut cells = vec![goal];
                 let mut c = goal;
-                while came[c] != usize::MAX {
-                    c = came[c];
+                while sc.came(c) != usize::MAX {
+                    c = sc.came(c);
                     cells.push(c);
                 }
                 cells.reverse();
@@ -146,13 +197,14 @@ impl NavGrid {
                 return Some(path);
             }
             let (x, z) = ((idx % self.w) as i64, (idx / self.w) as i64);
+            let gi = sc.g(idx);
             for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
                 let (nx, nz) = (x + dx, z + dz);
                 if nx < 0 || nz < 0 || nx >= w || nz >= w {
                     continue;
                 }
                 let ni = (nz * w + nx) as usize;
-                if !self.walkable[ni] {
+                if !self.walkable[ni] || sc.closed[ni] == sc.epoch {
                     continue;
                 }
                 // No corner cutting.
@@ -161,11 +213,10 @@ impl NavGrid {
                 }
                 let step = if dx != 0 && dz != 0 { std::f32::consts::SQRT_2 } else { 1.0 } * self.cell;
                 let cost = step * (1.0 + extra.map_or(0.0, |f| f(self.center(ni)).max(0.0)));
-                let ng = g[idx] + cost;
-                if ng < g[ni] {
-                    g[ni] = ng;
-                    came[ni] = idx;
-                    open.push(Node { f: ng + h(ni), idx: ni });
+                let ng = gi + cost;
+                if ng < sc.g(ni) {
+                    sc.set(ni, ng, idx);
+                    sc.open.push(Node { f: ng + h(ni), idx: ni });
                 }
             }
         }
