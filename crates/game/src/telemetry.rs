@@ -98,6 +98,12 @@ fn record(
     let s = &mut *s;
     let dt = time.delta_secs();
     s.clock += dt;
+    // Dead (the death camera runs while the round is still Playing): close the duel once and
+    // record nothing more, or every frame opened and lost a new duel against the body.
+    if php.is_dead() {
+        finish(&mut t, s, true);
+        return;
+    }
     let pos = to_ground(ptf.translation);
     let fwd = ptf.forward();
     let p_vel = V2::new(motor.velocity.x, motor.velocity.z);
