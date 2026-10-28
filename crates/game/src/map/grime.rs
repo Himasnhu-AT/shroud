@@ -295,9 +295,31 @@ fn budget(id: MapId) -> (f32, bool, usize, usize, usize) {
     }
 }
 
-/// Whether ground point `p` is clear of every block (with a margin).
-fn clear_of_blocks(arena: &Arena, p: Vec2, margin: f32) -> bool {
-    arena.blocks.iter().all(|b| (p.x - b.center.x).abs() > b.half.x + margin || (p.y - b.center.y).abs() > b.half.y + margin)
+/// The floor-grime placement graph (points -> noise -> clear of blocks), authored as data.
+const GRIME_GRAPH: &str = include_str!("../../../../assets/pcg/grime.pcg.ron");
+
+/// Floor grime spots from the PCG graph: (stains, marks), each up to its budget, in a stable
+/// order (point seed), with the seed for per-spot randomness.
+fn grime_spots(arena: &Arena, n_stains: usize, n_marks: usize) -> (Vec<(Vec2, u64)>, Vec<(Vec2, u64)>) {
+    use pcg_core::{Graph, Inputs, Rect, evaluate, glam};
+    let graph = Graph::from_ron(GRIME_GRAPH).expect("assets/pcg/grime.pcg.ron");
+    let half = arena.half() - 1.0;
+    let blocks = arena.blocks.iter().map(|b| Rect::new(glam::Vec2::new(b.center.x, b.center.y), glam::Vec2::new(b.half.x, b.half.y))).collect();
+    let inputs = Inputs::default().rects("floor", vec![Rect::new(glam::Vec2::ZERO, glam::Vec2::splat(half))]).rects("blocks", blocks);
+    let out = evaluate(&graph, &inputs, None).expect("grime graph");
+    let take = |port: &str, n: usize| -> Vec<(Vec2, u64)> {
+        let Some(ps) = out.emits.get(port) else { return Vec::new() };
+        let mut v: Vec<(Vec2, u64)> = (0..ps.len()).map(|i| ps.get(i)).map(|p| (Vec2::new(p.pos.x, p.pos.z), p.seed)).collect();
+        v.sort_by_key(|&(_, s)| s);
+        v.truncate(n);
+        v
+    };
+    (take("stains", n_stains), take("marks", n_marks))
+}
+
+/// A deterministic float in `lo..hi` from a point seed and a salt.
+fn seeded(seed: u64, salt: u64, lo: f32, hi: f32) -> f32 {
+    lo + (hi - lo) * pcg_core::unit(pcg_core::mix64(seed ^ salt))
 }
 
 /// Spawns grime for the current map once per map build.
@@ -329,35 +351,26 @@ pub(crate) fn spawn_grime(
         return;
     }
     let mut rng = Seq(arena.id as u32 * 7919 + 17);
-    let half = arena.half() - 1.0;
     let decal = |commands: &mut Commands, m: &Handle<ForwardDecalMaterial<StandardMaterial>>, tf: Transform| {
         let e = spawn_decal(commands, m.clone(), tf);
         commands.entity(e).insert((ArenaPiece, NotShadowCaster));
     };
-    // Floor stains and marks, on open ground (inside buildings too).
-    for (count, mat, kind) in [(n_stains, &g.stain, 0), (n_marks, &g.marks, 1)] {
-        let mut placed = 0;
-        for _ in 0..count * 8 {
-            if placed == count {
-                break;
-            }
-            let p = Vec2::new(rng.range(-half, half), rng.range(-half, half));
+    // Floor stains and marks on open ground (inside buildings too), placed by the PCG graph.
+    let (stains, marks) = grime_spots(arena, n_stains, n_marks);
+    for (kind, spots, mat) in [(0, &stains, &g.stain), (1, &marks, &g.marks)] {
+        for &(p, seed) in spots {
             let (w, l) = match (kind, arena.id) {
                 (0, _) => {
-                    let s = rng.range(0.8, 2.6);
-                    (s, s * rng.range(0.7, 1.3))
+                    let s = seeded(seed, 1, 0.8, 2.6);
+                    (s, s * seeded(seed, 2, 0.7, 1.3))
                 }
-                (_, MapId::Office) => (rng.range(0.5, 0.8), rng.range(0.5, 1.0)),
-                _ => (rng.range(0.7, 0.9), rng.range(3.0, 6.0)),
+                (_, MapId::Office) => (seeded(seed, 1, 0.5, 0.8), seeded(seed, 2, 0.5, 1.0)),
+                _ => (seeded(seed, 1, 0.7, 0.9), seeded(seed, 2, 3.0, 6.0)),
             };
-            if !clear_of_blocks(arena, p, 0.2 + w.max(l) * 0.3) {
-                continue;
-            }
-            let yaw = rng.range(0.0, std::f32::consts::TAU);
+            let yaw = seeded(seed, 3, 0.0, std::f32::consts::TAU);
             // Between the ground slab (y 0) and floor patches (y 0.012).
             let tf = Transform::from_xyz(p.x, 0.006, p.y).with_rotation(Quat::from_rotation_y(yaw)).with_scale(Vec3::new(w, 0.1, l));
             decal(&mut commands, mat, tf);
-            placed += 1;
         }
     }
     // Water streaks running down from the top of outer wall faces.
@@ -382,6 +395,21 @@ pub(crate) fn spawn_grime(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pcg_grime_is_deterministic_clear_of_blocks_and_fills_budgets() {
+        for id in MapId::ALL {
+            let arena = Arena::build(id);
+            let (_, _, n_stains, n_marks, _) = budget(id);
+            let a = grime_spots(&arena, n_stains, n_marks);
+            assert_eq!(a, grime_spots(&arena, n_stains, n_marks), "{id:?} not deterministic");
+            assert!(a.0.len() >= n_stains / 2 && a.1.len() >= n_marks / 2, "{id:?}: {} stains, {} marks", a.0.len(), a.1.len());
+            for &(p, _) in a.0.iter().chain(&a.1) {
+                let inside = arena.blocks.iter().any(|b| (p.x - b.center.x).abs() < b.half.x && (p.y - b.center.y).abs() < b.half.y);
+                assert!(!inside, "{id:?}: grime at {p:?} inside a block");
+            }
+        }
+    }
 
     #[test]
     fn noise_tiles_and_stays_in_range() {

@@ -1,0 +1,28 @@
+// Floor grime for every map (crates/game/src/map/grime.rs).
+// Inputs:
+//   "floor"  - the open playing area, one rect
+//   "blocks" - every wall and cover block (stay clear of them)
+// Emits:
+//   "stains" - oil and water blotches, clustered by noise into dirty patches
+//   "marks"  - tyre marks or scuffs, spread more evenly
+// The game takes up to each map's budget from each port, ordered by point seed, so a map's
+// look is stable.
+(
+    seed: 4711,
+    nodes: [
+        (id: "floor", op: Input(name: "floor")),
+        (id: "blocks", op: Input(name: "blocks")),
+
+        // Stains: blue noise 2.5 m apart, kept where an FBM "dirt" field is high, clear of walls.
+        (id: "stain_pts", op: PoissonSample(radius: 2.5), inputs: ["floor"]),
+        (id: "dirt", op: DensityNoise(scale: 16.0, octaves: 3, lo: 0.35, hi: 0.7), inputs: ["stain_pts"]),
+        (id: "dirty", op: DensityFilter(lo: 0.3), inputs: ["dirt"]),
+        (id: "stains_clear", op: Difference(against: "blocks", pad: 1.0), inputs: ["dirty"]),
+        (id: "stains", op: Emit(port: "stains"), inputs: ["stains_clear"]),
+
+        // Marks: sparser blue noise, more clearance (tyre marks run up to 6 m; Office scuffs are small).
+        (id: "mark_pts", op: PoissonSample(radius: 3.5), inputs: ["floor"]),
+        (id: "marks_clear", op: Difference(against: "blocks", pad: 1.2), inputs: ["mark_pts"]),
+        (id: "marks", op: Emit(port: "marks"), inputs: ["marks_clear"]),
+    ],
+)
