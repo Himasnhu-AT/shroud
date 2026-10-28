@@ -154,14 +154,20 @@ fn add_lines(
                 ChildOf(root),
             ))
             .with_children(|l| {
-                l.spawn((text(who, label(SIZE_LABEL + 1.0), color), TextShadow::default()));
-                l.spawn((text(what, body(SIZE_BODY - 1.0), TEXT), TextShadow::default()));
+                l.spawn((text(who, label(SIZE_LABEL + 1.0), color), line_shadow()));
+                l.spawn((text(what, body(SIZE_BODY - 1.0), TEXT), line_shadow()));
             });
         count += 1;
     }
 }
 
 const BG_ALPHA: f32 = 0.6;
+
+/// A tight drop shadow for legibility over bright scenes. Bevy's default (4 px offset) read as a
+/// second, offset copy of every callout line.
+fn line_shadow() -> TextShadow {
+    TextShadow { offset: Vec2::new(1.0, 1.0), color: Color::srgba(0.0, 0.0, 0.0, 0.55) }
+}
 
 fn fade_lines(
     mut commands: Commands,
@@ -188,7 +194,7 @@ fn fade_lines(
                 t.0.set_alpha(a);
                 // The shadow must fade with the text, or it reads as a second copy of the line.
                 if let Some(mut sh) = shadow {
-                    let base = TextShadow::default().color.alpha();
+                    let base = line_shadow().color.alpha();
                     sh.color.set_alpha(base * a);
                 }
             }
