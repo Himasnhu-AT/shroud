@@ -9,7 +9,7 @@ Shroud is built on `~/codes/game/engine`. Before rendering, asset, performance o
 - `/Users/himanshu/codes/game/engine/docs/GAME_GUIDE.md`: the playbook. It covers architecture, perf rules (merging, Scenery/Actor, shadows, warm-up, governor), the asset pipeline (texture cook, LODs), measuring correctly, and symptom → fix tables.
 
 Shroud specifics on top of the guide:
-- Textures are cooked to KTX2 with `memgate -- cargo run -p cook -- assets/textures`. Re-run it after adding or changing a texture set.
+- Textures are cooked to KTX2 with the engine's cook: `memgate -- cargo run --manifest-path /Users/himanshu/codes/game/engine/tools/cook/Cargo.toml -- assets/textures`. Re-run it after adding or changing a texture set; unchanged sets are skipped. No `--release` needed.
 - Pooled/moving FX are tagged `Actor`.
 - Lamp shadows follow the nearest-K rule and the governor `Game(n)` (`map/look.rs`).
 - Plain level blocks merge per material (`map.rs`, `dressing::Batch`).
