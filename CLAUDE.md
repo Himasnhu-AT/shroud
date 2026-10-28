@@ -3,6 +3,18 @@
 FPS in Rust (Bevy 0.19.1 + avian3d 0.7) where enemies evolve from your past matches.
 Plan: ~/.claude/plans/make-game-in-rust-peppy-snail.md
 
+## Engine playbook (read first)
+Shroud is built on `~/codes/game/engine`. Before rendering, asset, performance or gameplay-module work, read and follow:
+- `/Users/himanshu/codes/game/engine/CLAUDE.md`: the engine's must-follow rules and doc index.
+- `/Users/himanshu/codes/game/engine/docs/GAME_GUIDE.md`: the playbook. It covers architecture, perf rules (merging, Scenery/Actor, shadows, warm-up, governor), the asset pipeline (texture cook, LODs), measuring correctly, and symptom → fix tables.
+
+Shroud specifics on top of the guide:
+- Textures are cooked to KTX2 with `memgate -- cargo run -p cook -- assets/textures`. Re-run it after adding or changing a texture set.
+- Pooled/moving FX are tagged `Actor`.
+- Lamp shadows follow the nearest-K rule and the governor `Game(n)` (`map/look.rs`).
+- Plain level blocks merge per material (`map.rs`, `dressing::Batch`).
+- Pipelines warm at round start (`gfx.rs`).
+
 ## Layout
 - `crates/brain` — pure Rust AI (no Bevy): arena/nav, trait genome GA, NEAT, player model, utility AI, 2D trainer sim.
 - `crates/game` — Bevy app (binary `shroud`) on the `engine` crate (`~/codes/game/engine`: window, settings, menus, pause, UI kit, input, audio, FPS controller, render budget, devtools). Shroud keeps only game code; `dev` feature (default) = engine devtools + trace, ship builds use `--no-default-features`.
