@@ -28,7 +28,10 @@ impl Plugin for GfxPlugin {
             // fades, loses its shadow or goes flat; scenery stops at the fog.
             .insert_resource(SceneryRanges { shadow: 160.0, small_props: 160.0, far: 160.0, view: FOG_END, ..default() })
             .add_systems(Startup, (sky_and_sun, init_fx_assets).run_if(has_visuals))
-            .add_systems(Update, mip_gltf_images.run_if(has_visuals));
+            .add_systems(Update, mip_gltf_images.run_if(has_visuals))
+            .init_resource::<WarmupDue>()
+            .add_systems(OnEnter(crate::state::GameState::Playing), schedule_warmup.run_if(has_visuals))
+            .add_systems(Update, send_warmup.run_if(has_visuals));
     }
 }
 
@@ -158,5 +161,25 @@ fn mip_gltf_images(mut events: MessageReader<AssetEvent<Image>>, server: Res<Ass
         {
             engine::gfx::build_mips(&mut img);
         }
+    }
+}
+
+/// When to ask the engine to pre-compile pipelines (real seconds).
+#[derive(Resource, Default)]
+struct WarmupDue(Option<f32>);
+
+/// A round (and possibly a new map) just started: have the engine draw every material once so
+/// no pipeline compiles in the middle of a fight (Bevy compiles them synchronously on macOS:
+/// 100s of ms each). Pipeline keys come from the material, not its loaded pixels, so this can
+/// run right away and its one-off stall (~2 s for a fresh Township) lands inside the map-build
+/// stall instead of a second after the player spawns.
+fn schedule_warmup(mut due: ResMut<WarmupDue>, time: Res<Time<Real>>) {
+    due.0 = Some(time.elapsed_secs() + 0.05);
+}
+
+fn send_warmup(mut due: ResMut<WarmupDue>, time: Res<Time<Real>>, mut warm: MessageWriter<engine::render_budget::WarmPipelines>) {
+    if due.0.is_some_and(|t| time.elapsed_secs() >= t) {
+        due.0 = None;
+        warm.write(engine::render_budget::WarmPipelines);
     }
 }
