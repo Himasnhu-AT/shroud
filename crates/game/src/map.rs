@@ -38,7 +38,7 @@ impl Plugin for MapPlugin {
             .add_systems(Startup, (spawn_current_map, grime::setup.run_if(has_visuals)))
             .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
             // Map pieces are static scenery for the engine's render budget.
-            .add_observer(|add: On<Add, ArenaPiece>, mut c: Commands| {
+            .add_observer(|add: On<Add<ArenaPiece>>, mut c: Commands| {
                 c.entity(add.entity).insert(Scenery);
             })
             // Before the round resets anything that reads `ArenaRes` (player, squad).

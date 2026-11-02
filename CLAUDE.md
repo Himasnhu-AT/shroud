@@ -1,6 +1,6 @@
 # Shroud
 
-FPS in Rust (Bevy 0.19.1 + avian3d 0.7) where enemies evolve from your past matches.
+FPS in Rust (Bevy 0.20.1 + avian3d 0.8) where enemies evolve from your past matches.
 Plan: ~/.claude/plans/make-game-in-rust-peppy-snail.md
 
 ## Engine playbook (read first)
@@ -24,7 +24,7 @@ Shroud specifics on top of the guide:
 - **Run every cargo command through memgate**: `memgate -- cargo <args>` (installed in `~/.cargo/bin`). It queues jobs machine-wide (2 slots across all agents/terminals), waits for free memory, and kills runaway jobs (exit 137). Waiting in the queue is expected; never bypass it. `memgate status` shows the queue.
 - All worktrees share `/Users/himanshu/codes/game/shroud/target` (set in `.cargo/config.toml`). Builds queue on cargo's lock; that's intended. Don't set a different CARGO_TARGET_DIR. Disk is tight (~40 GB free): don't `cargo build --release` unless asked.
 - Test in batches: write a coherent chunk, then `memgate -- cargo test -p brain` (or `check -p game`), not after every edit.
-- Pin versions: bevy `=0.19.1`, avian3d `=0.7.0`, rand 0.9. Look up Bevy/Avian APIs in `~/.cargo/registry/src/*/bevy_*-0.19.*` and `avian3d-0.7.0` rather than guessing; 0.19 differs from older tutorials.
+- Pin versions: bevy `=0.20.1`, avian3d `=0.8.0`, rand 0.9. Look up Bevy/Avian APIs in `~/.cargo/registry/src/*/bevy_*-0.20.*` and `avian3d-0.8.0` rather than guessing; 0.20 differs from older tutorials.
 - Shared-target caveat: cargo gives the same workspace crate in different worktrees the same artifact identity, so a sibling worktree's build can make yours look up to date with *its* code (symptom: "unresolved import" for items that exist). Fix: `touch` the affected crate's sources and rebuild. Don't run divergent worktree builds of the same crate back to back without that.
 - Visual/behaviour checks: `python3 -I scripts/play.py scripts/look-at-enemies.json --out <dir>` launches the game (muted, offscreen by default: hidden window, camera renders to an image, so it works even if another app is fullscreen; mouse never grabbed) via memgate + control port, runs the steps, saves screenshots. Look at the PNGs before claiming a visual change works. `--headless` for non-visual checks.
 - Test runs never play sound: control-port/MCP/offscreen runs are muted unless `--sound`; play.py also passes `--mute`.

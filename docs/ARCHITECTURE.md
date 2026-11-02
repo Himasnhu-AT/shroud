@@ -3,9 +3,9 @@
 ## Stack
 | Piece | Choice | Why |
 |---|---|---|
-| Engine | **Bevy =0.19.1** | Bevy 0.20 (Oct 2026) is out, but Avian doesn't support it yet |
+| Engine | **Bevy =0.20.1** | Ported from 0.19.1 in Nov 2026 with the engine |
 | Game shell | **`engine` crate** (`~/codes/game/engine`) | window/headless bootstrap, settings, menus, pause, UI kit, input, audio, FPS controller, render budget, devtools |
-| Physics | **avian3d =0.7.0** | ECS-native; v0.7 targets Bevy 0.19 |
+| Physics | **avian3d =0.8.0** | ECS-native; v0.8 targets Bevy 0.20 |
 | Character controller | the engine's `FpsController` (kinematic, Avian shape casts) | FPS controller crates lag behind Bevy versions |
 | NEAT | in-house (~600 lines) | Rust NEAT crates are alpha or stale |
 | RNG | rand 0.9 + rand_chacha (seeded) | deterministic sims and tests |
