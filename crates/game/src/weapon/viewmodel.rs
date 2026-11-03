@@ -284,8 +284,8 @@ impl HandKit {
             glove: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), perceptual_roughness: 0.75, ..default() }),
             sleeve: materials.add(StandardMaterial { base_color: Color::srgb(0.34, 0.29, 0.21), perceptual_roughness: 0.9, ..default() }),
             cuff: materials.add(StandardMaterial {
-                base_color: Color::srgb(0.1, 0.45, 0.4),
-                emissive: LinearRgba::rgb(0.02, 0.12, 0.1),
+                base_color: Color::srgb(0.08, 0.33, 0.3),
+                emissive: LinearRgba::rgb(0.01, 0.05, 0.045),
                 perceptual_roughness: 0.7,
                 ..default()
             }),
@@ -302,10 +302,10 @@ fn arm(commands: &mut Commands, k: &HandKit, gun: Entity, wrist: Vec3, elbow: Ve
         commands.spawn((Name::new("arm"), Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), tf, ChildOf(gun)));
     };
     // The glove's wrist, then the cuff, then the sleeve.
-    part(&k.tube, &k.glove, Transform::from_translation(wrist + d / len * 0.02).with_rotation(rot).with_scale(Vec3::new(0.03, 0.05, 0.03)));
-    part(&k.tube, &k.cuff, Transform::from_translation(wrist + d / len * 0.06).with_rotation(rot).with_scale(Vec3::new(0.037, 0.03, 0.037)));
-    let s0 = 0.075;
-    part(&k.tube, &k.sleeve, Transform::from_translation(wrist + d / len * (s0 + (len - s0) * 0.5)).with_rotation(rot).with_scale(Vec3::new(0.042, len - s0, 0.042)));
+    part(&k.tube, &k.glove, Transform::from_translation(wrist + d / len * 0.02).with_rotation(rot).with_scale(Vec3::new(0.024, 0.05, 0.024)));
+    part(&k.tube, &k.cuff, Transform::from_translation(wrist + d / len * 0.055).with_rotation(rot).with_scale(Vec3::new(0.03, 0.018, 0.03)));
+    let s0 = 0.064;
+    part(&k.tube, &k.sleeve, Transform::from_translation(wrist + d / len * (s0 + (len - s0) * 0.5)).with_rotation(rot).with_scale(Vec3::new(0.032, len - s0, 0.032)));
 }
 
 fn spawn_hands(commands: &mut Commands, k: &HandKit, f: &Fit, gun: Entity) {
@@ -318,13 +318,13 @@ fn spawn_hands(commands: &mut Commands, k: &HandKit, f: &Fit, gun: Entity) {
     box_(commands, Vec3::new(0.02, -0.02, 0.0) * sc, Vec3::new(0.018, 0.075, 0.065) * sc, Quat::IDENTITY);
     box_(commands, Vec3::new(0.0, -0.028, -0.03) * sc, Vec3::new(0.042, 0.06, 0.018) * sc, Quat::IDENTITY);
     box_(commands, Vec3::new(-0.015, 0.01, -0.01) * sc, Vec3::new(0.014, 0.016, 0.05) * sc, Quat::IDENTITY);
-    arm(commands, k, gun, Vec3::new(0.02, -0.06, 0.045), Vec3::new(0.16, -0.32, 0.42));
+    arm(commands, k, gun, Vec3::new(0.018, -0.055, 0.04) * sc, Vec3::new(0.2, -0.36, 0.36));
     let s = f.support;
     if f.pistol {
         // Cupping the firing hand from the left.
         box_(commands, s + Vec3::new(-0.008, 0.0, -0.004), Vec3::new(0.016, 0.06, 0.055), Quat::IDENTITY);
         box_(commands, s + Vec3::new(0.008, -0.01, -0.03), Vec3::new(0.034, 0.045, 0.016), Quat::IDENTITY);
-        arm(commands, k, gun, s + Vec3::new(-0.02, -0.04, 0.04), s + Vec3::new(-0.2, -0.3, 0.38));
+        arm(commands, k, gun, s + Vec3::new(-0.015, -0.035, 0.035), s + Vec3::new(-0.24, -0.36, 0.3));
     } else {
         // Under the handguard / on the pump: palm below, fingers up the right side, thumb left.
         box_(commands, s + Vec3::new(0.0, -0.032, 0.0), Vec3::new(0.06, 0.024, 0.09), Quat::IDENTITY);

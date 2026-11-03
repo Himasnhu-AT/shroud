@@ -214,8 +214,8 @@ fn helmet_mesh() -> Mesh {
     merge([
         (dome(5, 14), Transform::from_scale(Vec3::new(0.135, 0.125, 0.145))),
         // Rails along both sides.
-        (cuboid(0.02, 0.025, 0.14), t(0.132, 0.015, 0.0)),
-        (cuboid(0.02, 0.025, 0.14), t(-0.132, 0.015, 0.0)),
+        (cuboid(0.012, 0.02, 0.12), t(0.13, 0.02, 0.0)),
+        (cuboid(0.012, 0.02, 0.12), t(-0.13, 0.02, 0.0)),
         // NVG shroud on the brow and the counterweight at the back.
         (cuboid(0.05, 0.035, 0.03), t(0.0, 0.06, -0.14)),
         (cuboid(0.07, 0.04, 0.035), t(0.0, 0.05, 0.14)),
@@ -338,7 +338,7 @@ fn dress(
             put(hand, Transform::from_xyz(0.0, 0.05, 0.0).with_scale(Vec3::new(0.05, 0.075, 0.05)), &kit.glove, &kit.black);
         }
         for calf in rig.calves.into_iter().flatten() {
-            put(calf, Transform::from_xyz(0.0, 0.36, 0.0).with_scale(Vec3::new(0.068, 0.16, 0.068)), &kit.boot, &kit.black);
+            put(calf, Transform::from_xyz(0.0, 0.37, 0.0).with_scale(Vec3::new(0.066, 0.13, 0.066)), &kit.boot, &kit.black);
         }
         if let Some(arm) = rig.arm {
             put(arm, Transform::from_xyz(0.0, 0.12, 0.0).with_scale(Vec3::new(0.062, 0.06, 0.062)), &kit.band, &kit.accent);
