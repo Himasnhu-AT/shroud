@@ -84,7 +84,11 @@ pub fn gantry() -> Arena {
     b.low(-17.0, -9.0, -15.8, -7.8, Barrel);
     // The sheds between the A yard and the tracks.
     b.tall(-27.0, -6.0, -12.0, 8.0, 6.0, Siding);
-    b.tall(-27.0, 8.0, -12.0, 24.0, 7.0, Brick);
+    b.tall(-27.0, 8.0, -12.0, 13.0, 7.0, Brick);
+    b.tall(-27.0, 17.0, -12.0, 24.0, 7.0, Brick);
+    // Cut-throughs from the tracks: west to the A yard, east to the quay.
+    b.low(-22.0, 13.4, -20.8, 14.6, Crate);
+    b.low(17.0, 15.6, 18.2, 16.8, Barrel);
     // A yard: container stacks (some two high) and pallets.
     b.tall(-37.0, 10.0, -34.6, 16.0, 2.6, Container);
     b.tall(-33.0, -2.0, -30.6, 4.0, 5.2, Container);
@@ -97,12 +101,12 @@ pub fn gantry() -> Arena {
     // ------------------------------------------------------------------ mid: the rail yard
     // Two parked trains (box wagons and a flatbed each) make three lanes.
     b.tall(-8.2, -12.0, -5.6, 0.0, 2.9, Container);
-    b.tall(-8.2, 3.0, -5.6, 15.0, 2.9, Container);
-    b.low(-8.2, 15.5, -5.6, 21.0, Container);
+    b.tall(-8.2, 3.0, -5.6, 13.0, 2.9, Container);
+    b.low(-8.2, 19.0, -5.6, 20.6, Crate); // sleepers stacked by the track
     b.tall(5.6, -10.0, 8.2, 2.0, 2.9, Container);
-    b.tall(5.6, 5.0, 8.2, 16.0, 2.9, Container);
-    b.low(5.6, 16.5, 8.2, 21.0, Container);
-    b.low(-1.2, 22.0, 1.2, 22.6, Cabinet); // buffer stop
+    b.tall(5.6, 5.0, 8.2, 13.0, 2.9, Container);
+    b.low(6.0, 20.0, 7.6, 21.6, Crate);
+    b.low(-1.2, 24.0, 1.2, 24.6, Cabinet); // buffer stop
     b.low(-12.0, 18.0, -10.8, 19.2, Crate);
     b.low(10.8, 6.0, 12.0, 7.2, Barrel);
     // The mid gate: a wall across the yard with a signal gantry over the gap.
@@ -126,7 +130,8 @@ pub fn gantry() -> Arena {
         .low(22.4, -10.0, 24.0, -8.4, Barrel)
         .emit(&mut b);
     b.tall(12.0, -2.0, 26.0, 10.0, 7.5, Concrete);
-    b.tall(12.0, 10.0, 26.0, 24.0, 6.0, Siding);
+    b.tall(12.0, 10.0, 26.0, 13.0, 6.0, Siding);
+    b.tall(12.0, 17.0, 26.0, 24.0, 6.0, Siding);
     // The quay: containers, a barrier, bollards along the sea wall.
     b.tall(30.0, 12.0, 32.4, 18.0, 2.6, Container);
     b.tall(34.0, 0.0, 36.4, 6.0, 5.2, Container);
@@ -163,7 +168,7 @@ pub fn gantry() -> Arena {
     }
 
     // ------------------------------------------------------------------ lamps
-    for (x, z, fx, fz) in [(26.0, 4.0, 1, 0), (26.0, 18.0, 1, 0), (-4.0, -35.0, 0, 1), (4.0, -35.0, 0, 1), (-27.0, 2.0, -1, 0), (-27.0, 16.0, -1, 0)] {
+    for (x, z, fx, fz) in [(26.0, 4.0, 1, 0), (26.0, 18.0, 1, 0), (-4.0, -35.0, 0, 1), (4.0, -35.0, 0, 1), (-27.0, 2.0, -1, 0), (-27.0, 20.0, -1, 0)] {
         b.lamp_styled(x, z, 4.2, LampStyle::Wall { facing_x: fx, facing_z: fz });
     }
 
@@ -189,6 +194,8 @@ pub fn gantry() -> Arena {
     b.floor(-39.0, 26.0, 39.0, 39.0, FloorSkin::Asphalt);
     b.floor(-39.0, -14.0, -27.4, 26.0, FloorSkin::Pavement);
     b.floor(-27.0, -14.0, -12.0, -6.0, FloorSkin::Concrete);
+    b.floor(-27.0, 13.0, -12.0, 17.0, FloorSkin::Concrete);
+    b.floor(12.0, 13.0, 26.0, 17.0, FloorSkin::Concrete);
     for x in TRACKS {
         let w = if x == 0.0 { 1.6 } else { 2.3 };
         b.floor(x - w, -16.0, x + w, 26.0, FloorSkin::Gravel);
@@ -209,6 +216,8 @@ pub fn gantry() -> Arena {
         zone("attacker spawn", -39.0, 24.0, 39.0, 39.0),
         zone("A yard", -39.0, -14.0, -27.0, 26.0),
         zone("A link", -27.0, -14.0, -12.0, -6.0),
+        zone("yard cut", -27.0, 13.0, -12.0, 17.0),
+        zone("quay cut", 12.0, 13.0, 26.0, 17.0),
         zone("west tracks", -12.0, -16.0, -5.6, 26.0),
         zone("mid", -5.6, -16.0, 5.6, 26.0),
         zone("east tracks", 5.6, -16.0, 12.0, 26.0),
@@ -221,7 +230,7 @@ pub fn gantry() -> Arena {
     b.finish(
         MapId::Gantry,
         zones,
-        V2::new(0.0, 33.0),
+        V2::new(14.0, 33.0),
         vec![
             V2::new(-5.0, -32.0),
             V2::new(0.0, -32.5),

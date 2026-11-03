@@ -56,8 +56,15 @@ pub fn sirocco() -> Arena {
 
     // ------------------------------------------------------------------ west: A long, the A house, A short
     // The houses between A long and mid: a tall row (south) and a lower one (north).
-    b.tall(-27.0, 9.0, -15.0, 26.0, 7.5, Stucco);
-    b.tall(-15.0, 9.0, -5.0, 26.0, 6.5, Stucco);
+    b.tall(-27.0, 17.0, -15.0, 26.0, 7.5, Stucco);
+    b.tall(-27.0, 9.0, -15.0, 13.0, 6.0, Stucco);
+    b.tall(-15.0, 9.0, -5.0, 13.0, 7.0, Stucco);
+    b.tall(-15.0, 17.0, -5.0, 26.0, 6.5, Stucco);
+    // The mid alleys: side streets off top mid, west to outside long and east into the lower tunnel.
+    arch(&mut b, -5.6, 13.0, -5.0, 17.0, 3.0, 5.0);
+    arch(&mut b, 5.0, 13.0, 5.6, 17.0, 3.0, 5.0);
+    b.low(-20.0, 13.4, -18.8, 14.6, Crate);
+    b.low(18.0, 15.6, 19.2, 16.8, Barrel);
     b.tall(-17.0, -2.0, -5.0, 9.0, 5.5, Stucco);
     // The A house: a two-room house between long and the alley (a third way into A short).
     Building::new("the A house", BuildingUse::House, -27.0, -2.0, -17.0, 9.0, STOREY, Plaster)
@@ -95,7 +102,7 @@ pub fn sirocco() -> Arena {
     b.low(-22.8, -11.0, -21.6, -9.8, Barrel);
 
     // ------------------------------------------------------------------ mid
-    b.tall(2.4, 12.0, 4.4, 14.0, 2.4, Crate); // mid boxes
+    b.tall(2.4, 20.0, 4.4, 22.0, 2.4, Crate); // mid boxes
     b.low(-4.6, 6.0, -3.4, 7.2, Crate);
     b.low(-1.2, -9.0, 1.2, -8.4, Stucco);
     b.low(3.6, 18.0, 4.8, 19.2, Barrel);
@@ -105,8 +112,10 @@ pub fn sirocco() -> Arena {
     arch(&mut b, -1.6, -15.0, 1.6, -13.5, 2.8, 4.8);
 
     // ------------------------------------------------------------------ east: B short, B tunnels
-    b.tall(5.0, 8.0, 15.0, 26.0, 6.5, Stucco);
-    b.tall(15.0, 8.0, 26.0, 26.0, 8.0, Stucco);
+    b.tall(5.0, 17.0, 15.0, 26.0, 6.5, Stucco);
+    b.tall(5.0, 8.0, 15.0, 13.0, 7.0, Stucco);
+    b.tall(15.0, 17.0, 26.0, 26.0, 8.0, Stucco);
+    b.tall(15.0, 8.0, 26.0, 13.0, 6.0, Stucco);
     b.tall(5.0, -15.0, 14.0, 4.0, 6.0, Stucco);
     b.tall(18.0, -13.0, 26.0, 8.0, 6.5, Stucco);
     // B short: the alley leaves mid under an arch, turns north at the corner.
@@ -202,6 +211,8 @@ pub fn sirocco() -> Arena {
     b.floor(-39.0, -12.0, -27.0, 26.0, FloorSkin::Pavement);
     b.floor(-5.0, -15.0, 5.0, 26.0, FloorSkin::Pavement);
     b.floor(-23.0, -6.0, -5.0, -2.0, FloorSkin::Pavement);
+    b.floor(-27.0, 13.0, -5.0, 17.0, FloorSkin::Pavement);
+    b.floor(5.0, 13.0, 26.0, 17.0, FloorSkin::Pavement);
     b.floor(-23.0, -12.0, -19.0, -6.0, FloorSkin::Pavement);
     b.floor(5.0, 4.0, 18.0, 8.0, FloorSkin::Pavement);
     b.floor(14.0, -13.0, 18.0, 4.0, FloorSkin::Pavement);
@@ -223,6 +234,8 @@ pub fn sirocco() -> Arena {
         zone("defender spawn", -10.0, -39.0, 10.0, -23.0),
         zone("mid doors", -10.0, -23.0, 10.0, -13.5),
         zone("mid", -5.0, -13.5, 5.0, 26.0),
+        zone("west mid alley", -27.0, 13.0, -5.0, 17.0),
+        zone("east mid alley", 5.0, 13.0, 26.0, 17.0),
         zone("B short", 5.0, -13.0, 18.0, 8.0),
         zone("B connector", 10.0, -34.0, 14.0, -29.6),
         zone("B tunnels", 26.0, -4.0, 39.0, 26.0),

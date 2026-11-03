@@ -20,6 +20,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        app.add_observer(wrap_map_cards);
         if let Some(mut b) = app.world_mut().get_resource_mut::<engine::input::Bindings>() {
             for (action, keys) in [
                 ("Fire", "Left mouse"),
@@ -155,7 +156,7 @@ fn build_setup(world: &mut World, root: Entity) {
             ));
             col.spawn(spacer(GAP_L - GAP_M));
             col.spawn(eyebrow("Map", t.text_muted));
-            card_row(col, &t, &map, 1, 420.0);
+            card_row(col, &t, &map, 1, MAP_CARD_W);
             col.spawn(spacer(0.0));
             col.spawn(eyebrow("Difficulty", t.text_muted));
             card_row(col, &t, &diff, 2, 272.0);
@@ -167,6 +168,21 @@ fn build_setup(world: &mut World, root: Entity) {
         });
         spawn_footer(p, &t, &[("W / S", "Row"), ("A / D", "Choose"), ("Enter", "Start"), ("Esc", "Back")]);
     });
+}
+
+/// Map cards per row on the setup screen: the map row wraps so six or more maps fit.
+const MAP_CARDS_PER_ROW: f32 = 3.0;
+const MAP_CARD_W: f32 = 400.0;
+
+/// The engine's card row is a single flex line; let the map row wrap into rows of three.
+fn wrap_map_cards(add: On<Add<engine::ui::widgets::FieldRow>>, mut rows: Query<(&engine::ui::widgets::FieldRow, &mut Node)>) {
+    if let Ok((row, mut node)) = rows.get_mut(add.entity)
+        && row.0 == "map"
+    {
+        node.flex_wrap = FlexWrap::Wrap;
+        node.row_gap = px(GAP_M);
+        node.max_width = px(MAP_CARD_W * MAP_CARDS_PER_ROW + GAP_M * (MAP_CARDS_PER_ROW - 1.0));
+    }
 }
 
 /// Main menu side card: generation and your record against it.
