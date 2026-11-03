@@ -853,15 +853,18 @@ pub fn loadout_note(before: &[WeaponKind], after: &[WeaponKind], model: &PlayerM
     let range = model.engagement_range();
     let fav = model.favourite_weapon();
     // The kind that gained the most slots (ties: the most specialised).
-    let order = [3usize, 2, 0, 1];
+    let order = [5usize, 3, 2, 0, 4, 1];
     let gained = order.iter().copied().filter(|&k| a[k] > b[k]).max_by_key(|&k| a[k] - b[k])?;
     let n = a[gained];
     let text = match WeaponKind::PRIMARIES[gained] {
+        WeaponKind::Sniper if range >= 20.0 => format!("They brought {} because you fight at {:.0} m+: one body shot kills", plural(n, "an Osprey sniper", "Osprey snipers"), range),
+        WeaponKind::Sniper => format!("They brought {} to lock down your long angles", plural(n, "an Osprey sniper", "Osprey snipers")),
+        WeaponKind::BattleRifle => format!("{} hit harder at mid range ({:.0} m)", plural(n, "A Shrike rifleman", "Shrike riflemen"), range),
         WeaponKind::Marksman if range >= 20.0 => format!("They brought {} because you fight at {:.0} m+", plural(n, "a marksman", "marksmen"), range),
         WeaponKind::Marksman => format!("They brought {}: your long sightlines get watched now", plural(n, "a marksman", "marksmen")),
         WeaponKind::Shotgun if range < 12.0 => format!("They brought {} because you keep fights inside {:.0} m", plural(n, "a shotgun", "shotguns"), range.max(5.0)),
         WeaponKind::Shotgun => format!("They brought {} to breach the rooms you hold", plural(n, "a shotgun", "shotguns")),
-        WeaponKind::Smg if fav == WeaponKind::Marksman => format!("{} to rush you while you're scoped in", plural(n, "An SMG rusher", "SMG rushers")),
+        WeaponKind::Smg if fav.long_gun() => format!("{} to rush you while you're scoped in", plural(n, "An SMG rusher", "SMG rushers")),
         WeaponKind::Smg => format!("{} to flank you up close", plural(n, "An SMG rusher", "SMG rushers")),
         _ => format!("Back to rifles ({}): steady mid-range fire works against you at {:.0} m", n, range),
     };

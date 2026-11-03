@@ -38,6 +38,8 @@ pub fn route_idx(p: V2) -> usize {
 // L0: the engagement log (docs/research/adaptive-squad-ai.md, section 4.1).
 
 /// Max duel records, trajectory samples, shot records and reaction samples kept per match.
+/// Guns in `WeaponKind::ALL` (per-gun arrays; older saves with fewer load padded).
+pub const WEAPON_COUNT: usize = crate::weapons::WeaponKind::ALL.len();
 pub const DUEL_CAP: usize = 600;
 pub const TRAJ_CAP: usize = 9000; // 15 min at 10 Hz
 pub const SHOT_CAP: usize = 3000;
@@ -260,8 +262,8 @@ pub struct MatchTelemetry {
     #[serde(default)]
     pub reactions: Vec<f32>,
     /// Shots fired per gun (`WeaponKind::ALL` order).
-    #[serde(default)]
-    pub weapon_shots: [f32; 5],
+    #[serde(default, deserialize_with = "crate::pad::zeros")]
+    pub weapon_shots: [f32; WEAPON_COUNT],
     /// Rounds played this match.
     #[serde(default)]
     pub rounds: u32,
@@ -293,7 +295,7 @@ impl Default for MatchTelemetry {
             trajectory: Vec::new(),
             shot_log: Vec::new(),
             reactions: Vec::new(),
-            weapon_shots: [0.0; 5],
+            weapon_shots: [0.0; WEAPON_COUNT],
             rounds: 0,
             last_route: None,
         }
@@ -592,8 +594,8 @@ pub struct PlayerModel {
     pub ghost: crate::ghost::GhostParams,
     /// Share of shots per gun (`WeaponKind::ALL` order), EMA over matches. The trainer ghost
     /// carries the favourite.
-    #[serde(default)]
-    pub weapon_use: [f32; 5],
+    #[serde(default, deserialize_with = "crate::pad::zeros")]
+    pub weapon_use: [f32; WEAPON_COUNT],
 }
 
 fn one() -> f32 {
@@ -648,7 +650,7 @@ impl Default for PlayerModel {
             ghost_skill: 1.0,
             situations: SituationModel::default(),
             ghost: crate::ghost::GhostParams::default(),
-            weapon_use: [0.0; 5],
+            weapon_use: [0.0; WEAPON_COUNT],
         }
     }
 }
@@ -759,7 +761,7 @@ impl PlayerModel {
         if total < 0.2 {
             return crate::weapons::WeaponKind::Rifle;
         }
-        let k = (0..5).max_by(|&a, &b| self.weapon_use[a].total_cmp(&self.weapon_use[b]).then(b.cmp(&a))).unwrap_or(2);
+        let k = (0..WEAPON_COUNT).max_by(|&a, &b| self.weapon_use[a].total_cmp(&self.weapon_use[b]).then(b.cmp(&a))).unwrap_or(2);
         crate::weapons::WeaponKind::ALL[k]
     }
 

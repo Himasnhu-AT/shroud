@@ -242,3 +242,36 @@ fn squads_breach_township_houses() {
     let r = breach_run(MapId::Township, None, player, &street, &guns, 5.0);
     assert_breached("Township search", &r, player, street[0]);
 }
+
+#[test]
+fn four_gene_saves_load_and_keep_their_genes() {
+    // Saves from before the Shrike and Osprey carry four weapon genes and five-gun telemetry.
+    let mut rng = rng_from_seed(5);
+    let g = TraitGenome::random(&mut rng);
+    let mut v = serde_json::to_value(&g).unwrap();
+    v["loadout"] = serde_json::json!([0.1, 0.9, 0.2, 0.3]);
+    let mut old: TraitGenome = serde_json::from_value(v).unwrap();
+    assert_eq!(&old.loadout[..4], &[0.1, 0.9, 0.2, 0.3]);
+    assert!(old.loadout[4] < 0.0 && old.loadout[5] < 0.0, "new genes load unset");
+    old.fill_loadout();
+    assert_eq!(&old.loadout[..4], &[0.1, 0.9, 0.2, 0.3], "old genes kept");
+    assert_eq!(&old.loadout[4..], &g.loadout[4..], "new genes seeded like a fresh genome");
+    // Five-gun weapon shares from an old player model load padded.
+    let b = BrainState::new(4);
+    let mut j = serde_json::to_value(&b).unwrap();
+    j["player_model"]["weapon_use"] = serde_json::json!([0.1, 0.2, 0.5, 0.1, 0.1]);
+    let back: BrainState = serde_json::from_value(j).unwrap();
+    assert_eq!(back.player_model.favourite_weapon(), WeaponKind::Rifle);
+    assert_eq!(back.player_model.weapon_use[7], 0.0);
+}
+
+#[test]
+fn osprey_wins_long_lanes() {
+    let l = Limits::for_generation(0);
+    let far = sim::duel(WeaponKind::Sniper, WeaponKind::Smg, 45.0, 5.0, &l, 200, 6);
+    assert!(far > 0.7, "Osprey at 45 m wins {far}");
+    let close = sim::duel(WeaponKind::Shotgun, WeaponKind::Sniper, 5.0, 5.0, &l, 200, 7);
+    assert!(close > 0.6, "shotgun at 5 m beats the Osprey {close}");
+    let mid = sim::duel(WeaponKind::BattleRifle, WeaponKind::Smg, 25.0, 5.0, &l, 200, 8);
+    assert!(mid > 0.55, "Shrike at 25 m beats the SMG {mid}");
+}

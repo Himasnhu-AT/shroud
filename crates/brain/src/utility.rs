@@ -74,7 +74,7 @@ pub fn score(goal: Goal, i: &UtilityInput, t: &Traits) -> f32 {
     let (closer, rusher, marksman) = match t.weapon {
         WeaponKind::Shotgun => (1.0, 0.5, false),
         WeaponKind::Smg => (0.6, 1.0, false),
-        WeaponKind::Marksman => (0.0, 0.0, true),
+        WeaponKind::Marksman | WeaponKind::Sniper => (0.0, 0.0, true),
         _ => (0.0, 0.0, false),
     };
     match goal {
