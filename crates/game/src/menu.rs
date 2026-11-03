@@ -9,7 +9,7 @@ use engine::settings::{SaveSettings, SettingsRegistry};
 use engine::ui::prelude::*;
 use engine::ui::screens::ScreenRequest;
 
-use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
+use crate::match_flow::{MAX_ROUNDS, MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
 use crate::save::Brain;
 use crate::settings::ShroudSettings;
@@ -26,6 +26,7 @@ impl Plugin for MenuPlugin {
                 ("Aim down sights", "Right mouse (hold)"),
                 ("Reload", "R"),
                 ("Primary / sidearm", "1 / 2, mouse wheel"),
+                ("Buy menu", "B (freeze time / buy zone)"),
                 ("Last weapon", "Q"),
                 ("Inspect", "V"),
                 ("Pick up gun", "E (hold)"),
@@ -136,30 +137,32 @@ fn viewmodel_only_in_rounds(
 
 // ---- screens and panels ----
 
-/// "setup": difficulty + map cards, then into the match.
+/// "setup": map cards (first, large), difficulty, then into the match. Guns are bought in the
+/// match (buy menu, B), not picked here.
 fn build_setup(world: &mut World, root: Entity) {
     let t = world.resource::<Theme>().clone();
     let reg = world.resource::<SettingsRegistry>();
-    let (Some(diff), Some(map), Some(gun)) = (reg.field("difficulty").cloned(), reg.field("map").cloned(), reg.field("primary").cloned()) else { return };
+    let (Some(diff), Some(map)) = (reg.field("difficulty").cloned(), reg.field("map").cloned()) else { return };
     world.commands().entity(root).with_children(|p| {
         menu_backdrop(p, &t, 0.0, 1.0);
         p.spawn(menu_column(GAP_M)).with_children(|col| {
             col.spawn(eyebrow("Play", t.accent));
-            col.spawn(title("Match setup", SIZE_H1, t.text));
-            col.spawn(text("Best of three rounds. Afterwards the squad trains against your ghost.", body(SIZE_BODY), t.text_muted));
+            col.spawn(title("Choose a map", SIZE_H1, t.text));
+            col.spawn(text(
+                format!("First to {ROUNDS_TO_WIN} rounds, at most {MAX_ROUNDS}. Start with a pistol and $800; buy with B during freeze time. Afterwards the squad trains against your ghost."),
+                body(SIZE_BODY),
+                t.text_muted,
+            ));
             col.spawn(spacer(GAP_L - GAP_M));
-            col.spawn(eyebrow("Difficulty", t.text_muted));
-            card_row(col, &t, &diff, 1, 272.0);
-            col.spawn(spacer(0.0));
             col.spawn(eyebrow("Map", t.text_muted));
-            card_row(col, &t, &map, 2, 368.0);
+            card_row(col, &t, &map, 1, 420.0);
             col.spawn(spacer(0.0));
-            col.spawn(eyebrow("Primary weapon", t.text_muted));
-            card_row(col, &t, &gun, 3, 272.0);
+            col.spawn(eyebrow("Difficulty", t.text_muted));
+            card_row(col, &t, &diff, 2, 272.0);
             col.spawn(spacer(GAP_L - GAP_M));
             col.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|r| {
-                action_button(r, &t, "Start match", MenuAction::Custom("start_match"), Some(4), true, 320.0);
-                action_button(r, &t, "Back", UiAction::Back, Some(5), false, 160.0);
+                action_button(r, &t, "Start match", MenuAction::Custom("start_match"), Some(3), true, 320.0);
+                action_button(r, &t, "Back", UiAction::Back, Some(4), false, 160.0);
             });
         });
         spawn_footer(p, &t, &[("W / S", "Row"), ("A / D", "Choose"), ("Enter", "Start"), ("Esc", "Back")]);
@@ -209,7 +212,7 @@ fn pause_score(world: &mut World, slot: Entity) {
     let f = world.resource::<MatchFlow>();
     let (you, squad) = (f.player_rounds, f.enemy_rounds);
     let line = format!(
-        "First to {ROUNDS_TO_WIN} \u{b7} {} \u{b7} Gen {}",
+        "First to {ROUNDS_TO_WIN}, max {MAX_ROUNDS} rounds \u{b7} {} \u{b7} Gen {}",
         world.resource::<ShroudSettings>().difficulty.label(),
         world.resource::<Brain>().state.generation + 1
     );

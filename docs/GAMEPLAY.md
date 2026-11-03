@@ -3,8 +3,29 @@
 ## Loop
 `Menu → Playing (match) → Evolving → Debrief → Playing …`
 
-**Match:** best of 3 rounds, you vs a squad of 5. A round ends when you die or the whole squad is dead.
-No respawns within a round. Full HP and ammo reset between rounds. The squad only evolves *between matches*.
+**Match:** first to 3 rounds (at most 5), you vs the squad. Main menu "Play" → setup (map cards, then
+difficulty) → "Start match". A round ends when you die, the whole squad is dead, or the clock runs out.
+No respawns within a round. Full HP and refilled ammo each round. The squad only evolves *between
+matches*, and only in technique.
+
+## Round economy (`economy.rs`, rules in `brain::economy`)
+- **Freeze time** (8 s) at round start: look and buy, no moving or firing; the squad holds too. The
+  HUD timer shows the countdown. Headless/test-driven runs have none (`round.freeze` sets it).
+- **Money:** start $800; round win +$3,250; loss +$1,400, +$500 per further loss in a row (cap
+  $3,400); kill reward per gun (`WeaponKind::kill_reward`); max $16,000. Resets each match.
+- **Buy menu (B):** during freeze time, and for 20 s after it within 8 m of your spawn. Columns:
+  Pistols, SMGs & Shotguns, Rifles & Snipers (sorted from each gun's spec, so new guns appear by
+  themselves), Gear (Kevlar $650, Kevlar + helmet $1,000, helmet upgrade $350). Keys 1–9, 0 or click;
+  owned items are marked, unaffordable ones greyed. Esc/B closes.
+- **Keep what you survive with:** survive a round → keep guns and armor; die → pistol only, no armor.
+  Round 1 is pistol + $800.
+- **Armor:** the vest takes 50% of each hit (60% with a helmet) until its 100 points run out; headshots
+  skip the vest unless you wear a helmet.
+- **Squad economy:** each enemy has its own wallet under the same rules. Poor squads eco (keep
+  survivors' guns, buy nothing), must-win or pistol rounds force-buy, rich squads full-buy. Which gun a
+  member buys among those it can afford comes from its evolved loadout genes.
+- Control port: `econ.state`, `econ.set_money`, `buy {item}`, `buy.menu {open}`, `round.freeze
+  {seconds}`. Visual check: `scripts/buy-round.json`.
 
 ## Maps (64 × 64 m, flat; `brain::arena::Arena::build(MapId)`)
 Picked in the menu (`Settings.map`); the map switches when a new match starts. All maps are
@@ -40,7 +61,9 @@ prints a map's nav grid.
 Enemies use the same rifle at 8–12 damage per hit (see fairness limits in [AI.md](AI.md)).
 
 ## HUD
-Crosshair, hit marker, HP, ammo, enemies left, round score, and **Generation N** in the corner.
+Crosshair, hit marker, HP, armor, money (with +/- changes), ammo, enemies left, round score and
+round N/5, freeze countdown, a "B Buy menu" hint while buying is possible, and **Generation N** in
+the corner.
 
 ## Debrief screen
 - Match result + round scores.

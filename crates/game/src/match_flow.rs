@@ -1,5 +1,6 @@
-//! Match = best of 3 rounds vs the evolved squad. Rounds restart by re-entering
-//! `Playing`; after the match the report goes to `Evolving`.
+//! Match = first to 3 rounds (at most 5) vs the evolved squad. Rounds restart by re-entering
+//! `Playing` (freeze time, money and the buy menu are `economy`); after the match the report
+//! goes to `Evolving`.
 
 use bevy::prelude::*;
 use brain::evolve::{EnemyReport, MatchReport};
@@ -14,7 +15,7 @@ use crate::telemetry::Telemetry;
 use crate::ui::hud::{HudInfo, RoundClock};
 use crate::weapon::{Health, WeaponSet};
 
-pub const ROUNDS_TO_WIN: u32 = 2;
+pub use brain::economy::{MAX_ROUNDS, ROUNDS_TO_WIN};
 /// Round time limit (s). Time up: the side with more of its health left wins — the player's
 /// HP share against the squad's total remaining HP share; a tie goes to the squad (they held).
 pub const ROUND_TIME_S: f32 = 150.0;
@@ -73,7 +74,7 @@ impl Plugin for MatchFlowPlugin {
         app.init_resource::<MatchFlow>()
             .init_resource::<RoundLimit>()
             .init_resource::<PendingReport>()
-            .add_plugins(crate::armor::ArmorPlugin)
+            .add_plugins((crate::armor::ArmorPlugin, crate::economy::EconomyPlugin))
 
             .add_systems(OnEnter(GameState::Playing), (begin_round, enemy::spawn_squad).chain())
             .add_systems(
