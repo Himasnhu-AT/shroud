@@ -159,16 +159,25 @@ pub enum MapId {
     Office,
     /// A 90 m town block: streets, alleys, a courtyard and eight enterable buildings.
     Township,
+    /// Defusal layout in a whitewashed hill town: long A, house and alley shorts, a roofed B
+    /// tunnel, a mid sniper lane.
+    Sirocco,
+    /// Defusal layout in a harbour rail yard: an indoor A site in a warehouse, a train-car mid,
+    /// B on the open quay.
+    Gantry,
 }
 
 impl MapId {
-    pub const ALL: [MapId; 4] = [MapId::Foundry, MapId::Depot, MapId::Office, MapId::Township];
+    /// Menu order: the bomb-site maps first. Saves store the variant name, so order is free.
+    pub const ALL: [MapId; 6] = [MapId::Sirocco, MapId::Gantry, MapId::Depot, MapId::Township, MapId::Office, MapId::Foundry];
     pub fn label(self) -> &'static str {
         match self {
             MapId::Foundry => "Foundry",
             MapId::Depot => "Depot",
             MapId::Office => "Office",
             MapId::Township => "Township",
+            MapId::Sirocco => "Sirocco",
+            MapId::Gantry => "Gantry",
         }
     }
     pub fn blurb(self) -> &'static str {
@@ -177,6 +186,8 @@ impl MapId {
             MapId::Depot => "Three lanes, long sightlines, one contested middle.",
             MapId::Office => "Tight corridors and rooms. Every corner is a fight.",
             MapId::Township => "A town block on a clear late afternoon: long streets, alleys, houses with windows.",
+            MapId::Sirocco => "Bomb sites in a whitewashed hill town. Long A, a house and an alley off mid, a roofed B tunnel.",
+            MapId::Gantry => "Bomb sites in a harbour rail yard. A inside the warehouse, trains across mid, B out on the quay.",
         }
     }
 }
@@ -225,6 +236,56 @@ pub struct Decor {
     pub windows: Vec<Window>,
     /// Enterable buildings, for the renderer (facades, linings, roofs, probes).
     pub buildings: Vec<BuildingInfo>,
+    /// Painted lettering: site letters ("A", "B") and direction signs ("A >", "< B").
+    pub signs: Vec<Sign>,
+    /// Painted floor markings (spawn borders, site outlines, rails set into the ground). Drawn
+    /// above floor patches; may overlap them but not each other.
+    pub paint: Vec<PaintPatch>,
+}
+
+/// Paint colour of a sign or floor marking.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Paint {
+    White,
+    Yellow,
+    Red,
+    Blue,
+    Orange,
+    Black,
+    /// Dark steel (rails set into the ground).
+    Steel,
+}
+
+/// Where a sign is painted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignMount {
+    /// On a wall face; `facing` is the face's outward normal (unit ground axis).
+    Wall { facing_x: i8, facing_z: i8 },
+    /// On the floor; the tops of the letters point along `up` (unit ground axis).
+    Floor { up_x: i8, up_z: i8 },
+}
+
+/// Painted text. Glyphs: A-Z (the renderer's subset), `<` `>` `^` arrows, space.
+#[derive(Clone, Copy, Debug)]
+pub struct Sign {
+    pub text: &'static str,
+    /// Centre of the text on the wall face (or floor).
+    pub pos: V2,
+    /// Height of the text centre above the floor (walls only).
+    pub y: f32,
+    /// Letter height in metres.
+    pub size: f32,
+    pub mount: SignMount,
+    pub paint: Paint,
+    /// Painted backing plate behind the letters.
+    pub plate: Option<Paint>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PaintPatch {
+    pub min: V2,
+    pub max: V2,
+    pub paint: Paint,
 }
 
 /// A window opening in a wall. `min`/`max` is the opening's ground rect (= its sill block's).
@@ -329,6 +390,8 @@ pub enum FloorSkin {
     Concrete,
     /// Office carpet.
     Carpet,
+    /// Loose stone (rail ballast).
+    Gravel,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -379,7 +442,7 @@ impl Builder {
 
     /// A partition along z = `z` from x0 to x1 (x0/x1 are where it ends), with a
     /// doorway centred on each of `doors` and a lintel over it.
-    fn wall_z(&mut self, z: f32, x0: f32, x1: f32, doors: &[f32], height: f32, skin: Skin) {
+    pub(crate) fn wall_z(&mut self, z: f32, x0: f32, x1: f32, doors: &[f32], height: f32, skin: Skin) {
         for (a, b) in Self::segments(x0, x1, doors) {
             self.tall(a, z - PARTITION_HALF, b, z + PARTITION_HALF, height, skin);
         }
@@ -389,7 +452,7 @@ impl Builder {
     }
 
     /// A partition along x = `x` from z0 to z1, with doorways at `doors` (z centres).
-    fn wall_x(&mut self, x: f32, z0: f32, z1: f32, doors: &[f32], height: f32, skin: Skin) {
+    pub(crate) fn wall_x(&mut self, x: f32, z0: f32, z1: f32, doors: &[f32], height: f32, skin: Skin) {
         for (a, b) in Self::segments(z0, z1, doors) {
             self.tall(x - PARTITION_HALF, a, x + PARTITION_HALF, b, height, skin);
         }
@@ -442,6 +505,31 @@ impl Builder {
         self.decor.floors.push(FloorPatch { min: V2::new(x0, z0), max: V2::new(x1, z1), skin });
     }
 
+    /// Text painted on a wall face at (x, z), centre `y` up, facing the unit axis `facing`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn sign_wall(&mut self, text: &'static str, x: f32, z: f32, y: f32, size: f32, facing: (i8, i8), paint: Paint, plate: Option<Paint>) {
+        self.decor.signs.push(Sign { text, pos: V2::new(x, z), y, size, mount: SignMount::Wall { facing_x: facing.0, facing_z: facing.1 }, paint, plate });
+    }
+
+    /// Text painted on the floor at (x, z), letter tops pointing along `up`.
+    pub(crate) fn sign_floor(&mut self, text: &'static str, x: f32, z: f32, size: f32, up: (i8, i8), paint: Paint) {
+        self.decor.signs.push(Sign { text, pos: V2::new(x, z), y: 0.0, size, mount: SignMount::Floor { up_x: up.0, up_z: up.1 }, paint, plate: None });
+    }
+
+    pub(crate) fn paint(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, paint: Paint) {
+        let (x0, x1) = (x0.min(x1), x0.max(x1));
+        let (z0, z1) = (z0.min(z1), z0.max(z1));
+        self.decor.paint.push(PaintPatch { min: V2::new(x0, z0), max: V2::new(x1, z1), paint });
+    }
+
+    /// A painted rectangle outline `w` wide (four strips that don't overlap).
+    pub(crate) fn outline(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, w: f32, paint: Paint) {
+        self.paint(x0, z0, x1, z0 + w, paint);
+        self.paint(x0, z1 - w, x1, z1, paint);
+        self.paint(x0, z0 + w, x0 + w, z1 - w, paint);
+        self.paint(x1 - w, z0 + w, x1, z1 - w, paint);
+    }
+
     pub(crate) fn finish(mut self, id: MapId, zones: Vec<Zone>, player_spawn: V2, enemy_spawns: Vec<V2>) -> Arena {
         let nav = NavGrid::bake(&self.blocks, self.half, 1.0, AGENT_RADIUS);
         // Rooms added with `zone()` come first: `zone_of` returns the first match.
@@ -474,6 +562,8 @@ impl Arena {
             MapId::Depot => Arena::depot(),
             MapId::Office => Arena::office(),
             MapId::Township => crate::township::township(),
+            MapId::Sirocco => crate::maps::sirocco::sirocco(),
+            MapId::Gantry => crate::maps::gantry::gantry(),
         }
     }
 
@@ -626,6 +716,17 @@ impl Arena {
         b.floor(-31.0, 17.0, 31.0, 24.0, FloorSkin::Asphalt);
         b.floor(-31.0, -31.0, -13.5, -10.0, FloorSkin::Pavement);
         b.floor(13.5, -31.0, 31.0, -10.0, FloorSkin::Pavement);
+        // --- Site letters and direction signs.
+        b.sign_wall("A", -13.5, -18.0, 2.4, 1.6, (-1, 0), Paint::White, Some(Paint::Red));
+        b.sign_wall("B", 13.5, -18.0, 2.4, 1.6, (1, 0), Paint::White, Some(Paint::Blue));
+        b.sign_wall("A", -17.5, -6.0, 3.6, 1.6, (0, -1), Paint::White, Some(Paint::Red));
+        b.sign_wall("B", 17.5, -6.0, 3.6, 1.6, (0, -1), Paint::White, Some(Paint::Blue));
+        b.sign_wall("< A", -14.0, 17.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_wall("B >", 14.0, 17.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_wall("MID", 0.0, 22.4, 2.0, 0.6, (0, 1), Paint::Black, Some(Paint::White));
+        b.sign_floor("A ^", -26.0, 2.0, 1.2, (0, -1), Paint::Yellow);
+        b.sign_floor("B ^", 28.5, 14.0, 1.2, (0, -1), Paint::Yellow);
+        b.outline(-16.0, 23.4, 16.0, 31.0, 0.25, Paint::Orange);
         let zones = vec![
             zone("A site", -32.0, -32.0, -13.5, -7.5),
             zone("B site", 13.5, -32.0, 32.0, -6.0),

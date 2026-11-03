@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use avian3d::prelude::*;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use brain::arena::{Arena, Block, BlockKind, BuildingUse, MapId, Skin};
+use brain::arena::{Arena, Block, BlockKind, BuildingUse, FloorSkin, MapId, Skin};
 use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SkyLook, SkyMode, SunLook, ToneMap};
 use engine::render_budget::SceneryRanges;
 
@@ -91,6 +91,24 @@ fn recipe(key: &str) -> Spec {
         "ceiling_house" => spec("office_wall", [1.0, 0.99, 0.96], [0.90, 0.89, 0.86], 1.0, 2.5),
         "ceiling_shed" => spec("container", [0.70, 0.72, 0.74], [0.50, 0.52, 0.54], 0.6, 2.4),
         "canopy" => spec("", [1.0, 1.0, 1.0], [0.86, 0.86, 0.84], 0.5, 2.0),
+        // Sirocco: whitewash in three tones, warm earth, cobbles, terracotta.
+        "sirocco_ground" => spec("depot_ground", [1.0, 0.93, 0.82], [0.78, 0.68, 0.52], 1.0, 5.0),
+        "white0" => spec("stucco", [1.0, 0.99, 0.96], [0.90, 0.88, 0.84], 1.0, 3.0),
+        "white1" => spec("stucco", [0.99, 0.94, 0.84], [0.88, 0.82, 0.72], 1.0, 3.0),
+        "white2" => spec("stucco", [0.97, 0.84, 0.64], [0.84, 0.70, 0.50], 1.0, 3.0),
+        "sirocco_outer" => spec("stucco", [0.92, 0.82, 0.68], [0.76, 0.66, 0.52], 1.0, 3.0),
+        "cobble" => spec("sidewalk", [0.96, 0.87, 0.74], [0.62, 0.55, 0.46], 1.0, 1.6),
+        "sirocco_paving" => spec("sidewalk", [1.0, 0.94, 0.84], [0.70, 0.64, 0.56], 1.0, 2.5),
+        "terracotta_floor" => spec("tiles", [0.92, 0.58, 0.42], [0.66, 0.38, 0.26], 1.0, 1.2),
+        "roof_terracotta" => spec("tiles", [0.74, 0.50, 0.40], [0.56, 0.36, 0.28], 0.9, 0.8),
+        // Gantry: weathered harbour concrete, painted cladding, ballast, crane paint.
+        "harbor_ground" => spec("floor", [0.72, 0.73, 0.74], [0.42, 0.43, 0.44], 1.0, 4.0),
+        "harbor_concrete" => spec("wall", [0.80, 0.81, 0.82], [0.54, 0.55, 0.56], 0.9, 2.5),
+        "harbor_wall" => spec("wall", [0.64, 0.66, 0.68], [0.42, 0.43, 0.45], 0.9, 3.0),
+        "siding_teal" => spec("container", [0.34, 0.55, 0.56], [0.22, 0.38, 0.40], 0.55, 2.4),
+        "siding_rust" => spec("container", [0.66, 0.38, 0.26], [0.48, 0.26, 0.17], 0.6, 2.4),
+        "gravel" => spec("roof_gravel", [0.86, 0.83, 0.80], [0.40, 0.38, 0.36], 1.0, 2.0),
+        "crane_paint" => spec("tall", [1.0, 0.74, 0.16], [0.82, 0.58, 0.10], 0.5, 2.0),
         _ => spec("", [1.0, 1.0, 1.0], [0.6, 0.6, 0.6], 0.9, 2.0),
     }
 }
@@ -98,6 +116,10 @@ fn recipe(key: &str) -> Spec {
 /// Materials and shared meshes for one map build, created on first use.
 pub(crate) struct Palette {
     pub id: MapId,
+    /// The map's half extent (outer walls on ±half).
+    pub half: f32,
+    /// Wall signs as (centre, half width, half height): facade windows keep clear of them.
+    signs: Vec<(Vec3, f32, f32)>,
     cache: HashMap<String, (Handle<StandardMaterial>, f32)>,
     cube: Option<Handle<Mesh>>,
     /// Block index → index of the building whose shell it is.
@@ -130,7 +152,14 @@ impl Palette {
                 v
             })
             .collect();
-        Palette { id: arena.id, cache: HashMap::new(), cube: None, shell_of, variant, shapes: HashMap::new() }
+        let signs = arena
+            .decor
+            .signs
+            .iter()
+            .filter(|s| matches!(s.mount, brain::arena::SignMount::Wall { .. }))
+            .map(|s| (Vec3::new(s.pos.x, s.y, s.pos.y), (s.text.chars().count() as f32 * 0.8 + 0.7) * s.size * 0.5, s.size * 0.75))
+            .collect();
+        Palette { id: arena.id, half: arena.half(), signs, cache: HashMap::new(), cube: None, shell_of, variant, shapes: HashMap::new() }
     }
 
     /// A material from [`recipe`], cached by key.
@@ -185,8 +214,20 @@ impl Palette {
             MapId::Depot => "sand",
             MapId::Office => "carpet",
             MapId::Township => "town_ground",
+            MapId::Sirocco => "sirocco_ground",
+            MapId::Gantry => "harbor_ground",
         };
         self.mat(g, key)
+    }
+
+    /// Material key of a floor patch, with per-map variants.
+    pub fn floor_patch_key(&self, f: FloorSkin) -> String {
+        match (self.id, f) {
+            (MapId::Sirocco, FloorSkin::Pavement) => "cobble".into(),
+            (MapId::Sirocco, FloorSkin::Sidewalk) => "sirocco_paving".into(),
+            (MapId::Sirocco, FloorSkin::Tiles) => "terracotta_floor".into(),
+            _ => super::dressing::floor_key(f).into(),
+        }
     }
 
     /// Lintel material for a doorway: Office drywall, else concrete (Township picks the wall's
@@ -194,6 +235,8 @@ impl Palette {
     pub fn header(&mut self, g: &mut Gfx) -> (Handle<StandardMaterial>, f32) {
         let key = match self.id {
             MapId::Office => "drywall",
+            MapId::Sirocco => "white1",
+            MapId::Gantry => "harbor_concrete",
             _ => "concrete",
         };
         self.mat(g, key)
@@ -203,6 +246,8 @@ impl Palette {
         let key = match self.id {
             MapId::Office => "ceiling",
             MapId::Township => "canopy",
+            MapId::Sirocco => "roof_terracotta",
+            MapId::Gantry => "crane_paint",
             _ => "roof_depot",
         };
         self.mat(g, key)
@@ -234,7 +279,9 @@ impl Palette {
             Skin::Siding => if bi.is_multiple_of(2) { "siding" } else { "siding_b" }.into(),
             Skin::Brick => "brick".into(),
             Skin::Concrete if self.id == MapId::Township => "town_concrete".into(),
+            Skin::Concrete if self.id == MapId::Gantry => "harbor_concrete".into(),
             Skin::Concrete => "concrete".into(),
+            Skin::Stucco if self.id == MapId::Sirocco => "white0".into(),
             Skin::Stucco => "stucco".into(),
             _ => "town_concrete".into(),
         }
@@ -252,7 +299,13 @@ impl Palette {
             }
             .into(),
             Skin::Concrete if self.id == MapId::Township => "town_concrete".into(),
+            Skin::Concrete if self.id == MapId::Gantry && b.kind == BlockKind::Wall => "harbor_wall".into(),
+            Skin::Concrete if self.id == MapId::Gantry => "harbor_concrete".into(),
             Skin::Concrete => "concrete".into(),
+            Skin::Stucco if self.id == MapId::Sirocco && b.kind == BlockKind::Wall => "sirocco_outer".into(),
+            // Low garden walls take the creamy tone; houses cycle through all three.
+            Skin::Stucco if self.id == MapId::Sirocco && b.kind == BlockKind::Low => "white1".into(),
+            Skin::Stucco if self.id == MapId::Sirocco => format!("white{}", i % 3),
             Skin::Stucco if b.kind == BlockKind::Wall => "stucco_outer".into(),
             Skin::Stucco => if i.is_multiple_of(2) { "stucco" } else { "stucco_b" }.into(),
             Skin::Container => format!("container{}", i % 4),
@@ -264,18 +317,26 @@ impl Palette {
             Skin::Drywall => "drywall".into(),
             Skin::Desk if is_cubicle(b) && self.id == MapId::Office => "cubicle".into(),
             Skin::Desk => "desk".into(),
+            Skin::Cabinet if is_crane(b) => "crane_paint".into(),
             Skin::Cabinet => "cabinet".into(),
             Skin::Brick if b.kind == BlockKind::Wall => "town_wall".into(),
             Skin::Brick => "brick".into(),
             Skin::Plaster => "plaster3".into(),
+            Skin::Siding if self.id == MapId::Gantry => if i.is_multiple_of(2) { "siding_teal" } else { "siding_rust" }.into(),
             Skin::Siding => "siding".into(),
             // Cars and dumpsters get their own meshes; the box material is a fallback.
             Skin::Car => "cabinet".into(),
             Skin::Dumpster => "dumpster".into(),
             Skin::Shelf => "shelf".into(),
+            Skin::Planter if self.id == MapId::Sirocco => "white1".into(),
             Skin::Planter => "planter".into(),
         }
     }
+}
+
+/// Tall steel posts (crane legs): painted, not a rack or a cabinet.
+fn is_crane(b: &Block) -> bool {
+    b.height > 4.0 && b.half.x.max(b.half.y) <= 1.0
 }
 
 /// Office cubicle pods and long desks (fabric partitions, monitors on top).
@@ -398,6 +459,7 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
             }
         }
         // Server racks / shelving: vented door panels with status LEDs.
+        (Skin::Cabinet, _) if is_crane(b) => {}
         (Skin::Cabinet, BlockKind::Tall) if detail && size.y >= 2.1 => rack_fronts(commands, e, size, g, p),
         // Lockers, fridges, vending machines and counters: door or drawer fronts with handles.
         (Skin::Cabinet, _) if detail => super::props::cabinet_fronts(commands, e, size, g, p),
@@ -454,7 +516,7 @@ fn windows(commands: &mut Commands, e: Entity, size: Vec3, center: Vec3, g: &mut
             for side in [-1.0f32, 1.0] {
                 // Skip faces pressed against the outer wall.
                 let face = if along_x { center.z + side * other * 0.5 } else { center.x + side * other * 0.5 };
-                if face.abs() > 30.9 {
+                if face.abs() > p.half - 1.1 {
                     continue;
                 }
                 let off = other * 0.5 + 0.02;
@@ -465,6 +527,12 @@ fn windows(commands: &mut Commands, e: Entity, size: Vec3, center: Vec3, g: &mut
                 };
                 let y = size.y * 0.5 - 1.8;
                 if y - 0.75 < -size.y * 0.5 + 2.6 {
+                    continue;
+                }
+                // Keep painted signs readable: no window over a sign plate.
+                let world = center + pos + Vec3::Y * y;
+                let flat = |v: Vec3| Vec2::new(v.x, v.z);
+                if p.signs.iter().any(|&(c, hw, hh)| flat(c).distance(flat(world)) < hw + 0.8 && (c.y - world.y).abs() < hh + 0.8) {
                     continue;
                 }
                 child_box(commands, e, cube.clone(), glass.clone(), pos + Vec3::Y * y, scale);
@@ -570,6 +638,66 @@ pub fn look_of(id: MapId) -> Look {
             grading: GradingLook { post_saturation: 1.15, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
             ..base
         },
+        // Midday on a whitewashed hill town: a high, hot sun, deep blue sky, short hard
+        // shadows, a pale warm haze. White walls carry the light, so exposure sits a touch high.
+        MapId::Sirocco => Look {
+            name: "sirocco_noon".into(),
+            sun: SunLook {
+                azimuth_deg: 205.0,
+                elevation_deg: 56.0,
+                illuminance: 110_000.0,
+                color: Rgb::new(1.0, 0.95, 0.86),
+                shadow_distance: 75.0,
+                cascades: 3,
+                first_cascade: 10.0,
+                ..SunLook::default()
+            },
+            sky: SkyLook {
+                mode: SkyMode::Gradient,
+                zenith: Rgb::new(0.03, 0.22, 0.78),
+                horizon: Rgb::new(0.72, 0.84, 0.96),
+                ground: Rgb::new(0.44, 0.38, 0.30),
+                brightness: 8000.0,
+                sun_glow: 0.7,
+                ..SkyLook::default()
+            },
+            ambient: AmbientLook { color: Rgb::new(0.88, 0.88, 0.90), brightness: 900.0, env_intensity: 1.0 },
+            fog: FogLook { sun_color: Rgb::new(1.0, 0.9, 0.7), sun_amount: 0.25, ..fog([0.80, 0.84, 0.90], 60.0, fog_end(id)) },
+            exposure: ExposureLook { ev100: 13.5, ..ExposureLook::default() },
+            tonemapping: ToneMap::Agx,
+            grading: GradingLook { temperature: 0.02, post_saturation: 1.15, midtones: GradeSection { contrast: 1.07, ..GradeSection::default() }, ..GradingLook::default() },
+            ..base
+        },
+        // A grey sea morning: a low, weak sun from the water (east), a cool overcast sky,
+        // a blue-grey haze that softens the far end of the yard; sodium lamps on the walls.
+        MapId::Gantry => Look {
+            name: "gantry_morning".into(),
+            sun: SunLook {
+                azimuth_deg: 105.0,
+                elevation_deg: 30.0,
+                illuminance: 55_000.0,
+                color: Rgb::new(0.96, 0.95, 1.0),
+                shadow_distance: 70.0,
+                cascades: 3,
+                first_cascade: 9.0,
+                ..SunLook::default()
+            },
+            sky: SkyLook {
+                mode: SkyMode::Gradient,
+                zenith: Rgb::new(0.30, 0.40, 0.54),
+                horizon: Rgb::new(0.70, 0.75, 0.80),
+                ground: Rgb::new(0.26, 0.27, 0.28),
+                brightness: 5000.0,
+                sun_glow: 0.3,
+                ..SkyLook::default()
+            },
+            ambient: AmbientLook { color: Rgb::new(0.80, 0.86, 0.96), brightness: 1100.0, env_intensity: 1.0 },
+            fog: FogLook { sun_color: Rgb::new(0.95, 0.92, 0.85), sun_amount: 0.15, ..fog([0.60, 0.66, 0.72], 30.0, fog_end(id)) },
+            exposure: ExposureLook { ev100: 12.4, ..ExposureLook::default() },
+            tonemapping: ToneMap::Agx,
+            grading: GradingLook { temperature: -0.03, post_saturation: 0.98, midtones: GradeSection { contrast: 1.06, ..GradeSection::default() }, ..GradingLook::default() },
+            ..base
+        },
     }
 }
 
@@ -580,6 +708,8 @@ pub fn fog_end(id: MapId) -> f32 {
         MapId::Depot => 240.0,
         MapId::Office => 400.0,
         MapId::Township => 300.0,
+        MapId::Sirocco => 260.0,
+        MapId::Gantry => 200.0,
     }
 }
 

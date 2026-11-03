@@ -45,12 +45,13 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] Tests: economy math, buy rules, round count
 
 ### Phase 2: maps
-- [ ] 2 new original defusal-style maps: attacker spawn, defender spawn, A and B sites, mid, long/short routes, connectors, chokes
-- [ ] Site markers (painted "A"/"B" on walls/floor), spawn buy-zone markers
-- [ ] Zones named for callouts (A long, B tunnels, mid, CT, T spawn…)
-- [ ] Nav + sim round passes on each new map (`brain/tests/maps.rs`)
-- [ ] Map cards in the menu show the new maps first
-- [ ] Screenshot tour script
+- [x] 2 new original defusal-style maps: Sirocco (hill town) and Gantry (harbour rail yard), in `brain/src/maps/`
+- [x] Site markers (painted "A"/"B" on walls/floor, direction signs), spawn borders (attackers orange, defenders blue); Depot got signs too
+- [x] Zones named for callouts (A long, A short, mid, mid doors, B tunnels, B quay, connectors, attacker/defender spawn…)
+- [x] Nav + sim round passes on each new map (`brain/tests/maps.rs` runs every `MapId::ALL`)
+- [x] Map cards in the menu show the new maps first (the map row wraps, three per row)
+- [x] Screenshot tour scripts: `scripts/sirocco-tour.json`, `scripts/gantry-tour.json`; frame time: `scripts/maps-perf.json`
+- [ ] Optional: sandstone / cobblestone texture sets (the maps reuse stucco, paving and tiles with per-map tints)
 
 ### Phase 3: guns + skins
 - [x] More guns: Warden heavy pistol (700), Shrike battle rifle (2700, the attacker rifle), Osprey
