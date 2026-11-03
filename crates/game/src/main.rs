@@ -11,6 +11,7 @@ mod assets;
 mod armed;
 mod armor;
 mod audio;
+mod bodycam;
 mod dev;
 mod economy;
 mod enemy;
@@ -54,6 +55,7 @@ fn main() {
             evolving::EvolvingPlugin,
             menu::MenuPlugin,
             ui::UiPlugin,
+            bodycam::BodycamPlugin,
         ))
         .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
         .run();

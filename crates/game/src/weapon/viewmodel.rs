@@ -3,6 +3,11 @@
 //! coming out, pump and bolt cycles, inspect, bob, look sway, landing dip, sprint pose, recoil
 //! kick + muzzle rise, ADS to the sight line, pull-back near walls) plus the muzzle flash.
 //!
+//! Bodycam mode (`bodycam`): the root turns with the free aim (the gun moves on screen inside
+//! the deadzone), a 6-DOF spring rig (spec §3.1) takes the recoil impulses and the wall
+//! compression (high-ready fold), and the barrel's camera-space direction goes to
+//! [`MuzzleCam`] so shots leave the muzzle along the barrel.
+//!
 //! The viewmodel keeps its own field of view: its root is scaled by
 //! `tan(fov/2) / tan(VIEWMODEL_FOV/2)` in camera x/y, so the gun looks the same at any FOV
 //! setting and does not balloon when the camera zooms for ADS.
@@ -22,7 +27,15 @@ use crate::state::has_visuals;
 
 /// The field of view the viewmodels were posed for.
 pub const VIEWMODEL_FOV_DEG: f32 = 80.0;
-const FLASH_TIME: f32 = 0.05;
+/// Muzzle flash sprites and light: 45 ms.
+const FLASH_TIME: f32 = 0.045;
+/// Bodycam recoil: the spec's impulses (m/s, rad/s) times this, scaled per gun by its kick.
+/// At the spec's raw numbers the rig moves under a centimetre per shot.
+const RIG_GAIN: f32 = 5.0;
+/// Bodycam wall compression: the barrel ray starts at the camera; the body keeps walls at least
+/// `BODY_CLEARANCE` away, the gun folds over the next `BARREL_LEN` (spec: 0.65 m).
+const BODY_CLEARANCE: f32 = 0.35;
+const BARREL_LEN: f32 = 0.65;
 
 pub(super) fn build(app: &mut App) {
     app.init_resource::<MuzzleCam>()
@@ -33,14 +46,15 @@ pub(super) fn build(app: &mut App) {
         );
 }
 
-/// Where the muzzle of the gun in hand appears, in camera space (tracer and flash origin).
+/// Where the muzzle of the gun in hand appears and where its barrel points, in camera space
+/// (tracer and flash origin; bodycam shots).
 #[derive(Resource, Clone, Copy, Debug)]
-pub struct MuzzleCam(pub Vec3);
+pub struct MuzzleCam(pub Vec3, pub Vec3);
 
 impl Default for MuzzleCam {
     fn default() -> Self {
         let f = fit(WeaponKind::Rifle);
-        MuzzleCam(f.hip + f.muzzle)
+        MuzzleCam(f.hip + f.muzzle, Vec3::NEG_Z)
     }
 }
 
@@ -361,6 +375,52 @@ pub struct ViewModel {
     /// Short bump for mag-in / shell-in / chamber events.
     bump: f32,
     t: f32,
+    /// Bodycam 6-DOF rig: translation (camera space, m) and rotation (pitch, yaw, roll).
+    rig_t: Spring3,
+    rig_r: Spring3,
+    /// Bodycam wall compression 0..1.
+    compress: f32,
+}
+
+/// Second-order spring (spec §3.1): semi-implicit Euler, substepped for stability.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Spring3 {
+    pub value: Vec3,
+    pub velocity: Vec3,
+    pub target: Vec3,
+    pub stiffness: f32,
+    pub damping: f32,
+}
+
+impl Spring3 {
+    pub const fn new(stiffness: f32, damping: f32) -> Self {
+        Spring3 { value: Vec3::ZERO, velocity: Vec3::ZERO, target: Vec3::ZERO, stiffness, damping }
+    }
+
+    pub fn add_impulse(&mut self, impulse: Vec3) {
+        self.velocity += impulse;
+    }
+
+    pub fn step(&mut self, dt: f32) {
+        let n = (dt / (1.0 / 240.0)).ceil().max(1.0);
+        let h = dt / n;
+        for _ in 0..n as u32 {
+            let force = (self.target - self.value) * self.stiffness - self.velocity * self.damping;
+            self.velocity += force * h;
+            self.value += self.velocity * h;
+        }
+    }
+}
+
+impl Default for Spring3 {
+    fn default() -> Self {
+        Spring3::new(1.0, 1.0)
+    }
+}
+
+/// Spec §3.1: translation k 210 d 16, rotation k 180 d 14.
+fn rig_springs() -> (Spring3, Spring3) {
+    (Spring3::new(210.0, 16.0), Spring3::new(180.0, 14.0))
 }
 
 /// One gun's model (child of the pivot).
@@ -392,8 +452,15 @@ fn spawn_viewmodel(
     commands.entity(cam).insert(Visibility::default());
     let root = commands.spawn((Name::new("ViewModel"), ViewRoot, Transform::default(), Visibility::default(), ChildOf(cam))).id();
     let rifle = fit(WeaponKind::Rifle);
+    let (rig_t, rig_r) = rig_springs();
     let pivot = commands
-        .spawn((Name::new("ViewModel pivot"), ViewModel::default(), Transform::from_translation(rifle.hip), Visibility::default(), ChildOf(root)))
+        .spawn((
+            Name::new("ViewModel pivot"),
+            ViewModel { rig_t, rig_r, ..default() },
+            Transform::from_translation(rifle.hip),
+            Visibility::default(),
+            ChildOf(root),
+        ))
         .id();
     let hands = HandKit::new(&mut meshes, &mut materials);
     // Primitive fallback, shared by every gun that has no model file.
@@ -508,8 +575,10 @@ fn animate_viewmodel(
     mut flashes: Query<(&mut Visibility, &mut Transform, Option<&mut PointLight>), (With<MuzzleFlash>, Without<ViewModel>, Without<ViewRoot>)>,
     mut events: MessageReader<GunEvent>,
     mut muzzle_cam: ResMut<MuzzleCam>,
+    aim: Res<crate::bodycam::BodycamAim>,
 ) {
     let dt = time.delta_secs().clamp(1e-4, 0.05);
+    let body = aim.active;
     let Ok((player, look, motor, weapon)) = players.single() else { return };
     let Ok((mut vm, mut tf, mut vis)) = vms.single_mut() else { return };
     let Some(w) = weapon else { return };
@@ -522,17 +591,28 @@ fn animate_viewmodel(
     let fov = cam.and_then(|(_, p)| if let Projection::Perspective(pp) = p { Some(pp.fov) } else { None }).unwrap_or(VIEWMODEL_FOV_DEG.to_radians());
     let r = (fov * 0.5).tan() / (VIEWMODEL_FOV_DEG.to_radians() * 0.5).tan();
     let root_scale = Vec3::new(r, r, 1.0);
+    // Bodycam: the whole viewmodel turns about the camera to where the gun aims.
+    let root_rot = if body { aim.weapon_in_camera } else { Quat::IDENTITY };
     if let Ok(mut rtf) = roots.single_mut()
-        && (rtf.scale - root_scale).length_squared() > 1e-8
+        && ((rtf.scale - root_scale).length_squared() > 1e-8 || rtf.rotation != root_rot)
     {
         rtf.scale = root_scale;
+        rtf.rotation = root_rot;
     }
 
     for ev in events.read() {
         match *ev {
             GunEvent::Shot { kind } => {
                 let k = fit(kind);
-                vm.kick_vel += k.kick * (1.0 - 0.45 * w.ads);
+                if body {
+                    // Spec §3.2: kick back into the chest, muzzle climb, wrist twist.
+                    let s = k.kick / 30.0 * RIG_GAIN * (1.0 - 0.45 * w.ads);
+                    let r = |a: f32| rand::random_range(-a..a);
+                    vm.rig_t.add_impulse(Vec3::new(r(0.02), rand::random_range(0.01..0.03), 0.18) * s);
+                    vm.rig_r.add_impulse(Vec3::new(0.14, r(0.06), r(0.12)) * s);
+                } else {
+                    vm.kick_vel += k.kick * (1.0 - 0.45 * w.ads);
+                }
                 vm.jitter = rand::random_range(-1.0..1.0);
                 vm.flash = FLASH_TIME;
                 vm.flash_scale = k.flash;
@@ -621,11 +701,34 @@ fn animate_viewmodel(
     let sprint = ease(w.sprint);
 
     // Pull the barrel back from walls instead of clipping through them.
-    let push = cam.and_then(|(g, _)| {
-        let filter = SpatialQueryFilter::from_excluded_entities([player]);
-        spatial.cast_ray(g.translation(), g.forward(), 1.0, true, &filter).map(|h| (0.85 - h.distance).clamp(0.0, 0.4))
-    });
-    vm.wall_push += (push.unwrap_or(0.0) - vm.wall_push) * approach(14.0, dt);
+    let filter = SpatialQueryFilter::from_excluded_entities([player]);
+    if body {
+        // Bodycam: a ray along the gun's aim; the closer the wall, the further the gun folds up
+        // and back to high ready (spec §3.2, measured past the body's own clearance).
+        let alpha = cam
+            .and_then(|(g, _)| {
+                // The aim direction, not the folded barrel (that would point over the wall).
+                let dir = Dir3::new(g.rotation() * (root_rot * Vec3::NEG_Z)).ok()?;
+                spatial.cast_ray(g.translation(), dir, BODY_CLEARANCE + BARREL_LEN, true, &filter).map(|h| 1.0 - (h.distance - BODY_CLEARANCE).max(0.0) / BARREL_LEN)
+            })
+            .unwrap_or(0.0);
+        vm.compress += (alpha - vm.compress) * approach(12.0, dt);
+        let c = vm.compress;
+        // Spec: 0.22 m back and 65° up. The pivot is the grip, so pulling it all the way back
+        // would put the handguard on the lens: back 0.12, down and right a little, turned in.
+        vm.rig_t.target = Vec3::new(0.05 * c, -0.07 * c, 0.12 * c);
+        vm.rig_r.target = Vec3::new(65f32.to_radians() * c, 0.2 * c, 0.3 * c);
+        vm.rig_t.step(dt);
+        vm.rig_r.step(dt);
+        vm.wall_push = 0.0;
+    } else {
+        let push = cam.and_then(|(g, _)| spatial.cast_ray(g.translation(), g.forward(), 1.0, true, &filter).map(|h| (0.85 - h.distance).clamp(0.0, 0.4)));
+        vm.wall_push += (push.unwrap_or(0.0) - vm.wall_push) * approach(14.0, dt);
+        if vm.rig_t.value != Vec3::ZERO || vm.rig_r.value != Vec3::ZERO || vm.compress != 0.0 {
+            (vm.rig_t, vm.rig_r) = rig_springs();
+            vm.compress = 0.0;
+        }
+    }
 
     let (k, w_push) = (vm.kick, vm.wall_push * (1.0 - a));
     let hip_ads = f.hip.lerp(f.ads, a);
@@ -650,6 +753,14 @@ fn animate_viewmodel(
         vm.sway.x * 1.6 * (1.0 - 0.8 * a) + vm.jitter * 0.03 + 0.5 * rl + if bolt { 0.35 * cyc } else { 0.0 } - 0.35 * lowered + 0.25 * sprint
             - 0.45 * insp,
     );
+    let (pos, rot) = if body {
+        // Chest cam: the gun sits nearer the middle of the frame, held lower.
+        let chest = Vec3::new(-0.06, -0.025, 0.0) * (1.0 - a);
+        let r = vm.rig_r.value;
+        (pos + chest + vm.rig_t.value, Quat::from_euler(EulerRot::YXZ, r.y, r.x, r.z) * rot)
+    } else {
+        (pos, rot)
+    };
     let new_tf = Transform { translation: pos, rotation: rot, scale: Vec3::ONE };
     if *tf != new_tf {
         *tf = new_tf;
@@ -659,9 +770,10 @@ fn animate_viewmodel(
     if *vis != want_vis {
         *vis = want_vis;
     }
-    let m = root_scale * new_tf.transform_point(f.muzzle);
-    if muzzle_cam.0 != m {
-        muzzle_cam.0 = m;
+    let m = root_rot * (root_scale * new_tf.transform_point(f.muzzle));
+    let barrel = (root_rot * (root_scale * (new_tf.rotation * Vec3::NEG_Z))).normalize_or(Vec3::NEG_Z);
+    if muzzle_cam.0 != m || muzzle_cam.1 != barrel {
+        *muzzle_cam = MuzzleCam(m, barrel);
     }
 
     // Magazines of the held gun: ~12 cm down (gun space) and out of frame. The magazine node's

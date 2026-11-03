@@ -64,13 +64,15 @@ Shroud:
 | `player.look` | `{yaw, pitch}` or `{at:[x,y,z]}` | `{yaw, pitch}` |
 | `player.move` | `{forward, right, ms, sprint?, crouch?}` | final `{pos}` (multi-frame) |
 | `player.fire` | `{shots}` | `{shots, hits, damage}` (multi-frame) |
-| `player.reload` / `player.crouch` | `{on?}` | `{}` |
+| `player.reload` / `player.crouch` | `{on?}` | `{}` (reload presses R even on a full mag: the bodycam press check) |
 | `player.god` | `{on}` | `{}` (soak tests) |
 | `enemy.list` / `enemy.freeze` / `enemy.kill` / `enemy.lean` | | |
 | `econ.state` | | money, loss streak, freeze/buy window, carried kit, next-round loadout, squad wallets + buy mode |
 | `econ.set_money` | `{money?, squad?}` | `econ.state` |
 | `buy` | `{item, anywhere?}` (gun name, `kevlar`, `helmet`) | `{bought, money}`; error if outside the buy window, owned or too poor |
 | `buy.menu` | `{open?}` | `{open}` (opens only when buying is possible) |
+| `video.camera_style` | `{style?}` (`classic` / `bodycam`) | `{style}` |
+| `video.bodycam` | `{turn?, strafe?, fire?, ms?}` (non-blocking drive) | free-aim state: weapon/camera/delta angles, roll, muzzle + barrel (camera space), press check |
 | `round.freeze` | `{seconds, now?}` | freeze time for later rounds (and now); 0 by default in test runs |
 | `match.state`, `ai.brain`, `ai.evolve`, `ai.reset`, `ai.squad`, `ai.throw`, `ai.difficulty` | | |
 | `map.load {name}` / `map.info` | | |

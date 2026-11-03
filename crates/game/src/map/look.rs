@@ -722,8 +722,18 @@ pub fn scenery_ranges(arena: &Arena) -> SceneryRanges {
 }
 
 /// Keeps the engine `Look` and the render-budget ranges on the current map.
-pub(crate) fn sync_look(arena: Res<ArenaRes>, look: Option<Res<Look>>, mut ranges: ResMut<SceneryRanges>, mut commands: Commands) {
-    let want = look_of(arena.0.id);
+/// Bodycam mode swaps in the map's bodycam look (`bodycam::lens::bodycam_look`).
+pub(crate) fn sync_look(
+    arena: Res<ArenaRes>,
+    settings: Res<crate::settings::ShroudSettings>,
+    look: Option<Res<Look>>,
+    mut ranges: ResMut<SceneryRanges>,
+    mut commands: Commands,
+) {
+    let mut want = look_of(arena.0.id);
+    if crate::bodycam::is_bodycam(&settings) {
+        want = crate::bodycam::lens::bodycam_look(want);
+    }
     if look.is_none_or(|l| l.name != want.name) {
         commands.insert_resource(want);
     }
