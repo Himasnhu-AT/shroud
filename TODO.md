@@ -63,11 +63,16 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [ ] Real rigged first-person arms (needs an asset; see Phase 7)
 
 ### Phase 4: bodycam optics (spec §4)
-- [ ] Optional "Bodycam" video mode (off by default; conflicts with the CS HUD, see notes)
-- [ ] WGSL post-process: barrel distortion, chromatic aberration, sensor grain, vignette, sharpen
-- [ ] HDR + AgX + bloom + auto-exposure on the main camera
-- [ ] 45 ms muzzle-flash point light
-- [ ] [REC] timestamp stamp overlay in bodycam mode
+- [x] Optional "Bodycam" camera style (Settings → Video, off by default; `video.camera_style`)
+- [x] WGSL post-process: barrel distortion, chromatic aberration, sensor grain, vignette, sharpen
+  (one `FullscreenMaterial` pass after tonemapping/FXAA; also on offscreen captures)
+- [x] AgX + auto-exposure (fast up, slow down) + bloom tuning; bloom only on tiers that have it
+- [x] 45 ms muzzle-flash point light (both styles; pooled, no shadows)
+- [x] [REC] timestamp stamp overlay; no crosshair / health / ammo (R on a full mag = ammo check)
+- [ ] Muzzle light casting shadows (spec): needs a governor-aware budget; a 45 ms shadowed point
+  light is six extra views for a few frames
+- [ ] Chest offset for the camera (spec §2.1 `spine_02`): kept at eye height so cover and
+  peeking play the same in both styles
 
 ### Phase 5: adaptive doctrine (spec §5)
 - [x] `PlayerStyleProfile` (`brain/src/doctrine.rs`): speed EMA, angle-hold time, ADS ratio, headshot
@@ -83,11 +88,14 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] These are technique counters, so they fit Phase 0's rule
 
 ### Phase 6: bodycam handling (spec §2–3)
-- [ ] Free-aim deadzone (18°×12°) that collapses on ADS
-- [ ] 6-DOF spring rig on the viewmodel; recoil impulses
-- [ ] Wall compression raycast (0.65 m barrel)
-- [ ] Shots from the muzzle socket, not screen centre (bodycam mode only; CS mode keeps centre aim)
-- [ ] Dutch roll from yaw speed and strafing
+- [x] Free-aim deadzone (18°×12°) that collapses on ADS (stiffness 14 hip / 35 ADS)
+- [x] 6-DOF spring rig on the viewmodel (k 210/d 16, k 180/d 14); spec recoil impulses ×5
+  (at 1× the gun moves under a centimetre)
+- [x] Wall compression raycast (0.65 m of barrel past the body's 0.35 m clearance) → high ready
+- [x] Shots from the muzzle along the barrel (bodycam only; Classic keeps centre aim)
+- [x] Dutch roll from yaw speed and strafing (±7°), vest shock per shot
+- [ ] Two-bone arm IK (spec §3.2): the hands are primitive blocks parented to the gun; needs a
+  rigged arms asset first (Phase 7)
 
 ### Phase 7: realistic assets (spec §6)
 - [ ] Poly Haven HDRIs, ambientCG 4K sets (CC0, scriptable downloads)
@@ -106,5 +114,9 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - Spec §4.3 says "zero health/ammo on screen"; the CS2 loop needs money, timer and ammo. Plan: the
   bodycam look is a toggle and CS HUD is the default.
 - Spec §2 free-aim (shots from the barrel) changes how CS-style precision works. Bodycam mode only.
+- Spec §7 checks for the bodycam: 1 (0.20 APIs, required components) yes; 2 (decoupled aim, ADS
+  aligns the sight) yes; 3 (true barrel) yes; 4 (wall compression) yes; 5 optics yes, flash light
+  yes but unshadowed and too short to move the auto exposure much.
+- The bodycam stamp uses a fictional device id (`SHROUD BODY 4`), not the spec's real brand.
 - Spec asks for `bevy_mod_inverse_kinematics`/rapier; we stay on avian3d 0.8 and a hand-written
   2-bone IK if needed (pinned deps).

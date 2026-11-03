@@ -65,6 +65,28 @@ Crosshair, hit marker, HP, armor, money (with +/- changes), ammo, enemies left, 
 round N/5, freeze countdown, a "B Buy menu" hint while buying is possible, and **Generation N** in
 the corner.
 
+## Camera style: Bodycam (Settings → Video; off by default)
+Classic is the CS-style default above. Bodycam (`bodycam/`) turns the round into chest-cam
+footage:
+- **Lens**: ~130° horizontal (100° vertical) plus one post pass after tonemapping: barrel
+  distortion (corners kept), radial chromatic aberration, unsharp mask, shadow-weighted sensor
+  grain at 30 Hz, heavy vignette (`bodycam_post.wesl`). Auto exposure adapts dark → bright fast
+  (3.5 EV/s) and bright → dark slowly (1.2 EV/s); AgX; bloom 0.28 where the quality tier has
+  bloom (High, Ultra).
+- **Free aim**: the mouse moves the gun inside an 18° × 12° box; the camera follows only past
+  its edge (stiffness 14, 35 aimed); ADS collapses the box so the sight lines up. Dutch roll
+  from turning speed and strafing (±7°), a small vest shock per shot.
+- **Handling**: 6-DOF spring rig on the gun (recoil impulses: kick back, climb, twist); near a
+  wall (0.65 m of barrel past the body) the gun folds up to high ready. **Shots leave the
+  muzzle along the barrel**, not the screen centre (no crosshair).
+- **HUD**: [REC] stamp with local time and a device id; no crosshair, health or ammo numbers.
+  Money, timer, score, kill feed, freeze time and the buy menu stay (the round loop needs them).
+  **Ammo check**: R on a full magazine turns the gun and shows the ammo panel for 2 s (it also
+  shows while reloading). This replaces the spec's press-check animation (no arm rig yet).
+- Muzzle flash light (both styles): one pooled 45 ms point light at the muzzle, no shadows.
+- Control port: `video.camera_style {style}`, `video.bodycam` (state; `{turn, strafe, fire, ms}`
+  drives the player for screenshots). Visual check: `scripts/bodycam.json`.
+
 ## Debrief screen
 - Match result + round scores.
 - **"What they learned"**: top 3 player-model insights.
