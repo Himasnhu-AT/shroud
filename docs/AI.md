@@ -18,8 +18,8 @@ Each gene is stored in [0, 1] and mapped to a real range. Ranges marked * are cl
 | `preferred_range` | 6–30 m | distance they try to fight at |
 | `flank_bias` | 0–1 | how willing to take Flank routes |
 | `cover_affinity` | 0–1 | weight on TakeCover, crouch-peeking |
-| `reaction_time` | limit–700 ms* | delay from first sight to first shot |
-| `aim_error` | limit–8°* | base aim spread (gaussian sigma) |
+| `reaction_time` | inert (fixed: limit × 1.3) | delay from first sight to first shot; not evolved |
+| `aim_error` | inert (fixed: limit × 1.3) | base aim spread (gaussian sigma); not evolved |
 | `burst_length` | 2–10 shots | before re-aiming |
 | `retreat_health` | 0–0.6 | HP fraction that triggers Retreat |
 | `team_cohesion` | 0–1 | spacing, waiting for allies before pushing |
@@ -83,17 +83,19 @@ Final move = `path_dir × w_path + micro × w_micro`, with `w_micro` = 1.0 in At
 - The aim turns at a capped rate (≤ 360°/s), so a fast flick by the player breaks their aim.
 
 ## 5. Fairness limits (`limits.rs`)
-Floors that loosen with generation `g` and never go below human-plausible values:
+Fixed for every generation (since 2026-11-03): evolution improves **technique only**
+(positioning, flanking, cover, timing, teamwork, weapon choice, NEAT micro), never raw mechanics.
+Difficulty is the only scale (`difficulty.rs` multiplies these).
 
-| Limit | Formula | Gen 0 → Gen 20+ |
-|---|---|---|
-| min reaction time | max(180, 450 − 15·g) ms | 450 → 180 ms |
-| min aim error | max(1.2, 5 − 0.25·g)° | 5° → 1.2° |
-| enemy damage per hit | 8 + 0.25·g, cap 12 | 8 → 12 |
-| squad size | 5 (fixed in prototype) | — |
+| Limit | Value (before difficulty) |
+|---|---|
+| min reaction time | 440 ms (enemies use × 1.3; × 0.6 in combat, floored at the limit) |
+| min aim error | 5° (enemies use × 1.3) |
+| enemy damage per hit | 8 (rifle, scaled per gun) |
 
-The point: most of the difficulty increase must come from **better decisions** (traits, tactics, micro, prediction),
-not from raw stats.
+`ReactionTime` and `AimError` genes are kept in the genome so old saves load, but `decode` ignores
+them and the debrief hides them (`Gene::is_technique`). `tests/brain.rs` checks that evolution
+still beats fresh squads under Recruit mechanics (54% → 77% squad round wins).
 
 ## Squad tactics v2 (learned plays, anchors, utility, difficulty)
 

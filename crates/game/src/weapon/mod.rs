@@ -183,16 +183,25 @@ pub struct Dummy;
 /// Applies every [`Damage`] message to its target's [`Health`].
 pub fn apply_damage(
     mut msgs: MessageReader<Damage>,
-    mut healths: Query<(&mut Health, Has<Dummy>)>,
+    mut healths: Query<(&mut Health, Has<Dummy>, Option<&mut crate::armor::Armor>)>,
     players: Query<(), With<Player>>,
     mut marker: ResMut<HitMarker>,
 ) {
     for d in msgs.read() {
-        let Ok((mut h, dummy)) = healths.get_mut(d.target) else { continue };
+        let Ok((mut h, dummy, armor)) = healths.get_mut(d.target) else { continue };
         if h.is_dead() {
             continue;
         }
-        h.hp = (h.hp - d.amount).max(0.0);
+        // Bought armor takes its share of the hit first (`brain::economy::armor_split`).
+        let mut amount = d.amount;
+        if let Some(mut a) = armor {
+            let (hp, used) = brain::economy::armor_split(amount, a.points, d.headshot, a.helmet);
+            if used > 0.0 {
+                a.points = (a.points - used).max(0.0);
+                amount = hp;
+            }
+        }
+        h.hp = (h.hp - amount).max(0.0);
         if h.is_dead() {
             if players.contains(d.source) {
                 marker.kill = true;
@@ -281,7 +290,8 @@ pub(crate) fn approach(rate: f32, dt: f32) -> f32 {
     1.0 - (-rate * dt).exp()
 }
 
-/// Display blurb per gun (match setup cards, pickups).
+/// Display blurb per gun (gun cards, pickups).
+#[allow(dead_code)]
 pub fn blurb(kind: WeaponKind) -> &'static str {
     match kind {
         WeaponKind::Pistol => "Sidearm. Quick to draw, accurate when you take your time.",

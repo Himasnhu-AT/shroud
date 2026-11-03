@@ -29,10 +29,12 @@ fn ghost_v2_beats_v1_against_the_same_squads() {
     let a = Arena::foundry();
     let model = PlayerModel::default();
     let brains: Vec<BrainState> = (1..=4).map(BrainState::new).collect();
-    let v1 = win_rate(&a, &model, GhostMode::V1, &brains, 20);
-    let v2 = win_rate(&a, &model, GhostMode::V2, &brains, 20);
+    let v1 = win_rate(&a, &model, GhostMode::V1, &brains, 40);
+    let v2 = win_rate(&a, &model, GhostMode::V2, &brains, 40);
     eprintln!("player win rate: v1 {v1:.2}, v2 {v2:.2}");
-    assert!(v2 > v1 + 0.05, "v2 {v2} should beat v1 {v1}");
+    // Margin 0.02: since aim/reaction stopped varying per enemy (technique-only evolution,
+    // limits.rs), fresh squads are uniformly mid-skill and V2's edge shrank from ~0.1 to ~0.03.
+    assert!(v2 > v1 + 0.02, "v2 {v2} should beat v1 {v1}");
 }
 
 #[test]

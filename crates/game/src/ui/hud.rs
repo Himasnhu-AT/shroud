@@ -6,7 +6,7 @@ use bevy::prelude::*;
 
 use super::theme::*;
 use crate::enemy::{Enemy, EnemyCombat, Squad};
-use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
+use crate::match_flow::{MAX_ROUNDS, MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
@@ -58,8 +58,9 @@ fn reset_clock(mut c: ResMut<RoundClock>) {
     c.0 = 0.0;
 }
 
-fn tick_clock(time: Res<Time>, flow: Res<MatchFlow>, mut c: ResMut<RoundClock>) {
-    if flow.round_over.is_none() {
+fn tick_clock(time: Res<Time>, flow: Res<MatchFlow>, phase: Res<crate::economy::RoundPhase>, mut c: ResMut<RoundClock>) {
+    // Freeze time doesn't count against the round clock.
+    if flow.round_over.is_none() && !phase.frozen() {
         c.0 += time.delta_secs();
     }
 }
@@ -381,6 +382,7 @@ fn update_hud(
     info: Res<HudInfo>,
     flow: Res<MatchFlow>,
     clock: Res<RoundClock>,
+    phase: Res<crate::economy::RoundPhase>,
     settings: Res<ShroudSettings>,
     marker: Res<HitMarker>,
     player: Query<&Health, With<Player>>,
@@ -388,7 +390,7 @@ fn update_hud(
         Query<(&mut Text, &mut TextColor), With<HpText>>,
         Query<(&mut Text, &ScoreText)>,
         Query<&mut Text, With<RoundText>>,
-        Query<&mut Text, With<TimerText>>,
+        Query<(&mut Text, &mut TextColor), With<TimerText>>,
         Query<&mut Text, With<GenText>>,
     )>,
     mut bars: ParamSet<(
@@ -426,11 +428,25 @@ fn update_hud(
     }
     if let Ok(mut t) = texts.p2().single_mut() {
         let mp = flow.player_rounds + 1 >= ROUNDS_TO_WIN || flow.enemy_rounds + 1 >= ROUNDS_TO_WIN;
-        set(&mut t, if mp && flow.round > 1 { format!("ROUND {} \u{b7} MATCH POINT", flow.round) } else { format!("ROUND {}", flow.round.max(1)) });
+        let round = format!("ROUND {}/{MAX_ROUNDS}", flow.round.max(1));
+        set(
+            &mut t,
+            if phase.frozen() {
+                "FREEZE TIME".to_string()
+            } else if mp && flow.round > 1 {
+                format!("{round} \u{b7} MATCH POINT")
+            } else {
+                round
+            },
+        );
     }
-    if let Ok(mut t) = texts.p3().single_mut() {
-        // Counts down to the round time limit.
-        set(&mut t, fmt_clock(crate::match_flow::ROUND_TIME_S - clock.0));
+    if let Ok((mut t, mut c)) = texts.p3().single_mut() {
+        // Freeze countdown, then the round time limit.
+        let (s, col) = if phase.frozen() { (fmt_clock(phase.freeze_left.ceil()), ACCENT) } else { (fmt_clock(crate::match_flow::ROUND_TIME_S - clock.0), TEXT) };
+        set(&mut t, s);
+        if c.0 != col {
+            c.0 = col;
+        }
     }
     if let Ok(mut t) = texts.p4().single_mut() {
         set(&mut t, format!("SQUAD GEN {}  \u{b7}  {}", info.generation, settings.difficulty.label().to_uppercase()));
