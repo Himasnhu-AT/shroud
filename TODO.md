@@ -14,13 +14,13 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 | Phase | What | Status |
 |---|---|---|
 | 0 | Technique-only evolution + shared price table | done |
-| 1 | Match loop: 5 rounds, freeze time, economy, buy menu, simple menu | done (player grenades not buyable yet) |
+| 1 | Match loop: 5 rounds, freeze time, economy, buy menu, simple menu | done (player grenades: frag, flash, smoke) |
 | 2 | CS-style defusal maps (A/B sites, mid, spawns, buy zones) | done (Sirocco, Gantry; Depot signs) |
-| 3 | Guns + operator skins (CS feel, original designs) | done (hands are placeholder blocks) |
+| 3 | Guns + operator skins (CS feel, original designs) | done (procedural gloved hands; rigged arms need a user download) |
 | 4 | Bodycam optics (spec §4): post-process shader, muzzle flash light, auto-exposure | planned |
 | 5 | Adaptive doctrine (spec §5): player archetypes → squad counters | planned |
 | 6 | Bodycam handling (spec §2–3): free-aim deadzone, springs, wall compression, dutch roll | planned |
-| 7 | Realistic assets (spec §6): HDRI, 4K PBR, rigged arms | partly: CC0 realistic guns in; arms/bodies need user downloads |
+| 7 | Realistic assets (spec §6): HDRI, 4K PBR, rigged arms | mostly: HDRI skies, 4K PBR sets, CC0 guns in; rigged arms/bodies need user downloads |
 
 ## Checklist
 
@@ -37,7 +37,16 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] Freeze time at round start (8 s): can buy and look, can't move or shoot
 - [x] Economy: start $800, win $3250, loss $1400 + $500 per loss streak (cap $3400), kill rewards per gun
 - [x] Buy menu (B, during freeze time / in buy zone): pistols, SMGs & shotguns, rifles & snipers, armor, helmet
-- [ ] Player grenades in the buy menu (needs player throwing; enemy grenades exist)
+- [x] Player grenades: buy-menu Grenades column, frag $300 (max 1), flashbang $200 (max 2),
+  smoke $300 (max 1); 4 / G equips and cycles, LMB overhand, RMB underhand lob, both a mid toss;
+  kept by surviving (`weapon/throwing.rs`, `brain::economy::GrenadeBag`)
+- [x] Player frag hurts enemies and the player (cover via ray casts); player flash blinds enemies
+  (`Observation::blind`: no sight, no trigger); smoke clouds (15 s) block enemy sight and the
+  arena's 2D LOS (`Arena::smokes`)
+- [x] Squads that use utility (Veteran, Elite) buy their grenades; the coordinator throws what
+  they bought (capped by difficulty)
+- [x] Tests: grenade limits/prices, squad grenade buys (`brain::economy`), smoke blocks LOS,
+  flash blinds (`brain/tests/utility.rs`); visual check `scripts/grenades-player.json`
 - [x] Keep weapons you survived with; lose them on death
 - [x] Enemy economy: squad buys from the same prices (eco / force / full buy)
 - [x] HUD: money, freeze countdown, buy hint
@@ -51,7 +60,7 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] Nav + sim round passes on each new map (`brain/tests/maps.rs` runs every `MapId::ALL`)
 - [x] Map cards in the menu show the new maps first (the map row wraps, three per row)
 - [x] Screenshot tour scripts: `scripts/sirocco-tour.json`, `scripts/gantry-tour.json`; frame time: `scripts/maps-perf.json`
-- [ ] Optional: sandstone / cobblestone texture sets (the maps reuse stucco, paving and tiles with per-map tints)
+- [x] Sandstone (Bricks084) and cobblestone (PavingStones150) 2K sets on Sirocco: outer walls, every third house, the paved streets
 
 ### Phase 3: guns + skins
 - [x] More guns: Warden heavy pistol (700), Shrike battle rifle (2700, the attacker rifle), Osprey
@@ -60,7 +69,8 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] Enemy operators: helmet, plate carrier, pack/radio, gloves, boots, red armband; 3 variants
 - [x] Player viewmodel sleeves/gloves in team colours (primitive hands; no finger rig)
 - [x] Enemies use new guns (six loadout genes; old four-gene saves load and seed the new two)
-- [ ] Real rigged first-person arms (needs an asset; see Phase 7)
+- [ ] Real rigged first-person arms (needs a user download; see Phase 7). Meanwhile the procedural
+  hands have rounded forearms, gloved fingers wrapped on grip and handguard, and a watch on the left wrist
 
 ### Phase 4: bodycam optics (spec §4)
 - [x] Optional "Bodycam" camera style (Settings → Video, off by default; `video.camera_style`)
@@ -93,9 +103,28 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
   rigged arms asset first (Phase 7)
 
 ### Phase 7: realistic assets (spec §6)
-- [ ] Poly Haven HDRIs, ambientCG 4K sets (CC0, scriptable downloads)
-- [ ] Rigged arms / operator bodies: Mixamo and Sketchfab need accounts and manual download.
-  The user has to fetch these; licences must be checked per model (CC0/CC-BY only)
+- [x] Poly Haven HDRIs as KTX2 cubemap skies + image light (`scripts/hdri_to_cube.py`,
+  `map/look.rs::hdri_of`): Sirocco kloofendal_48d_partly_cloudy_puresky, Gantry
+  overcast_soil_puresky, Office abandoned_factory_canteen_01 (fill only). `old_depot` is an
+  indoor hall (roof in the sky): not used. Frame p50 unchanged (120 fps cap, maps-perf.json)
+- [x] ambientCG 4K sets, cooked KTX2 (quality tiers drop top mips: Low 1K, Medium 2K):
+  concrete (Concrete030: Gantry quay walls, Depot concrete), wet asphalt (Asphalt025C: Gantry
+  ground), peeling paint (PaintedPlaster018: Township yellow houses), ripstop (Fabric061:
+  enemy fatigues, player sleeves)
+- [ ] Rigged arms / operator bodies: nothing usable without an account. Checked: poly.pizza
+  (none), Quaternius/Kenney (no FPS arms), itch.io "PSX First Person Arms" by Drillimpact (CC0,
+  but PS1-style bare forearms with no gun poses: rejected), OpenGameArt "fps arms rigged only"
+  and "low poly fps rifle and hands" (CC0, site blocked automated download; worth a manual look).
+  For the user to fetch manually:
+  1. **Arms**: Mixamo (free Adobe account) → character "SWAT" (or "Soldier"), download FBX
+     "T-pose", with skin; convert to glTF (Blender: File → Export → glTF 2.0, +Y up). Mixamo
+     assets are royalty-free for games but not CC: fine to ship, not to redistribute raw.
+     Put it at `assets/models/arms/fps_arms.glb`; we cut the forearms/hands and pose them per gun.
+  2. **Or** a CC-BY Sketchfab model (filter: Downloadable + CC Attribution), search "fps arms
+     rigged gloves"; record author and URL in `assets/CREDITS.md`.
+  3. **Operator bodies**: Mixamo "SWAT" with the clips Idle, Rifle Run, Firing Rifle, Death
+     From Front Headshot (FBX for Unity, with skin, 30 fps) → glTF → `assets/models/operator.glb`
+     (clip names go in `enemy/animation.rs`'s table).
 
 ## Known issues
 - `brain` test `contact_encircles` (Depot, 6 enemies) sits near its 180° limit (178°); one run hit 182–184°.

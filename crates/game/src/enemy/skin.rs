@@ -141,7 +141,7 @@ fn mat(materials: &mut Assets<StandardMaterial>, c: Color, rough: f32) -> Handle
 
 /// UV repeats of the ripstop weave across the mannequin's texture atlas (a fine weave, not a
 /// pattern you notice at range).
-const FABRIC_REPEAT: f32 = 10.0;
+const FABRIC_REPEAT: f32 = 4.0;
 
 fn setup(
     mut commands: Commands,

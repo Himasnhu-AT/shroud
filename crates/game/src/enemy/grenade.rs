@@ -494,12 +494,12 @@ fn init_smoke_assets(mut commands: Commands, mut images: ResMut<Assets<Image>>, 
     commands.insert_resource(SmokeAssets {
         quad: meshes.add(Rectangle::new(1.0, 1.0)),
         mat: mats.add(StandardMaterial {
-            base_color: Color::srgba(0.74, 0.75, 0.76, 0.96),
+            base_color: Color::srgba(0.7, 0.71, 0.72, 0.96),
             base_color_texture: Some(tex),
             alpha_mode: AlphaMode::Blend,
-            // Lit like the scene, so it isn't glowing white in shade.
-            perceptual_roughness: 1.0,
-            reflectance: 0.0,
+            // Unlit: camera-facing puffs above the eye face down, away from the sun, and went
+            // black when lit; smoke reads as an even light grey from every side.
+            unlit: true,
             double_sided: true,
             cull_mode: None,
             ..default()
