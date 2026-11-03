@@ -30,7 +30,7 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] Debrief shows only technique genes (`evolve.rs`)
 - [x] Test proves technique-only gain (Recruit eval: 54% → 77% squad win rate)
 - [x] `WeaponKind::price()` / `kill_reward()` contract (`brain/src/weapons.rs`)
-- [ ] Docs: update `docs/EVOLUTION.md` / `docs/AI.md` §5 for fixed limits
+- [x] Docs: `docs/AI.md` §1 and §5 updated for fixed limits
 
 ### Phase 1: match loop
 - [ ] 5-round match: first to 3, max 5 rounds (`match_flow.rs`)
