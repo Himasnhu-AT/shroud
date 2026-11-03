@@ -25,6 +25,27 @@ pub struct ShroudSettings {
     pub show_callouts: bool,
     /// Unused since the buy menu (kept so older settings files round-trip).
     pub primary: WeaponKind,
+    /// Classic (CS-style centre aim, full HUD) or Bodycam (chest-cam optics, free aim,
+    /// stripped HUD; see `bodycam`).
+    pub camera_style: CameraStyle,
+}
+
+/// How the player's view is presented.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CameraStyle {
+    #[default]
+    Classic,
+    Bodycam,
+}
+
+impl CameraStyle {
+    pub const ALL: [CameraStyle; 2] = [CameraStyle::Classic, CameraStyle::Bodycam];
+    pub fn label(self) -> &'static str {
+        match self {
+            CameraStyle::Classic => "Classic",
+            CameraStyle::Bodycam => "Bodycam",
+        }
+    }
 }
 
 impl Default for ShroudSettings {
@@ -36,6 +57,7 @@ impl Default for ShroudSettings {
             crosshair_size: 1.0,
             show_callouts: true,
             primary: WeaponKind::Rifle,
+            camera_style: CameraStyle::Classic,
         }
     }
 }
@@ -120,6 +142,15 @@ fn register_fields(app: &mut App) {
         kind: FieldKind::Slider { min: 0.5, max: 2.0, step: 0.1, format: two_decimals },
         get: |w| s(w).crosshair_size,
         set: |w, v| s_mut(w).crosshair_size = v.clamp(0.5, 2.0),
+    })
+    .register_setting(FieldDef {
+        key: "camera_style",
+        tab: "Video",
+        label: "Camera style",
+        hint: "Bodycam: wide chest-cam lens, free aim, no crosshair or health/ammo numbers (press R on a full mag to check ammo).",
+        kind: FieldKind::Choice { options: CameraStyle::ALL.iter().map(|c| c.label()).collect() },
+        get: |w| index_of(&CameraStyle::ALL, &s(w).camera_style),
+        set: |w, v| s_mut(w).camera_style = pick(&CameraStyle::ALL, v),
     })
     .set_settings_tabs(&["Gameplay", "Controls", "Video", "Audio"])
     .settings_defaults::<ShroudSettings>();

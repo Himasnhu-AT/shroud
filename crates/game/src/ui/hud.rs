@@ -291,6 +291,7 @@ fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<S
     // Bottom-left: health.
     commands
         .spawn((
+            crate::bodycam::hud::HealthPanel,
             Node {
                 position_type: PositionType::Absolute,
                 left: px(40),

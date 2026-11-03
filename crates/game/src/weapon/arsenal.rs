@@ -12,6 +12,7 @@ use engine::settings::CoreSettings;
 use super::{Armed, GunEvent, WeaponKind, WeaponSet, approach, ease};
 use crate::player::{Player, PlayerIntent, PlayerSet};
 use crate::economy::{BuyMenu, RoundLoadout};
+use crate::settings::ShroudSettings;
 use crate::state::{GameState, has_visuals};
 
 /// Holster time before the next gun starts coming up.
@@ -475,28 +476,31 @@ pub fn zoom_of(w: Option<&Weapon>) -> f32 {
 }
 
 /// Mouse look slows with zoom (same screen distance per mouse count at any zoom).
-fn ads_sensitivity(settings: Res<CoreSettings>, q: Query<&Weapon, With<Player>>, mut look: ResMut<LookInput>) {
+fn ads_sensitivity(settings: Res<CoreSettings>, shroud: Res<ShroudSettings>, q: Query<&Weapon, With<Player>>, mut look: ResMut<LookInput>) {
     let Ok(w) = q.single() else { return };
     if w.ads <= 0.0 || (look.yaw == 0.0 && look.pitch == 0.0) {
         return;
     }
-    let base = (settings.fov_deg.to_radians() * 0.5).tan();
-    let zoomed = (settings.fov_deg.to_radians() * zoom_of(Some(w)) * 0.5).tan();
+    let fov = crate::bodycam::base_fov_deg(&settings, &shroud).to_radians();
+    let base = (fov * 0.5).tan();
+    let zoomed = (fov * zoom_of(Some(w)) * 0.5).tan();
     let k = (zoomed / base).clamp(0.1, 1.0);
     look.yaw *= k;
     look.pitch *= k;
 }
 
-/// ADS zoom on the main camera (the engine sets the base FOV from settings).
+/// ADS zoom on the main camera (the engine sets the base FOV from settings; bodycam mode has
+/// its own wide lens, `bodycam::base_fov_deg`).
 fn ads_fov(
     settings: Res<CoreSettings>,
+    shroud: Res<ShroudSettings>,
     state: Option<Res<State<GameState>>>,
     q: Query<&Weapon, With<Player>>,
     mut cams: Query<&mut Projection, With<MainCamera>>,
 ) {
     let playing = state.is_some_and(|s| *s.get() == GameState::Playing);
     let zoom = if playing { zoom_of(q.single().ok()) } else { 1.0 };
-    let fov = settings.fov_deg.clamp(30.0, 150.0).to_radians() * zoom;
+    let fov = crate::bodycam::base_fov_deg(&settings, &shroud).clamp(30.0, 150.0).to_radians() * zoom;
     for mut p in &mut cams {
         if let Projection::Perspective(pp) = p.as_ref()
             && (pp.fov - fov).abs() > 1e-4

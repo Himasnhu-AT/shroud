@@ -758,14 +758,19 @@ pub fn look_with_sky(id: MapId, has: impl Fn(&str) -> bool) -> Look {
 }
 
 /// Keeps the engine `Look` and the render-budget ranges on the current map.
+/// Bodycam mode swaps in the map's bodycam look (`bodycam::lens::bodycam_look`).
 pub(crate) fn sync_look(
     arena: Res<ArenaRes>,
+    settings: Res<crate::settings::ShroudSettings>,
     look: Option<Res<Look>>,
     dir: Option<Res<crate::assets::AssetsDir>>,
     mut ranges: ResMut<SceneryRanges>,
     mut commands: Commands,
 ) {
-    let want = look_with_sky(arena.0.id, |p| dir.as_ref().is_some_and(|d| d.has(p)));
+    let mut want = look_with_sky(arena.0.id, |p| dir.as_ref().is_some_and(|d| d.has(p)));
+    if crate::bodycam::is_bodycam(&settings) {
+        want = crate::bodycam::lens::bodycam_look(want);
+    }
     if look.is_none_or(|l| l.name != want.name) {
         commands.insert_resource(want);
     }

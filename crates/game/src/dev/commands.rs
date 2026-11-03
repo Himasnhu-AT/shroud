@@ -455,10 +455,9 @@ fn player_reload(world: &mut World, _: Value) -> Result<Value, String> {
     let e = player_entity(world)?;
     let gun = world.get::<Rifle>(e).ok_or("no gun")?;
     let (ammo, can) = (gun.ammo, gun.reloading.is_none() && gun.ammo < gun.mag && gun.reserve > 0);
-    if can {
-        // One frame of R through the same path as the key.
-        world.resource_mut::<ReloadPress>().0 = true;
-    }
+    // One frame of R through the same path as the key (on a full mag that is the bodycam
+    // press check; otherwise nothing happens).
+    world.resource_mut::<ReloadPress>().0 = true;
     Ok(json!({"ammo": ammo, "reloading": can}))
 }
 
