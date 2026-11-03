@@ -26,6 +26,7 @@ mod dev;
 pub mod fire;
 pub mod fx;
 pub mod pickups;
+pub mod finish;
 mod sound;
 pub mod viewmodel;
 
@@ -59,6 +60,7 @@ impl Plugin for WeaponPlugin {
         arsenal::build(app);
         fire::build(app);
         viewmodel::build(app);
+        finish::build(app);
         fx::build(app);
         pickups::build(app);
         sound::build(app);
@@ -296,7 +298,10 @@ pub fn blurb(kind: WeaponKind) -> &'static str {
         WeaponKind::Smg => "Hornet SMG. 14 rounds a second; wins corners, loses lanes.",
         WeaponKind::Rifle => "Kestrel rifle. The all-rounder; punches through thin cover.",
         WeaponKind::Shotgun => "Breacher pump. Nine pellets; brutal inside 8 m.",
-        WeaponKind::Marksman => "Longbow marksman. Scoped bolt action; one-shot headshots.",
+        WeaponKind::Marksman => "Longbow scout. Light scoped bolt rifle; quick on its feet, one-shot headshots.",
+        WeaponKind::HeavyPistol => "Warden heavy pistol. Seven big rounds; one tap to the head up close.",
+        WeaponKind::BattleRifle => "Shrike battle rifle. Hits harder than the Kestrel, kicks harder; one-tap headshots.",
+        WeaponKind::Sniper => "Osprey sniper. Heavy bolt action; one body shot kills. Slow to scope and to move.",
     }
 }
 
@@ -307,7 +312,10 @@ pub fn class_label(kind: WeaponKind) -> &'static str {
         WeaponKind::Smg => "SMG",
         WeaponKind::Rifle => "RIFLE",
         WeaponKind::Shotgun => "SHOTGUN",
-        WeaponKind::Marksman => "MARKSMAN",
+        WeaponKind::Marksman => "SCOUT",
+        WeaponKind::HeavyPistol => "HEAVY PISTOL",
+        WeaponKind::BattleRifle => "BATTLE RIFLE",
+        WeaponKind::Sniper => "SNIPER",
     }
 }
 

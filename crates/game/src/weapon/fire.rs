@@ -129,6 +129,10 @@ pub fn recoil_pattern(kind: WeaponKind, i: u32) -> (f32, f32) {
         WeaponKind::Rifle => (2.1, -0.45),
         WeaponKind::Shotgun => (0.9, 0.0),
         WeaponKind::Marksman => (3.0, 0.0),
+        WeaponKind::HeavyPistol => (0.7, 0.0),
+        // The attacker rifle pulls hard right, then swings left late in a spray.
+        WeaponKind::BattleRifle => (0.3, 0.6),
+        WeaponKind::Sniper => (2.6, 0.0),
     };
     let wander = (n * 0.55 + phase).sin() * 0.7 + (n * 1.37 + phase * 2.0).sin() * 0.3;
     // Late in a long string the gun leans to one side.

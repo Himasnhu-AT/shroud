@@ -73,7 +73,9 @@ pub struct TraitGenome {
     pub pef: [f32; PEF_TERMS],
     /// Weapon preference genes, one per `WeaponKind::PRIMARIES` (`loadout.rs`), in [0, 1].
     /// Saves from before loadouts have none: `UNSET_LOADOUT` until `fill_loadout` seeds them.
-    #[serde(default = "unset_loadout")]
+    /// Saves from before the Shrike/Osprey have four genes: the missing ones load as unset and
+    /// get seeded the same way.
+    #[serde(default = "unset_loadout", deserialize_with = "crate::pad::unset")]
     pub loadout: [f32; PREF_COUNT],
     pub fitness: f32,
     /// How many evaluations contributed to `fitness` (for averaging).
@@ -155,9 +157,16 @@ impl TraitGenome {
 
     /// Old saves: give genomes without weapon genes their seeded ones.
     pub fn fill_loadout(&mut self) {
-        if self.loadout.iter().any(|g| *g < 0.0) {
-            self.loadout = seeded_loadout(&self.genes);
+        self.loadout = self.filled_loadout();
+    }
+
+    /// The weapon genes with any unset entries seeded (set genes are kept).
+    fn filled_loadout(&self) -> [f32; PREF_COUNT] {
+        if !self.loadout.iter().any(|g| *g < 0.0) {
+            return self.loadout;
         }
+        let seeded = seeded_loadout(&self.genes);
+        std::array::from_fn(|i| if self.loadout[i] < 0.0 { seeded[i] } else { self.loadout[i] })
     }
 
     pub fn get(&self, g: Gene) -> f32 {
@@ -171,7 +180,7 @@ impl TraitGenome {
     /// so evolution can't buy a squad better mechanics, only better decisions.
     pub fn decode(&self, limits: &Limits) -> Traits {
         let g = |x: Gene| self.get(x);
-        let loadout = if self.loadout.iter().any(|g| *g < 0.0) { seeded_loadout(&self.genes) } else { self.loadout };
+        let loadout = self.filled_loadout();
         // Everyone decodes as a rifleman; `loadout::equip` hands out the squad's guns.
         let weapon = WeaponKind::Rifle;
         let base_range = 6.0 + 24.0 * g(Gene::PreferredRange);

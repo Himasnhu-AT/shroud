@@ -33,15 +33,38 @@ pub enum WeaponKind {
     Rifle,
     /// "Breacher" pump shotgun: pellets, brutal inside 8 m.
     Shotgun,
-    /// "Longbow" marksman rifle: scoped, slow, one-shot headshots.
+    /// "Longbow" scout: light scoped bolt rifle, mobile, one-shot headshots. The cheap long gun.
     Marksman,
+    /// "Warden" heavy pistol: seven big rounds, slow and kicky, one-tap headshots.
+    HeavyPistol,
+    /// "Shrike" battle rifle: the attacker rifle. Harder hitting (one-tap headshots), slower,
+    /// more recoil and a bit cheaper than the Kestrel.
+    BattleRifle,
+    /// "Osprey" heavy bolt-action sniper: one-shot body kills, the most expensive gun.
+    Sniper,
 }
 
 impl WeaponKind {
-    pub const ALL: [WeaponKind; 5] =
-        [WeaponKind::Pistol, WeaponKind::Smg, WeaponKind::Rifle, WeaponKind::Shotgun, WeaponKind::Marksman];
-    pub const PRIMARIES: [WeaponKind; 4] =
-        [WeaponKind::Smg, WeaponKind::Rifle, WeaponKind::Shotgun, WeaponKind::Marksman];
+    /// Every gun. New kinds are appended (per-gun arrays in saves are indexed by this order).
+    pub const ALL: [WeaponKind; 8] = [
+        WeaponKind::Pistol,
+        WeaponKind::Smg,
+        WeaponKind::Rifle,
+        WeaponKind::Shotgun,
+        WeaponKind::Marksman,
+        WeaponKind::HeavyPistol,
+        WeaponKind::BattleRifle,
+        WeaponKind::Sniper,
+    ];
+    /// Primaries, in the order of the enemy weapon-preference genes (`loadout.rs`). Appended only.
+    pub const PRIMARIES: [WeaponKind; 6] = [
+        WeaponKind::Smg,
+        WeaponKind::Rifle,
+        WeaponKind::Shotgun,
+        WeaponKind::Marksman,
+        WeaponKind::BattleRifle,
+        WeaponKind::Sniper,
+    ];
 
     pub fn spec(self) -> &'static WeaponSpec {
         match self {
@@ -50,7 +73,15 @@ impl WeaponKind {
             WeaponKind::Rifle => &RIFLE,
             WeaponKind::Shotgun => &SHOTGUN,
             WeaponKind::Marksman => &MARKSMAN,
+            WeaponKind::HeavyPistol => &HEAVY_PISTOL,
+            WeaponKind::BattleRifle => &BATTLE_RIFLE,
+            WeaponKind::Sniper => &SNIPER,
         }
+    }
+
+    /// Scoped long guns (the Longbow and the Osprey): fight from long sightlines, never entry.
+    pub fn long_gun(self) -> bool {
+        matches!(self, WeaponKind::Marksman | WeaponKind::Sniper)
     }
 
     pub fn label(self) -> &'static str {
@@ -64,17 +95,21 @@ impl WeaponKind {
             WeaponKind::Smg => 1250,
             WeaponKind::Rifle => 2900,
             WeaponKind::Shotgun => 1100,
-            WeaponKind::Marksman => 4750,
+            WeaponKind::Marksman => 1700,
+            WeaponKind::HeavyPistol => 700,
+            WeaponKind::BattleRifle => 2700,
+            WeaponKind::Sniper => 4750,
         }
     }
 
     /// Credits for a kill with this gun (cheap guns pay more, the sniper pays least).
     pub fn kill_reward(self) -> u32 {
         match self {
-            WeaponKind::Pistol | WeaponKind::Rifle => 300,
+            WeaponKind::Pistol | WeaponKind::HeavyPistol | WeaponKind::Rifle | WeaponKind::BattleRifle => 300,
+            WeaponKind::Marksman => 300,
             WeaponKind::Smg => 600,
             WeaponKind::Shotgun => 900,
-            WeaponKind::Marksman => 100,
+            WeaponKind::Sniper => 100,
         }
     }
 }
@@ -169,6 +204,9 @@ impl WeaponSpec {
             WeaponKind::Pistol => (0.0, 18.0),
             WeaponKind::Rifle => (8.0, 35.0),
             WeaponKind::Marksman => (20.0, 80.0),
+            WeaponKind::HeavyPistol => (0.0, 20.0),
+            WeaponKind::BattleRifle => (8.0, 35.0),
+            WeaponKind::Sniper => (25.0, 120.0),
         }
     }
 }
@@ -328,10 +366,109 @@ pub static MARKSMAN: WeaponSpec = WeaponSpec {
     kick_pitch: 0.05,
     kick_yaw: 0.008,
     ads_zoom: 0.3,
-    ads_time_s: 0.32,
-    move_mult: 0.88,
+    ads_time_s: 0.28,
+    move_mult: 0.95,
     penetration: 0.6,
     loudness_m: 110.0,
+};
+
+pub static HEAVY_PISTOL: WeaponSpec = WeaponSpec {
+    kind: WeaponKind::HeavyPistol,
+    name: "Warden",
+    slot: Slot::Secondary,
+    mode: FireMode::Semi,
+    damage: 48.0,
+    falloff_min: 0.7,
+    falloff_start: 15.0,
+    falloff_end: 40.0,
+    // 115 to the head inside 15 m: one tap without a helmet.
+    headshot_mult: 2.4,
+    pellets: 1,
+    fire_rate: 2.6,
+    cycle_s: 0.0,
+    mag: 7,
+    reserve: 35,
+    reload_s: 2.0,
+    reload_empty_s: 2.3,
+    max_range: 150.0,
+    spread_hip: 0.018,
+    spread_ads: 0.004,
+    spread_move: 0.04,
+    spread_per_shot: 0.03,
+    spread_recover: 0.1,
+    kick_pitch: 0.06,
+    kick_yaw: 0.012,
+    ads_zoom: 0.85,
+    ads_time_s: 0.18,
+    move_mult: 1.0,
+    penetration: 0.25,
+    loudness_m: 70.0,
+};
+
+pub static BATTLE_RIFLE: WeaponSpec = WeaponSpec {
+    kind: WeaponKind::BattleRifle,
+    name: "Shrike",
+    slot: Slot::Primary,
+    mode: FireMode::Auto,
+    damage: 34.0,
+    falloff_min: 0.7,
+    falloff_start: 20.0,
+    falloff_end: 65.0,
+    // 102 to the head: one tap at any range inside falloff.
+    headshot_mult: 3.0,
+    pellets: 1,
+    fire_rate: 8.5,
+    cycle_s: 0.0,
+    mag: 30,
+    reserve: 90,
+    reload_s: 2.3,
+    reload_empty_s: 2.7,
+    max_range: 200.0,
+    spread_hip: 0.03,
+    spread_ads: 0.003,
+    spread_move: 0.045,
+    spread_per_shot: 0.009,
+    spread_recover: 0.13,
+    kick_pitch: 0.026,
+    kick_yaw: 0.011,
+    ads_zoom: 0.8,
+    ads_time_s: 0.24,
+    move_mult: 0.93,
+    penetration: 0.4,
+    loudness_m: 75.0,
+};
+
+pub static SNIPER: WeaponSpec = WeaponSpec {
+    kind: WeaponKind::Sniper,
+    name: "Osprey",
+    slot: Slot::Primary,
+    mode: FireMode::Single,
+    // One-shot body kill (100 HP) out to `falloff_start`, and still 103 at the far end.
+    damage: 115.0,
+    falloff_min: 0.9,
+    falloff_start: 80.0,
+    falloff_end: 200.0,
+    headshot_mult: 2.0,
+    pellets: 1,
+    fire_rate: 0.7,
+    cycle_s: 1.5,
+    mag: 5,
+    reserve: 20,
+    reload_s: 3.0,
+    reload_empty_s: 3.6,
+    max_range: 400.0,
+    spread_hip: 0.09,
+    spread_ads: 0.0,
+    spread_move: 0.12,
+    spread_per_shot: 0.0,
+    spread_recover: 1.0,
+    kick_pitch: 0.07,
+    kick_yaw: 0.01,
+    ads_zoom: 0.22,
+    ads_time_s: 0.38,
+    move_mult: 0.84,
+    penetration: 0.8,
+    loudness_m: 130.0,
 };
 
 #[cfg(test)]
@@ -362,5 +499,27 @@ mod tests {
         let mk = WeaponKind::Marksman.spec();
         assert!(sg.dps_at(close, 0.8) > mk.dps_at(close, 0.8));
         assert!(mk.dps_at(far, 0.8) > sg.dps_at(far, 0.8));
+    }
+
+    #[test]
+    fn new_guns_fill_their_roles() {
+        // The Osprey kills with one body shot; the Longbow doesn't.
+        assert!(SNIPER.damage_at(80.0) >= 100.0 && SNIPER.damage_at(1000.0) >= 100.0);
+        assert!(MARKSMAN.damage_at(10.0) < 100.0);
+        // One-tap headshots: Warden up close, Shrike at range; the Kestrel needs two.
+        assert!(HEAVY_PISTOL.damage_at(10.0) * HEAVY_PISTOL.headshot_mult >= 100.0);
+        assert!(BATTLE_RIFLE.damage_at(20.0) * BATTLE_RIFLE.headshot_mult >= 100.0);
+        assert!(RIFLE.damage_at(10.0) * RIFLE.headshot_mult < 100.0);
+        // The attacker rifle: cheaper, harder kick, slower than the Kestrel.
+        assert!(WeaponKind::BattleRifle.price() < WeaponKind::Rifle.price());
+        assert!(BATTLE_RIFLE.kick_pitch > RIFLE.kick_pitch && BATTLE_RIFLE.fire_rate < RIFLE.fire_rate);
+        // The sniper is the top price; the scout is a cheap long gun.
+        let top = WeaponKind::ALL.iter().map(|k| k.price()).max().unwrap();
+        assert_eq!(WeaponKind::Sniper.price(), top);
+        assert!(WeaponKind::Marksman.price() < WeaponKind::Rifle.price());
+        assert_eq!(WeaponKind::HeavyPistol.spec().slot, Slot::Secondary);
+        for k in WeaponKind::PRIMARIES {
+            assert_eq!(k.spec().slot, Slot::Primary);
+        }
     }
 }

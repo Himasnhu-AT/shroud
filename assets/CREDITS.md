@@ -5,11 +5,17 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | File | Pack | Author | URL | License |
 |---|---|---|---|---|
 | `models/rifle.glb` | Blaster Kit 2.1 (model `blaster-e`, with its `scope` and `magazine` meshes) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
-| `models/weapons/rifle.glb` | Copy of `models/rifle.glb` (Blaster Kit 2.1 `blaster-e` + `scope` + `magazine`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
-| `models/weapons/pistol.glb` | Blaster Kit 2.1 (model `blaster-c`, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
-| `models/weapons/smg.glb` | Blaster Kit 2.1 (model `blaster-j`, with its `magazine` mesh, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
-| `models/weapons/shotgun.glb` | Blaster Kit 2.1 (model `blaster-l`, double barrel, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
-| `models/weapons/marksman.glb` | Blaster Kit 2.1 (model `blaster-f`, with its `scope` and `magazine` meshes, texture embedded) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
+| `models/weapons/pistol.glb` | Pistol West (Vector-9), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/r8RjoAwN5A | CC0 1.0 |
+| `models/weapons/heavy_pistol.glb` | Pistol Full East (Warden), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/pNHeIJFHcQ | CC0 1.0 |
+| `models/weapons/smg.glb` | SMG West (Hornet), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/7Dh5JSbZcp | CC0 1.0 |
+| `models/weapons/rifle.glb` | Assault Rifle West (Kestrel), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/ss1nz3gJnx | CC0 1.0 |
+| `models/weapons/battle_rifle.glb` | Rifle Assault East (Shrike), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/xrJfQgAuDL | CC0 1.0 |
+| `models/weapons/shotgun.glb` | Shotgun Pump West (Breacher), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/NfQETBKOiw | CC0 1.0 |
+| `models/weapons/marksman.glb` | Rifle West (Longbow), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/wED1MSx2SK | CC0 1.0 |
+| `models/weapons/sniper.glb` | Sniper Rifle West (Osprey), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/kwJawENuvA | CC0 1.0 |
+| `models/weapons/optic_magnified.glb` | Magnified Sight (on the Kestrel), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/11AYWUakkH | CC0 1.0 |
+| `models/weapons/scope_short.glb` | Scope (on the Longbow), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/1QxV2Mk5l4 | CC0 1.0 |
+| `models/weapons/scope_long.glb` | Rifle Scope (on the Osprey), unmodified GLB | Pichuliru (poly.pizza) | https://poly.pizza/m/98ocxnqLFf | CC0 1.0 |
 | `models/enemy_rifle.glb` | Blaster Kit 2.1 (model `blaster-a`, with its `magazine` mesh) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-medium.glb` | Blaster Kit 2.1 (`crate-medium`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-small.glb` | Blaster Kit 2.1 (`crate-small`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
@@ -36,6 +42,8 @@ Notes:
 - The Blaster Kit GLBs referenced their colour map as an external file (`Textures/colormap.png`). The texture was embedded into each GLB so the file is self-contained. Geometry and materials are otherwise unchanged.
 - The Kenney "Animated Characters" packs were checked and rejected: they only ship FBX and contain idle, run and jump clips, with no shoot or death.
 - Animation clip names are listed in `ANIMATIONS.md`.
+- The gun models (Pichuliru's set on poly.pizza, each page marked CC0 1.0) replace the earlier Kenney Blaster Kit toy guns. They are skinned meshes in real-world metres with named part bones (`Magazine`, `Bolt`, `Slide`) and `Attach_*` nodes; the game mounts the separate optics on `Attach_Scope` and swaps their flat colours for its own steel / polymer / wood finishes at load (`weapon/finish.rs`).
+- `models/rifle.glb` and `models/enemy_rifle.glb` (Kenney) are no longer used by the game.
 
 ## Audio (`audio/*.ogg`), all CC0
 Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
@@ -70,6 +78,9 @@ Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
 | `audio/weapon_draw.ogg` | Interface `scratch_003` + Impact `impactMetal_light_001/002` + `impactTin_medium_000` | Kenney / this project | same |
 | `audio/ads_in.ogg` | Interface `scratch_004` (lowpassed) + Impact `impactSoft_medium_001` + faint `impactMetal_light_000`; peak −12 dBFS on purpose (quiet) | Kenney / this project | same |
 | `audio/pickup.ogg` | Impact `impactMetal_medium_003` + `impactPlate_light_002` + `impactTin_medium_001` + Interface `scratch_005` | Kenney / this project | same |
+| `audio/heavy_pistol_shot.ogg` | `pistol_shot` pitched down ×0.78 with a bass shelf + `marksman_shot` (×1.1, first 0.35 s, quiet), faded at 0.42 s | Kenney / this project | derived from the files above |
+| `audio/battle_rifle_shot.ogg` | `rifle_shot` pitched down ×0.86, bass shelf and a 2.5 kHz presence bump | Kenney / this project | derived from the files above |
+| `audio/sniper_shot.ogg` | `marksman_shot` pitched down ×0.84 with a bass shelf + `shotgun_shot` ×0.9 underneath | Kenney / this project | derived from the files above |
 | `audio/casing_0..2.ogg` | Impact `impactMetal_light_000/001/003` and `impactGlass_light_001/002`, pitched up ×1.5–2.4, highpassed, layered as decaying bounces | Kenney / this project | https://kenney.nl/assets/impact-sounds |
 
 ## Fonts (`fonts/*.ttf`), SIL Open Font License 1.1

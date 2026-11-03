@@ -5,6 +5,7 @@ pub mod animation;
 pub mod debug;
 pub mod grenade;
 pub mod gun;
+pub mod skin;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -75,7 +76,7 @@ impl Plugin for EnemyPlugin {
             .add_systems(Update, despawn_corpses.run_if(not_paused))
             // Round over: score the bandit's last engagement window and keep what it learned.
             .add_systems(OnExit(GameState::Playing), finish_round)
-            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin, gun::EnemyGunPlugin, grenade::GrenadePlugin));
+            .add_plugins((debug::EnemyDebugPlugin, animation::EnemyAnimationPlugin, gun::EnemyGunPlugin, grenade::GrenadePlugin, skin::EnemySkinPlugin));
     }
 }
 

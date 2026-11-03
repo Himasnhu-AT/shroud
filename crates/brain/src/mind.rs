@@ -560,7 +560,7 @@ impl EnemyMind {
         let window = o.player_reloading || o.player_hp < 0.35;
         let open_fight = matches!(self.goal, Goal::Attack | Goal::TakeCover) || self.post.is_some();
         // Marksmen always fight from posts: a long sightline, a shot or two, then relocate.
-        let marksman = t.weapon == WeaponKind::Marksman && o.weapon == WeaponKind::Marksman;
+        let marksman = t.weapon.long_gun() && o.weapon.long_gun();
         let want_post = combat
             && contact
             && !sticky_order
@@ -1099,7 +1099,7 @@ impl EnemyMind {
                         self.post = None;
                         return;
                     }
-                    if st.peeked && !self.isolated && self.traits.weapon != WeaponKind::Marksman {
+                    if st.peeked && !self.isolated && !self.traits.weapon.long_gun() {
                         // Squad nearby: one cycle, then back to the squad's tactics.
                         self.post = None;
                         self.post_retry = 2.0;
@@ -1117,7 +1117,7 @@ impl EnemyMind {
                             }
                             st.phase = PostPhase::Peek;
                             st.fired = 0.0;
-                            if self.traits.weapon == WeaponKind::Marksman {
+                            if self.traits.weapon.long_gun() {
                                 // Scope in, one or two shots, then off to a new sightline.
                                 st.t = PEEK_MAX_S + 1.5;
                                 st.burst = 0.15 + 0.2 * r;
@@ -1147,7 +1147,7 @@ impl EnemyMind {
 
     /// A post for the peek loop: marksmen want a long sightline, everyone else the usual.
     fn pick_post(&self, o: &Observation, cx: &MindCtx, current: Option<V2>) -> Option<posts::Post> {
-        if self.traits.weapon == WeaponKind::Marksman
+        if self.traits.weapon.long_gun()
             && let Some(p) = posts::pick_band(cx.arena, o.pos, o.player_pos, &self.recent_peeks, current, MARKSMAN_BAND, MARKSMAN_POST_RADIUS)
         {
             return Some(p);

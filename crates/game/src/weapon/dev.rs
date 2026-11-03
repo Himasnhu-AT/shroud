@@ -15,7 +15,7 @@ pub(super) fn build(app: &mut App) {
     app.add_control_command(
         "weapon.give",
         "Give the player a gun (fills its slot with full ammo and draws it)",
-        params(&[("kind", "string", "pistol | smg | rifle | shotgun | marksman"), ("draw", "boolean", "switch to it (default true)")]),
+        params(&[("kind", "string", "pistol | heavypistol | smg | rifle | battlerifle | shotgun | marksman | sniper (or a gun name: Warden, Shrike, Osprey ...)"), ("draw", "boolean", "switch to it (default true)")]),
         give,
     )
     .add_control_command("weapon.switch", "Switch to a slot (1 = primary, 2 = sidearm)", params(&[("slot", "integer", "1 or 2")]), switch)

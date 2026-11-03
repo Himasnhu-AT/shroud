@@ -2,7 +2,9 @@
 //! runtime state (magazine, reload, weapon switch). The game and the trainer sim share all of it,
 //! so a squad trains with the guns it fights with.
 //!
-//! - Each trait genome carries four preference genes, one per primary (`WeaponKind::PRIMARIES`).
+//! - Each trait genome carries one preference gene per primary (`WeaponKind::PRIMARIES`, six:
+//!   SMG, Kestrel, shotgun, Longbow, Shrike, Osprey). Old saves with four load padded and the
+//!   two new genes get seeded (`genome::TraitGenome::fill_loadout`).
 //!   Evolution moves them like any other gene: if the player fights at 40 m, squads whose
 //!   members prefer the Longbow win more sim rounds against his ghost and breed.
 //! - A squad gets its guns from those preferences under per-difficulty caps ([`caps`],
@@ -19,7 +21,7 @@ use crate::weapons::{RIFLE, WeaponKind, WeaponSpec};
 use serde::{Deserialize, Serialize};
 
 /// Preference genes per genome (one per `WeaponKind::PRIMARIES`).
-pub const PREF_COUNT: usize = 4;
+pub const PREF_COUNT: usize = WeaponKind::PRIMARIES.len();
 /// Seconds to swap between primary and sidearm.
 pub const SWITCH_S: f32 = 0.45;
 /// The trainer's squads are equipped as on Veteran (the full kit, moderate caps).
@@ -46,8 +48,8 @@ impl Role {
         match k {
             WeaponKind::Smg => Role::Rusher,
             WeaponKind::Shotgun => Role::Breacher,
-            WeaponKind::Marksman => Role::Marksman,
-            WeaponKind::Rifle | WeaponKind::Pistol => Role::Rifleman,
+            WeaponKind::Marksman | WeaponKind::Sniper => Role::Marksman,
+            WeaponKind::Rifle | WeaponKind::BattleRifle | WeaponKind::Pistol | WeaponKind::HeavyPistol => Role::Rifleman,
         }
     }
 
@@ -61,14 +63,9 @@ impl Role {
     }
 }
 
-/// Index of a primary in `WeaponKind::PRIMARIES` (the pistol maps to the rifle's slot).
+/// Index of a primary in `WeaponKind::PRIMARIES` (pistols map to the rifle's slot).
 pub fn primary_index(k: WeaponKind) -> usize {
-    match k {
-        WeaponKind::Smg => 0,
-        WeaponKind::Rifle | WeaponKind::Pistol => 1,
-        WeaponKind::Shotgun => 2,
-        WeaponKind::Marksman => 3,
-    }
+    WeaponKind::PRIMARIES.iter().position(|&x| x == k).unwrap_or(1)
 }
 
 /// Index of a gun in `WeaponKind::ALL`.
@@ -89,12 +86,15 @@ pub fn preferred(prefs: &[f32; PREF_COUNT]) -> WeaponKind {
 
 /// Most of each primary (in `PRIMARIES` order) a squad of `n` may field on a difficulty. Rifles
 /// are unlimited, so every member always gets a gun.
+/// Order: SMG, Kestrel, shotgun, Longbow, Shrike, Osprey. The Osprey (one-shot body kills)
+/// only shows up on Elite, one per squad (the trainer equips as Veteran, so it never trains around one). Long guns (Longbow + Osprey) together are capped by
+/// the Longbow's number, so a squad never parks more shooters on sightlines than before.
 pub fn caps(d: Difficulty, n: usize) -> [usize; PREF_COUNT] {
     match d {
-        Difficulty::Recruit => [1, n, 0, 0],
-        Difficulty::Regular => [1, n, 1, 1],
-        Difficulty::Veteran => [2, n, 1, 1],
-        Difficulty::Elite => [2, n, 2, 2],
+        Difficulty::Recruit => [1, n, 0, 0, 0, 0],
+        Difficulty::Regular => [1, n, 1, 1, 1, 0],
+        Difficulty::Veteran => [2, n, 1, 1, 2, 0],
+        Difficulty::Elite => [2, n, 2, 2, 2, 1],
     }
 }
 
@@ -105,7 +105,7 @@ pub fn assign(prefs: &[[f32; PREF_COUNT]], caps: [usize; PREF_COUNT]) -> Vec<Wea
     for (m, p) in prefs.iter().enumerate() {
         // Only a member's top two choices compete for capped slots (a weak third preference
         // shouldn't take the last shotgun from someone who loves it).
-        let mut order: [usize; PREF_COUNT] = [0, 1, 2, 3];
+        let mut order: [usize; PREF_COUNT] = std::array::from_fn(|i| i);
         order.sort_by(|&a, &b| p[b].total_cmp(&p[a]).then(a.cmp(&b)));
         for &k in &order[..2] {
             want.push((p[k], m, k));
@@ -113,10 +113,13 @@ pub fn assign(prefs: &[[f32; PREF_COUNT]], caps: [usize; PREF_COUNT]) -> Vec<Wea
     }
     want.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     let mut left = caps;
+    let mut long_left = caps[3];
     let mut out: Vec<Option<WeaponKind>> = vec![None; n];
     for (_, m, k) in want {
-        if out[m].is_none() && left[k] > 0 {
+        let long = WeaponKind::PRIMARIES[k].long_gun();
+        if out[m].is_none() && left[k] > 0 && (!long || long_left > 0) {
             left[k] -= 1;
+            long_left -= usize::from(long);
             out[m] = Some(WeaponKind::PRIMARIES[k]);
         }
     }
@@ -162,6 +165,11 @@ pub fn handling(k: WeaponKind) -> Handling {
         WeaponKind::Rifle => Handling { aim_mult: 1.0, move_mult: 0.35, settle_s: 0.6, ads_gate_s: 0.0, damage_mult: 1.0 },
         WeaponKind::Shotgun => Handling { aim_mult: 0.6, move_mult: 0.1, settle_s: 0.3, ads_gate_s: 0.0, damage_mult: 1.4 },
         WeaponKind::Marksman => Handling { aim_mult: 0.3, move_mult: 1.5, settle_s: 0.9, ads_gate_s: 0.45, damage_mult: 1.5 },
+        WeaponKind::HeavyPistol => Handling { aim_mult: 1.2, move_mult: 0.4, settle_s: 0.55, ads_gate_s: 0.0, damage_mult: 1.0 },
+        WeaponKind::BattleRifle => Handling { aim_mult: 1.15, move_mult: 0.45, settle_s: 0.65, ads_gate_s: 0.0, damage_mult: 1.0 },
+        // Slow cycle and a long scope-in; damage scaled down so an enemy Osprey hurts (~46) but
+        // never one-shots the player.
+        WeaponKind::Sniper => Handling { aim_mult: 0.25, move_mult: 2.0, settle_s: 1.0, ads_gate_s: 0.6, damage_mult: 1.25 },
     }
 }
 
@@ -169,7 +177,7 @@ pub fn handling(k: WeaponKind) -> Handling {
 /// clumsy up close (tunnel vision inside 12 m).
 pub fn aim_mult_at(k: WeaponKind, d: f32) -> f32 {
     let h = handling(k).aim_mult;
-    if k == WeaponKind::Marksman && d < 12.0 { h * (1.0 + (12.0 - d) / 4.0) } else { h }
+    if k.long_gun() && d < 12.0 { h * (1.0 + (12.0 - d) / 4.0) } else { h }
 }
 
 /// Damage one enemy bullet/pellet of gun `k` does at `d` metres under `limits`. The rifle does
@@ -195,6 +203,9 @@ pub fn fit_range(k: WeaponKind, r: f32) -> f32 {
         WeaponKind::Pistol => (6.0, 15.0),
         WeaponKind::Rifle => (6.0, 30.0),
         WeaponKind::Marksman => (24.0, 42.0),
+        WeaponKind::HeavyPistol => (6.0, 15.0),
+        WeaponKind::BattleRifle => (6.0, 30.0),
+        WeaponKind::Sniper => (24.0, 42.0),
     };
     lo + (hi - lo) * t
 }
@@ -366,7 +377,7 @@ mod tests {
     #[test]
     fn assignment_respects_caps_and_preferences() {
         // Everyone loves the marksman rifle; Regular allows one.
-        let prefs = vec![[0.1, 0.2, 0.1, 0.9], [0.1, 0.2, 0.1, 0.95], [0.8, 0.1, 0.1, 0.7], [0.1, 0.1, 0.9, 0.2]];
+        let prefs = vec![[0.1, 0.2, 0.1, 0.9, 0.0, 0.0], [0.1, 0.2, 0.1, 0.95, 0.0, 0.0], [0.8, 0.1, 0.1, 0.7, 0.0, 0.0], [0.1, 0.1, 0.9, 0.2, 0.0, 0.0]];
         let k = assign(&prefs, caps(Difficulty::Regular, 4));
         assert_eq!(k[1], WeaponKind::Marksman, "strongest preference wins the slot");
         assert_eq!(k.iter().filter(|&&x| x == WeaponKind::Marksman).count(), 1);
@@ -376,6 +387,17 @@ mod tests {
         // Recruit: no shotguns or marksmen at all.
         let r = assign(&prefs, caps(Difficulty::Recruit, 4));
         assert!(r.iter().all(|&x| matches!(x, WeaponKind::Rifle | WeaponKind::Smg)));
+        // One Osprey per squad, Elite only.
+        let snipers = vec![[0.0, 0.1, 0.0, 0.2, 0.3, 0.9]; 4];
+        let v = assign(&snipers, caps(Difficulty::Elite, 4));
+        assert_eq!(v.iter().filter(|&&x| x == WeaponKind::Sniper).count(), 1);
+        assert_eq!(v.iter().filter(|&&x| x == WeaponKind::BattleRifle).count(), 2);
+        let g = assign(&snipers, caps(Difficulty::Veteran, 4));
+        assert!(!g.contains(&WeaponKind::Sniper));
+        // Long guns share the Longbow's cap.
+        let e = assign(&vec![[0.0, 0.1, 0.0, 0.8, 0.0, 0.9]; 6], caps(Difficulty::Elite, 6));
+        assert_eq!(e.iter().filter(|k| k.long_gun()).count(), 2);
+        assert_eq!(e.iter().filter(|&&k| k == WeaponKind::Sniper).count(), 1);
     }
 
     #[test]

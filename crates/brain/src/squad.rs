@@ -720,8 +720,9 @@ fn entry_weight(k: WeaponKind) -> f32 {
         WeaponKind::Shotgun => 1.0,
         WeaponKind::Smg => 0.8,
         WeaponKind::Rifle => 0.5,
-        WeaponKind::Pistol => 0.4,
-        WeaponKind::Marksman => -1.0,
+        WeaponKind::BattleRifle => 0.5,
+        WeaponKind::Pistol | WeaponKind::HeavyPistol => 0.4,
+        WeaponKind::Marksman | WeaponKind::Sniper => -1.0,
     }
 }
 
@@ -1493,7 +1494,7 @@ impl SquadCoordinator {
                             + match members[i].traits.weapon {
                                 WeaponKind::Smg => 0.4,
                                 WeaponKind::Shotgun => 0.2,
-                                WeaponKind::Marksman => -1.0,
+                                WeaponKind::Marksman | WeaponKind::Sniper => -1.0,
                                 _ => 0.0,
                             }
                     };
@@ -1588,7 +1589,7 @@ impl SquadCoordinator {
                     .lead
                     // The healthiest member draws him out; a marksman stays on its sightline.
                     .get_or_insert_with(|| {
-                        let hp = |i: usize| members[i].hp - if members[i].traits.weapon == WeaponKind::Marksman { 2.0 } else { 0.0 };
+                        let hp = |i: usize| members[i].hp - if members[i].traits.weapon.long_gun() { 2.0 } else { 0.0 };
                         *alive.iter().max_by(|&&a, &&b| hp(a).total_cmp(&hp(b)).then(b.cmp(&a))).unwrap_or(&alive[0])
                     });
                 let r = model.weakest_range().clamp(6.0, 28.0);
@@ -2057,7 +2058,7 @@ fn pick_trader(by_dist: &[usize], members: &[MemberView], entry: usize) -> Optio
     by_dist
         .iter()
         .copied()
-        .find(|&i| i != entry && members[i].traits.weapon != WeaponKind::Marksman)
+        .find(|&i| i != entry && !members[i].traits.weapon.long_gun())
         .or_else(|| by_dist.iter().copied().find(|&i| i != entry))
 }
 

@@ -4,7 +4,7 @@ All assets are **CC0**. The game must always run without them (primitive fallbac
 
 | Path | Use | Source | Fallback |
 |---|---|---|---|
-| `assets/models/rifle.glb` | first-person viewmodel | Kenney **Blaster Kit** (kenney.nl) | box + cylinder |
+| `assets/models/weapons/*.glb` | guns (first person, enemy hands, pickups) and their optics | Pichuliru CC0 gun set (poly.pizza); finishes applied in `weapon/finish.rs` | box primitives per gun |
 | `assets/models/enemy.glb` | enemy character with Idle / Run / Shoot / Death clips | Quaternius animated characters, or Kenney **Animated Characters** (glTF) | capsule + visor box |
 | `assets/models/props/*.glb` | crates, barrels, sci-fi set dressing | Kenney **Space Kit** / Quaternius sci-fi | none (plain blocks) |
 | `assets/audio/*.ogg` | shots, hits, footsteps (stretch) | Kenney audio packs | silent |

@@ -56,7 +56,9 @@ pub struct PickupFocus {
 /// Shared pickup visuals: one scene handle per gun, one primitive mesh + material.
 #[derive(Resource)]
 pub struct PickupAssets {
-    scenes: [Option<Handle<bevy::world_serialization::WorldAsset>>; 5],
+    scenes: [Option<Handle<bevy::world_serialization::WorldAsset>>; WeaponKind::ALL.len()],
+    /// Each gun's mounted optic, if it has one.
+    optics: [Option<(Handle<bevy::world_serialization::WorldAsset>, Vec3)>; WeaponKind::ALL.len()],
     mesh: Handle<Mesh>,
     mat: Handle<StandardMaterial>,
 }
@@ -72,8 +74,13 @@ fn init_pickup_assets(
         let path = super::viewmodel::fit(k).path;
         dir.has(path).then(|| server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(path)))
     });
+    let optics = WeaponKind::ALL.map(|k| {
+        let (path, at) = super::viewmodel::fit(k).optic?;
+        dir.has(path).then(|| (server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(path)), at))
+    });
     commands.insert_resource(PickupAssets {
         scenes,
+        optics,
         mesh: meshes.add(Cuboid::new(0.08, 0.12, 0.6)),
         mat: mats.add(StandardMaterial { base_color: Color::srgb(0.16, 0.16, 0.17), metallic: 0.6, perceptual_roughness: 0.45, ..default() }),
     });
@@ -99,8 +106,9 @@ pub fn spawn_pickup(commands: &mut Commands, assets: Option<&PickupAssets>, gun:
     match &assets.scenes[idx] {
         // Lying on its side, centred on the pickup.
         Some(scene) => {
-            commands.spawn((
+            let model = commands.spawn((
                 bevy::world_serialization::WorldAssetRoot(scene.clone()),
+                super::finish::GunFinish(gun.kind),
                 {
                     let rot = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2) * Quat::from_rotation_y(f.yaw);
                     let scale = f.scale * 1.15;
@@ -108,6 +116,15 @@ pub fn spawn_pickup(commands: &mut Commands, assets: Option<&PickupAssets>, gun:
                 },
                 ChildOf(e),
             ));
+            let model = model.id();
+            if let Some((optic, at)) = &assets.optics[idx] {
+                commands.spawn((
+                    bevy::world_serialization::WorldAssetRoot(optic.clone()),
+                    super::finish::GunFinish(gun.kind),
+                    Transform::from_translation(*at),
+                    ChildOf(model),
+                ));
+            }
         }
         None => {
             commands.spawn((Mesh3d(assets.mesh.clone()), MeshMaterial3d(assets.mat.clone()), Transform::default(), ChildOf(e)));

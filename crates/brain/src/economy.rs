@@ -353,6 +353,9 @@ mod tests {
         assert_eq!(category(WeaponKind::Shotgun), BuyCategory::SmgsShotguns);
         assert_eq!(category(WeaponKind::Rifle), BuyCategory::RiflesSnipers);
         assert_eq!(category(WeaponKind::Marksman), BuyCategory::RiflesSnipers);
+        assert_eq!(category(WeaponKind::HeavyPistol), BuyCategory::Pistols);
+        assert_eq!(category(WeaponKind::BattleRifle), BuyCategory::RiflesSnipers);
+        assert_eq!(category(WeaponKind::Sniper), BuyCategory::RiflesSnipers);
     }
 
     #[test]
@@ -388,10 +391,10 @@ mod tests {
 
     #[test]
     fn member_buys_from_its_genes_within_budget() {
-        let ranked = [WeaponKind::Marksman, WeaponKind::Rifle, WeaponKind::Smg];
+        let ranked = [WeaponKind::Sniper, WeaponKind::Rifle, WeaponKind::Smg];
         // Rich: the drafted gun (its genes' choice) and armor.
         let b = member_buy(BuyMode::Full, 7_000, None, false, &ranked);
-        assert_eq!(b.primary, Some(WeaponKind::Marksman));
+        assert_eq!(b.primary, Some(WeaponKind::Sniper));
         assert!(b.armor && b.helmet);
         assert_eq!(b.cost, 4_750 + 1_000);
         // Can't afford the sniper: next preference that fits, with a vest.
@@ -414,9 +417,12 @@ mod tests {
 
     #[test]
     fn ranking_puts_the_draft_first_then_genes() {
-        let prefs = [0.9, 0.1, 0.5, 0.2]; // smg, rifle, shotgun, marksman
+        let prefs = [0.9, 0.1, 0.5, 0.2, 0.0, 0.7]; // smg, rifle, shotgun, marksman, battle rifle, sniper
         let r = rank_primaries(WeaponKind::Rifle, &prefs, &WeaponKind::PRIMARIES);
-        assert_eq!(r, vec![WeaponKind::Rifle, WeaponKind::Smg, WeaponKind::Shotgun, WeaponKind::Marksman]);
+        assert_eq!(r, vec![WeaponKind::Rifle, WeaponKind::Smg, WeaponKind::Sniper, WeaponKind::Shotgun, WeaponKind::Marksman, WeaponKind::BattleRifle]);
+        // Four-gene preferences (old saves before migration): the new guns rank last.
+        let r = rank_primaries(WeaponKind::Rifle, &prefs[..4], &WeaponKind::PRIMARIES);
+        assert_eq!(r[4..], [WeaponKind::BattleRifle, WeaponKind::Sniper]);
         let r = rank_primaries(WeaponKind::Rifle, &prefs, &[WeaponKind::Rifle, WeaponKind::Smg]);
         assert_eq!(r, vec![WeaponKind::Rifle, WeaponKind::Smg]);
     }
