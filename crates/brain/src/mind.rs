@@ -811,7 +811,15 @@ impl EnemyMind {
             Goal::Hold if self.path.is_empty() => 0.3,
             _ => 0.0,
         };
-        let micro_move = if engaged { dir_p * micro[0] + dir_p.perp() * micro[1] } else { V2::ZERO };
+        let mut micro_move = if engaged { dir_p * micro[0] + dir_p.perp() * micro[1] } else { V2::ZERO };
+        // A cutoff on its way to a sector dodges sideways but never lets the net stall the run
+        // (backing off against the route turns a sprint into a walk and leaves his exit open).
+        if self.following().is_some_and(|od| od.role == squad::Role::Cutoff && od.goal == Goal::Flank) && path_dir.len() > 0.5 {
+            let back = micro_move.dot(path_dir);
+            if back < 0.0 {
+                micro_move = micro_move - path_dir * back;
+            }
+        }
         let mut move_dir = path_dir + micro_move * w_micro;
 
         // Strafe while shooting: never stand still in the open trading shots. Strafes lean
@@ -966,8 +974,10 @@ impl EnemyMind {
         let sticky = self.following().is_some_and(|od| od.sticky);
         // Cover-to-cover: a push dashes between covers even in view; a combat hunt runs.
         let dash = self.goal == Goal::Push && far && !fire && self.following().is_none();
-        // (Never through a doorway at a run: the pie gets sliced at a walk.)
-        let sprint = !near_door
+        // (Never through a doorway at a run: the pie gets sliced at a walk. Unless he was just
+        // seen well away from this door and the order is a race to cut him off.)
+        let door_far_from_him = self.door.is_some_and(|(d, _)| d.pos.dist(o.player_pos) > 12.0) && o.time_since_seen < 2.0;
+        let sprint = (!near_door || sticky && far && door_far_from_him)
             && (dash
                 || posting == Some(PostPhase::Move) && far
                 || (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far || combat && self.goal == Goal::Hunt)

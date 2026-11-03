@@ -992,6 +992,19 @@ impl Arena {
                 continue;
             }
             let d = p - b.center;
+            // Off a corner: a circle against the box (rounded corners), pushed out radially,
+            // so a body sliding past a door jamb rounds it instead of sticking on the square
+            // corner of the padded box (like the game's capsules).
+            let (ox, oz) = (d.x.abs() - b.half.x, d.y.abs() - b.half.y);
+            if ox > 0.0 && oz > 0.0 {
+                let r = V2::new(ox * d.x.signum(), oz * d.y.signum());
+                let l = r.len();
+                if l >= radius {
+                    continue;
+                }
+                p = p + r * ((radius - l) / l.max(1e-6));
+                continue;
+            }
             let px = b.half.x + radius - d.x.abs();
             let pz = b.half.y + radius - d.y.abs();
             if px < pz {

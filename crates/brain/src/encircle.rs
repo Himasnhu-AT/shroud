@@ -220,7 +220,7 @@ pub fn diverse_vias(arena: &Arena, player: V2, guns: Option<V2>, routes: &[(V2, 
         if ex[i].is_nan() {
             ex[i] = if p.dist(player) < 40.0 && arena.line_of_sight(player, false, p, false) { EXPOSED_COST } else { 0.0 };
         }
-        let mut c = ex[i];
+        let mut c = ex[i] + crate::squad::close_cost(p.dist(player));
         if let Some(fd) = fire_dir {
             let rel = p - player;
             let along = rel.dot(fd);

@@ -152,6 +152,16 @@ pub fn best_position(c: &PefCtx, w: &[f32; PEF_TERMS], min_sep: f32) -> Option<V
     best.or(best_sep).or(best_any).map(|b| b.1)
 }
 
+/// Within this range (m) of the threat, tactical routes pay `CLOSE_COST` per metre (fading out).
+pub const CLOSE_M: f32 = 7.0;
+pub const CLOSE_COST: f32 = 4.0;
+
+/// Extra cost per metre `d` m from the threat: steep next to him, zero from `CLOSE_M` out.
+pub fn close_cost(d: f32) -> f32 {
+    let k = (1.0 - d / CLOSE_M).max(0.0);
+    CLOSE_COST * k * k
+}
+
 /// Tactical A* extra cost per metre at `p` (use with `NavGrid::find_path_cost`): the PEF terms
 /// as penalties for moving through the threat's line of fire, his pre-aim and his strong range.
 pub fn tactical_cost<'a>(arena: &'a Arena, model: &'a PlayerModel, threat: V2, w: &'a [f32; PEF_TERMS]) -> impl Fn(V2) -> f32 + 'a {
@@ -171,6 +181,9 @@ pub fn tactical_cost<'a>(arena: &'a Arena, model: &'a PlayerModel, threat: V2, w
         } else {
             0.0
         };
+        // Never route through his feet: a path that brushes past him ends at the standoff,
+        // parked in front of his gun instead of round the far side.
+        let v = v + close_cost(d);
         cache.borrow_mut()[i] = v;
         v
     }
@@ -1367,7 +1380,10 @@ impl SquadCoordinator {
                 continue;
             }
             let will = if frag { m.traits.aggression } else { m.traits.team_cohesion };
-            let score = 0.6 * will + 0.4 * (1.0 - d / grenade::THROW_MAX);
+            // A cutoff still running to its sector keeps running: stopping for the wind-up
+            // leaves that side of the ring open (someone already in place throws instead).
+            let en_route = self.orders.get(i).copied().flatten().is_some_and(|o| o.role == Role::Cutoff && o.goal == Goal::Flank);
+            let score = 0.6 * will + 0.4 * (1.0 - d / grenade::THROW_MAX) - if en_route { 0.35 } else { 0.0 };
             if best.is_none_or(|(b, _, _)| score > b) {
                 best = Some((score, i, aim));
             }

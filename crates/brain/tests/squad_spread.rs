@@ -115,6 +115,9 @@ impl<'a> World<'a> {
                 ..Default::default()
             };
             let act = self.minds[i].think(&obs, &cx);
+            if std::env::var("M").ok().and_then(|s| s.parse::<usize>().ok()) == Some(i) && std::env::var("ACT").is_ok() {
+                eprintln!("      act m{i} pos ({:.1},{:.1}) move ({:.2},{:.2}) sprint {} crouch {} clearing {} goal {:?} sees {sees}", self.pos[i].x, self.pos[i].y, act.move_dir.x, act.move_dir.y, act.sprint, act.crouch, self.minds[i].debug.clearing, self.minds[i].debug.goal);
+            }
             self.looks[i] = act.look_dir;
             let speed = if act.crouch { sim::CROUCH_SPEED } else if act.sprint { SPRINT } else { WALK };
             self.pos[i] = a.resolve_collision(self.pos[i] + act.move_dir * speed * DT, BODY_RADIUS);
@@ -237,6 +240,9 @@ fn encircle_run(a: &Arena, n: usize, seed: u64, d: Difficulty, player: V2, after
 }
 
 const SEEDS: [u64; 3] = [1, 2, 3];
+/// Encircle is graded on more seeds: one member a metre further round flips a single run's
+/// max gap by tens of degrees, so three seeds made the mean swing with unrelated changes.
+const ENCIRCLE_SEEDS: [u64; 6] = [1, 2, 3, 4, 5, 6];
 
 fn sizes() -> [(Difficulty, usize); 2] {
     [(Difficulty::Regular, 4), (Difficulty::Elite, 6)]
@@ -273,7 +279,7 @@ fn encircle_table(after: f32) -> Vec<(MapId, usize, EncircleStats, usize)> {
         for (d, n) in sizes() {
             let mut m = EncircleStats::default();
             let mut found = 0;
-            for s in SEEDS {
+            for s in ENCIRCLE_SEEDS {
                 // Big maps: longer to get round him. The walk scales with the map and the
                 // coordinator gives staging/encircling `map_scale` times longer (Township ~1.4,
                 // so it is graded at ~2x the time).
@@ -288,7 +294,7 @@ fn encircle_table(after: f32) -> Vec<(MapId, usize, EncircleStats, usize)> {
             let k = found.max(1) as f32;
             m.max_gap /= k;
             m.overlap /= k;
-            eprintln!("encircle +{after}s {:<8} x{n}: found {found}/{}  max gap {:4.0} deg  shared cells {:4.0}%", id.label(), SEEDS.len(), m.max_gap, m.overlap * 100.0);
+            eprintln!("encircle +{after}s {:<8} x{n}: found {found}/{}  max gap {:4.0} deg  shared cells {:4.0}%", id.label(), ENCIRCLE_SEEDS.len(), m.max_gap, m.overlap * 100.0);
             out.push((id, n, m, found));
         }
     }
@@ -320,7 +326,7 @@ fn contact_encircles() {
     let t10 = encircle_table(10.0);
     let mut overlap = 0.0;
     for (id, n, m, found) in t10.iter() {
-        assert_eq!(*found, SEEDS.len(), "{id:?} x{n}: the squad should find him every time");
+        assert_eq!(*found, ENCIRCLE_SEEDS.len(), "{id:?} x{n}: the squad should find him every time");
         // Big maps (Township, 90 m) are graded at ~2x the time. Before staging scaled with the
         // cutoffs' routes and x4 kept one shooter there, Township x4 closed only to ~195 deg
         // (two shooters and two cutoffs that peeked before they got round); now ~140 deg.
@@ -377,11 +383,15 @@ fn debug_encircle_trace() {
         Ok("depot") => MapId::Depot,
         Ok("office") => MapId::Office,
         Ok("township") => MapId::Township,
+        Ok("sirocco") => MapId::Sirocco,
+        Ok("gantry") => MapId::Gantry,
         _ => MapId::Foundry,
     };
     let seed: u64 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let n: usize = std::env::var("N").ok().and_then(|s| s.parse().ok()).unwrap_or(4);
+    let d = if n >= 6 { Difficulty::Elite } else { Difficulty::Regular };
     let a = Arena::build(id);
-    let mut w = World::new(&a, 4, seed, Difficulty::Regular);
+    let mut w = World::new(&a, n, seed, d);
     let player = hideout(&a);
     let mut t = 0.0;
     let mut c0: Option<f32> = None;
@@ -403,6 +413,10 @@ fn debug_encircle_trace() {
                 w.minds.iter().map(|m| m.goal().label()).collect::<Vec<_>>(),
                 roles,
             );
+            if let Some(m) = std::env::var("M").ok().and_then(|s| s.parse::<usize>().ok()) {
+                let o = w.squad.orders[m];
+                eprintln!("   m{m} via {:?} dest {:?} path {:?}", o.and_then(|o| o.via).map(|d| (d.x.round(), d.y.round())), o.and_then(|o| o.dest).map(|d| (d.x.round(), d.y.round())), w.minds[m].debug.path.iter().map(|p| (p.x.round(), p.y.round())).collect::<Vec<_>>());
+            }
             if k.is_multiple_of(40) && c0.is_some() {
                 let p = player;
                 eprintln!(
@@ -420,4 +434,27 @@ fn debug_encircle_trace() {
         }
     }
     eprintln!("player {player:?} contact {c0:?} spawns {:?}", a.enemy_spawns);
+}
+
+/// The encircle metrics are a pure function of the code and the seed: the same run on a fresh
+/// thread (its own A* scratch) and on a thread whose scratch is dirty from other maps' searches
+/// gives bit-identical numbers. (The 178-184 deg readings once logged for Depot x6 came from
+/// different commits, not from run-to-run noise: 514fd60 gives 182, ab8f41c 184, 065b63b 178.)
+#[test]
+fn encircle_is_deterministic() {
+    let run = |dirty: bool| {
+        std::thread::spawn(move || {
+            if dirty {
+                for id in [MapId::Township, MapId::Office] {
+                    let b = Arena::build(id);
+                    let _ = b.nav.find_path(b.player_spawn, b.enemy_spawns[0]);
+                }
+            }
+            let a = Arena::build(MapId::Depot);
+            let r = encircle_run(&a, 6, 2, Difficulty::Elite, hideout(&a), 10.0);
+            (r.max_gap.to_bits(), r.overlap.to_bits(), r.contact.map(f32::to_bits))
+        })
+    };
+    let (a, b) = (run(false), run(true));
+    assert_eq!(a.join().unwrap(), b.join().unwrap());
 }
