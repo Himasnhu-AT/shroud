@@ -7,7 +7,8 @@ use crate::loadout::{self, GunState};
 use crate::math::{BrainRng, V2, angle_diff, gauss, rng_from_seed};
 use crate::weapons::WeaponKind;
 use crate::mind::{AllyInfo, EnemyMind, MindCtx, Observation};
-use crate::squad::{MemberView, SquadCoordinator, UtilityBudget};
+use crate::doctrine::StyleTick;
+use crate::squad::{MAG_OUT_RANGE, MemberView, SquadCoordinator, UtilityBudget};
 use crate::utility::Goal;
 use crate::perception::{self, Sound, GUNSHOT_RANGE, RELOAD_RANGE};
 use crate::ghost::{EnemyView, Ghost, GhostMode, GhostStats, GhostView};
@@ -267,8 +268,9 @@ pub fn run_round_opts(
                 grenades.push(SimGrenade::new(arena, th.kind, th.thrower, enemies[th.thrower].pos, th.target));
             }
         }
-        for (m, o) in minds.iter_mut().zip(orders) {
+        for (i, (m, o)) in minds.iter_mut().zip(orders).enumerate() {
             m.set_order(o);
+            m.set_doctrine(squad.member_doctrine(i));
         }
         let board = squad.board;
         // --- end squad layer ---
@@ -333,10 +335,13 @@ pub fn run_round_opts(
             }
             let kind = e.gun.held;
             enemy_fired[i] = e.try_fire(act.fire);
-            // Pre-fire at a spot hits only if he really is there (in the open).
-            let can_hit = sees || act.prefire.is_some() && arena.line_of_sight(e.pos, e.crouched, ghost.body.pos, ghost.body.crouched);
+            // Pre-fire at a spot hits only if he really is there: in the open, or behind cover
+            // this gun shoots through (a wallbang keeps `Arena::penetration` of the damage).
+            let open = arena.line_of_sight(e.pos, e.crouched, ghost.body.pos, ghost.body.crouched);
+            let through = if !sees && !open && act.prefire.is_some() { arena.penetration(e.pos, ghost.body.pos, kind.spec().penetration) } else { 1.0 };
+            let can_hit = sees || act.prefire.is_some() && (open || through > 0.0);
             let dmg = if enemy_fired[i] && can_hit {
-                enemy_volley(kind, e.pos, act.shot_dir, act.shot_pitch_err, act.spread, ghost.body.pos, ghost.body.height(), &limits, &mut rng)
+                through * enemy_volley(kind, e.pos, act.shot_dir, act.shot_pitch_err, act.spread, ghost.body.pos, ghost.body.height(), &limits, &mut rng)
             } else {
                 0.0
             };
@@ -422,6 +427,8 @@ pub fn run_round_opts(
             })
             .collect();
         let view = GhostView { arena, model, enemies: &views };
+        let was_reloading = ghost.body.reloading();
+        let mag_before = ghost.body.gun.ammo() as f32 / ghost.body.gun.spec().mag.max(1) as f32;
         let mut act = ghost.act(&view);
         if blind_t > 0.0 {
             act.shot = None;
@@ -450,6 +457,19 @@ pub fn run_round_opts(
         }
         if ghost.body.reloading() {
             sounds.push((Sound::Reload, gp, RELOAD_RANGE));
+        }
+        // Adaptive doctrine: the squad profiles the ghost like the game profiles the player.
+        squad.observe_player(arena, StyleTick { dt: DT, pos: gp, vel: act.vel, yaw: ghost.facing });
+        if act.shot.is_some() {
+            squad.player_shot(false);
+        }
+        if ghost.body.reloading() && !was_reloading {
+            squad.player_reload(mag_before);
+            for i in (0..n).filter(|&i| enemies[i].alive()) {
+                if perception::hear(arena, gp, enemies[i].pos, MAG_OUT_RANGE).is_some() {
+                    squad.heard_mag_out(i, gp);
+                }
+            }
         }
         for i in (0..n).filter(|&i| enemies[i].alive()) {
             let near_miss = act.shot.as_ref().is_some_and(|s| perception::near_miss(arena, gp, s.dir, enemies[i].pos));
@@ -484,7 +504,9 @@ pub fn run_round_opts(
                 };
                 if let Some(j) = hit {
                     let base = spec.damage_at(enemies[j].pos.dist(from));
-                    ghost_dmg[j] += if rng.random::<f32>() < GHOST_HEADSHOT { base * spec.headshot_mult } else { base };
+                    let head = rng.random::<f32>() < GHOST_HEADSHOT;
+                    squad.player_hit(head);
+                    ghost_dmg[j] += if head { base * spec.headshot_mult } else { base };
                 }
             }
             let mut killed = false;

@@ -267,6 +267,12 @@ pub struct MatchTelemetry {
     /// Rounds played this match.
     #[serde(default)]
     pub rounds: u32,
+    /// Seconds each archetype (`doctrine::Archetype` order) was active this match, and the
+    /// seconds the squad's doctrine observed him.
+    #[serde(default, deserialize_with = "crate::pad::zeros")]
+    pub style_time: [f32; crate::doctrine::DOCTRINE_GENES],
+    #[serde(default)]
+    pub style_play_s: f32,
     #[serde(default)]
     last_route: Option<usize>,
 }
@@ -297,6 +303,8 @@ impl Default for MatchTelemetry {
             reactions: Vec::new(),
             weapon_shots: [0.0; WEAPON_COUNT],
             rounds: 0,
+            style_time: [0.0; crate::doctrine::DOCTRINE_GENES],
+            style_play_s: 0.0,
             last_route: None,
         }
     }
@@ -596,6 +604,10 @@ pub struct PlayerModel {
     /// carries the favourite.
     #[serde(default, deserialize_with = "crate::pad::zeros")]
     pub weapon_use: [f32; WEAPON_COUNT],
+    /// Archetypes across matches (adaptive doctrine): the squad starts a round already
+    /// countering a strong habit (`doctrine::Doctrine::with_prior`).
+    #[serde(default)]
+    pub style: crate::doctrine::StyleSummary,
 }
 
 fn one() -> f32 {
@@ -651,6 +663,7 @@ impl Default for PlayerModel {
             situations: SituationModel::default(),
             ghost: crate::ghost::GhostParams::default(),
             weapon_use: [0.0; WEAPON_COUNT],
+            style: crate::doctrine::StyleSummary::default(),
         }
     }
 }
@@ -752,6 +765,7 @@ impl PlayerModel {
                 *u += (s / gun_shots - *u) * a;
             }
         }
+        self.style.ingest(t, a);
         self.matches_observed += 1;
     }
 

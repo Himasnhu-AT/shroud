@@ -6,6 +6,28 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::arena::{Block, BlockKind, Skin};
+
+/// Bullets go through this block (if the gun can penetrate and it is thin enough there). Shared
+/// by the player's bullets (game `weapon/fire.rs`), enemy bullets and the trainer.
+pub fn penetrable(b: &Block) -> bool {
+    b.kind != BlockKind::Wall && (b.kind == BlockKind::Low || matches!(b.skin, Skin::Crate | Skin::Desk | Skin::Drywall | Skin::Cabinet | Skin::Shelf | Skin::Car))
+}
+
+/// Thickest cover (metres along the bullet) a gun with this `penetration` gets through.
+pub fn max_thickness(penetration: f32) -> f32 {
+    if penetration <= 0.0 { 0.0 } else { 0.6 + 3.0 * penetration }
+}
+
+/// Fraction of damage left after passing `thickness` metres of cover.
+pub fn penetration_mult(penetration: f32, thickness: f32) -> f32 {
+    let max = max_thickness(penetration);
+    if max <= 0.0 || thickness > max {
+        return 0.0;
+    }
+    penetration * (1.0 - 0.5 * thickness / max)
+}
+
 /// Which slot a gun lives in on the player (1 = primary, 2 = sidearm).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Slot {

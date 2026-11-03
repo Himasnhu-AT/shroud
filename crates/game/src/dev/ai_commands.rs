@@ -31,6 +31,12 @@ pub fn register(app: &mut App) {
         .add_control_command("ai.reset", "Reset the AI", none.clone(), ai_reset)
         .add_control_command("ai.squad", "Squad state: play, roles, tokens, re-peek spots, grenades, bandit scores", none.clone(), ai_squad)
         .add_control_command(
+            "ai.doctrine",
+            "Adaptive doctrine: tactic, reason, archetypes, counters, the player's style profile, switches this round, who jiggles / wallbangs / rushes, how many flashes",
+            none.clone(),
+            ai_doctrine,
+        )
+        .add_control_command(
             "ai.throw",
             "Make the squad throw a grenade at the player as soon as someone can (or, with `at`, throw one now from `from` to that point)",
             params(&[
@@ -89,6 +95,7 @@ pub fn register(app: &mut App) {
 }
 
 fn enemy_list(world: &mut World, _: Value) -> Result<Value, String> {
+    let tactic = world.resource::<Squad>().coord.as_ref().map(|c| c.doctrine.tactic.name());
     let out: Vec<Value> = world
         .query_filtered::<(&Enemy, &Transform, &Health, &Mind, &EnemyCombat), With<Enemy>>()
         .iter(world)
@@ -118,6 +125,8 @@ fn enemy_list(world: &mut World, _: Value) -> Result<Value, String> {
                 "shots": c.shots,
                 "shots_hit": c.shots_hit,
                 "clearing": m.0.debug.clearing,
+                "doctrine": tactic,
+                "jiggling": m.0.jiggling(),
                 "traits": {
                     "aggression": m.0.traits.aggression,
                     "preferred_range": m.0.traits.preferred_range,
@@ -306,6 +315,50 @@ fn current_arena(world: &World) -> Arena {
     world.get_resource::<ArenaRes>().map_or_else(Arena::foundry, |a| Arena::build(a.0.id))
 }
 
+/// The adaptive doctrine: tactic, why, archetypes, counter strengths, the live style profile
+/// and this round's switches.
+fn doctrine_json(c: &brain::squad::SquadCoordinator) -> Value {
+    let d = &c.doctrine;
+    let k = d.counters();
+    let p = &c.style;
+    json!({
+        "tactic": d.tactic.name(),
+        "reason": d.reason,
+        "since": d.since,
+        "archetypes": d.active.labels(),
+        "counters": { "jiggle": k.jiggle, "off_angle": k.off_angle, "reload_rush": k.reload_rush, "stagger": k.stagger },
+        "profile": {
+            "avg_move_speed": p.avg_move_speed,
+            "stationary_angle_hold_secs": p.stationary_angle_hold_secs,
+            "ads_usage_ratio": p.ads_usage_ratio,
+            "headshot_rate": p.headshot_rate,
+            "hits": p.hits,
+            "premature_reload_count": p.premature_reload_count,
+            "rapid_entries": p.rapid_entries,
+        },
+        "jiggler": c.jiggler.map(|(i, j)| json!({ "id": i, "hide": [j.hide.x, j.hide.y] })),
+        "wallbang": c.wallbang.map(|(i, at, _)| json!({ "id": i, "at": [at.x, at.y] })),
+        "rushers": c.rushers.iter().map(|r| r.0).collect::<Vec<_>>(),
+        "traps": c.traps.iter().map(|t| json!({ "id": t.0, "spot": [t.1.x, t.1.y], "door": [t.2.x, t.2.y] })).collect::<Vec<_>>(),
+        "history": d.history.iter().map(|h| json!({ "t": h.t, "from": h.from.name(), "to": h.to.name(), "reason": h.reason })).collect::<Vec<_>>(),
+    })
+}
+
+fn ai_doctrine(world: &mut World, _: Value) -> Result<Value, String> {
+    let jiggling: Vec<usize> = world.query::<(&Enemy, &Mind)>().iter(world).filter(|(_, m)| m.0.jiggling()).map(|(e, _)| e.slot).collect();
+    let sq = world.resource::<Squad>();
+    let Some(c) = sq.coord.as_ref() else { return Ok(json!({ "coord": null })) };
+    let mut v = doctrine_json(c);
+    v["play"] = json!(c.play.label());
+    v["roles"] = json!(c.orders.iter().map(|o| o.map(|o| o.role.label())).collect::<Vec<_>>());
+    v["flashes_used"] = json!(c.flashes_used);
+    v["frags_used"] = json!(c.frags_used);
+    v["utility"] = json!({ "frags": c.utility.frags, "flashes": c.utility.flashes });
+    v["jiggling"] = json!(jiggling);
+    v["difficulty"] = json!(sq.difficulty.label());
+    Ok(v)
+}
+
 fn ai_squad(world: &mut World, _: Value) -> Result<Value, String> {
     let grenades: Vec<Value> = world
         .query::<(&Grenade, &Transform)>()
@@ -321,6 +374,7 @@ fn ai_squad(world: &mut World, _: Value) -> Result<Value, String> {
         "size": sq.size,
         "coordination": c.enabled,
         "play": c.play.label(),
+        "doctrine": doctrine_json(c),
         "breach": c.breach.map(|b| json!({ "door": [b.door.pos.x, b.door.pos.y], "inside": [b.inside.x, b.inside.y], "t": b.t, "go_at": b.go_at })),
         "alert": c.board.alert.label(),
         "board_age": c.board.age,

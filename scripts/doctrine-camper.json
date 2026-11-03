@@ -1,0 +1,235 @@
+[
+ {
+  "cmd": "ai.difficulty",
+  "params": {
+   "level": "veteran"
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Sirocco"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -1.3,
+   "z": 15
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -5.3,
+    1.2,
+    15
+   ]
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "enemy.list"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "enemy.list"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "enemy.list"
+ }
+]

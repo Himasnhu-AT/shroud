@@ -4,6 +4,7 @@
 use crate::limits::Limits;
 use crate::math::{BrainRng, gauss};
 use crate::loadout::{self, PREF_COUNT};
+use crate::doctrine::DOCTRINE_GENES;
 use crate::squad::PEF_TERMS;
 use crate::weapons::WeaponKind;
 use rand::Rng;
@@ -77,6 +78,12 @@ pub struct TraitGenome {
     /// get seeded the same way.
     #[serde(default = "unset_loadout", deserialize_with = "crate::pad::unset")]
     pub loadout: [f32; PREF_COUNT],
+    /// Adaptive-doctrine genes, one per `doctrine::Archetype`, in [0, 1]: how hard the squad
+    /// uses that counter (jiggle/flash/wallbang, off-angles, reload rushes, lean + stagger).
+    /// Technique, not mechanics. Older saves have none: `UNSET_DOCTRINE` until
+    /// `fill_loadout` seeds them.
+    #[serde(default = "unset_doctrine", deserialize_with = "crate::pad::unset")]
+    pub doctrine: [f32; DOCTRINE_GENES],
     pub fitness: f32,
     /// How many evaluations contributed to `fitness` (for averaging).
     pub evals: u32,
@@ -103,6 +110,8 @@ pub struct Traits {
     pub base_range: f32,
     /// Weapon preference genes (`loadout::assign` reads them).
     pub loadout: [f32; PREF_COUNT],
+    /// Doctrine genes in [0, 1] (`doctrine::strength`), `doctrine::Archetype` order.
+    pub doctrine: [f32; DOCTRINE_GENES],
 }
 
 impl Traits {
@@ -119,6 +128,25 @@ pub const UNSET_LOADOUT: [f32; PREF_COUNT] = [-1.0; PREF_COUNT];
 
 fn unset_loadout() -> [f32; PREF_COUNT] {
     UNSET_LOADOUT
+}
+
+/// Marker for "no doctrine genes yet" (saves from before the adaptive doctrine).
+pub const UNSET_DOCTRINE: [f32; DOCTRINE_GENES] = [-1.0; DOCTRINE_GENES];
+
+fn unset_doctrine() -> [f32; DOCTRINE_GENES] {
+    UNSET_DOCTRINE
+}
+
+/// Doctrine genes derived from the trait genes (their own stream, so adding them changed no
+/// other gene a seed produces). Old saves get theirs from this too.
+pub fn seeded_doctrine(genes: &[f32; GENE_COUNT]) -> [f32; DOCTRINE_GENES] {
+    let seed = genes.iter().fold(0x00D0_C7A1_u64, |h, g| h.rotate_left(7) ^ f32::to_bits(*g) as u64);
+    let mut r = crate::math::rng_from_seed(seed);
+    let mut out = [0.0; DOCTRINE_GENES];
+    for g in &mut out {
+        *g = r.random();
+    }
+    out
 }
 
 /// Weapon genes derived from the trait genes (their own stream, so adding them changed neither
@@ -152,12 +180,23 @@ impl TraitGenome {
             *g = prng.random();
         }
         let loadout = seeded_loadout(&genes);
-        TraitGenome { genes, pef, loadout, fitness: 0.0, evals: 0 }
+        let doctrine = seeded_doctrine(&genes);
+        TraitGenome { genes, pef, loadout, doctrine, fitness: 0.0, evals: 0 }
     }
 
-    /// Old saves: give genomes without weapon genes their seeded ones.
+    /// Old saves: give genomes without weapon (or doctrine) genes their seeded ones.
     pub fn fill_loadout(&mut self) {
         self.loadout = self.filled_loadout();
+        self.doctrine = self.filled_doctrine();
+    }
+
+    /// The doctrine genes with any unset entries seeded (set genes are kept).
+    fn filled_doctrine(&self) -> [f32; DOCTRINE_GENES] {
+        if !self.doctrine.iter().any(|g| *g < 0.0) {
+            return self.doctrine;
+        }
+        let seeded = seeded_doctrine(&self.genes);
+        std::array::from_fn(|i| if self.doctrine[i] < 0.0 { seeded[i] } else { self.doctrine[i] })
     }
 
     /// The weapon genes with any unset entries seeded (set genes are kept).
@@ -199,6 +238,7 @@ impl TraitGenome {
             team_cohesion: g(Gene::TeamCohesion),
             prediction_trust: g(Gene::PredictionTrust),
             pef: self.pef.map(|w| 2.0 * w),
+            doctrine: self.filled_doctrine(),
         }
     }
 
@@ -218,12 +258,14 @@ impl TraitGenome {
         la.fill_loadout();
         lb.fill_loadout();
         let loadout = if rng.random::<bool>() { la.loadout } else { lb.loadout };
-        TraitGenome { genes, pef, loadout, fitness: 0.0, evals: 0 }
+        // Doctrine genes cross one by one (each counter is its own technique).
+        let doctrine = std::array::from_fn(|i| if rng.random::<bool>() { la.doctrine[i] } else { lb.doctrine[i] });
+        TraitGenome { genes, pef, loadout, doctrine, fitness: 0.0, evals: 0 }
     }
 
     pub fn mutate(&mut self, rate: f32, sigma: f32, rng: &mut BrainRng) {
         self.fill_loadout();
-        for g in self.genes.iter_mut().chain(self.pef.iter_mut()).chain(self.loadout.iter_mut()) {
+        for g in self.genes.iter_mut().chain(self.pef.iter_mut()).chain(self.loadout.iter_mut()).chain(self.doctrine.iter_mut()) {
             if rng.random::<f32>() < rate {
                 *g = (*g + gauss(rng) * sigma).clamp(0.0, 1.0);
             }

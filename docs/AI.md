@@ -173,3 +173,54 @@ still beats fresh squads under Recruit mechanics (54% → 77% squad round wins).
   these changes: 0.542. After: 0.475. The sim also counts its 60 s timeouts as player wins;
   by that measure it is 0.682 → 0.678, because hiding solo bots run the clock out more often.
   The game itself has no round clock.
+
+## Adaptive doctrine (player archetypes → squad counters)
+
+`brain::doctrine`, run by the squad coordinator (spec §5). Technique only: counters change
+where enemies stand, how they peek and when they throw, rush or wallbang. Aim error, reaction
+and damage stay fixed by difficulty (`limits.rs`).
+
+- **`PlayerStyleProfile`** (fed every tick by the game, `enemy::think_and_act`, and by the
+  trainer from the ghost): EMA horizontal speed (τ 1 s), seconds standing still on one angle
+  (±20°, 1 m drift), ADS share of shots and doorways crossed at a run (≥ 3.5 m/s) over 20 s;
+  headshot rate and reloads with > 50% of the mag left over 60 s (they are sparse).
+- **Archetypes** (several at once, hysteresis): angle holder (speed < 1.2 and hold > 4 s; off
+  above 2 m/s), entry fragger (speed > 4.2 and a room entry at a run; off below 2.5 m/s or no
+  entry in 20 s), compulsive reloader (≥ 2 early reloads; off at 0), precision aimer
+  (> 45% headshots over ≥ 4 hits; off below 35%).
+- **`AiTactic`**: the active archetype with the highest severity × strength picks the
+  doctrine (`JigglePeekAndFlash`, `OffAngleTrap`, `ReloadPunish`, `LeanPeekStagger`, else
+  `Default`); 1.5 s dwell, a rival must score 1.3× higher. Each switch is a callout, an
+  `ai.tactic {from, to, reason}` info line, a session-log event and a trace event.
+- **Counters** (each archetype's counter is on while it is active, several at once):
+  - Angle holder: a member walks (≤ 14 m) to a corner hidden from him with a peek cell a step
+    aside and jiggle-peeks (0.25 m out and back in ~0.12 s, lean on the step, then a 0.35–1.1 s
+    wait); the next grenade is a flash before any frag (the difficulty's budget and the 7 s
+    cooldown still rule: Recruit/Regular throw nothing); a member with a penetrating gun and
+    no sight of him fires a 0.7 s pre-fire burst through thin cover (`Arena::penetration`, the
+    same rule as the player's bullets; damage scaled by what gets through). Enemy bullets now
+    penetrate like the player's. Shooting out lights: skipped (lamps aren't breakable).
+  - Entry fragger: one or two members out of contact hold a spot 3.5–8 m inside a door he
+    would come through, 35–80° off the door line, hidden from outside it
+    (`doctrine::off_angle_spot`); adopters drop to a crouch as he comes into view.
+  - Compulsive reloader: members that hear his mag come out (`MAG_OUT_RANGE` 14 m, walls
+    muffle it) send the nearest one (two with a strong counter) sprinting at him (`Rusher`,
+    3 s).
+  - Precision aimer: adopters fight from posts (lean-peek, hide, re-peek elsewhere) and strafe
+    in short irregular bursts (0.12–0.42 s) instead of an A-D rhythm.
+- **Evolution**: four doctrine genes per trait genome (`TraitGenome::doctrine`, old saves
+  seed them like the loadout genes). The squad's mean gene g gives strength 0.25 + 0.75 g:
+  how soon it flashes, how often it jiggles and wallbangs, one or two rushers / trappers,
+  and which members adopt crouch/stagger counters (a member adopts when its fixed roll < s).
+  The trainer profiles the ghost the same way, so genes for the styles the ghost shows get
+  selection pressure (the ghost never ADSes and has a fixed headshot rate, so the precision
+  gene mostly drifts).
+- **Across matches**: seconds each archetype was active go into `MatchTelemetry::style_time`
+  and the model's `style` summary (EMA). A habit active ≥ 35% of last matches starts the next
+  round's doctrine for 25 s unless the live profile confirms it. The debrief leads with one
+  line ("They noticed you hold angles; they started jiggle-peeking and flashing.").
+- **Debug**: F3 shows a doctrine panel (tactic, reason, archetypes, profile) and draws the
+  jiggle spot, wallbang line, rush arrows and traps; `ai.doctrine` on the control port;
+  `enemy.list` has `doctrine` and `jiggling`. Check: `scripts/doctrine-camper.json`
+  (Veteran, Sirocco, player holds a doorway): switch at 4.0 s, a jiggler, two flashes.
+- Tests: `crates/brain/tests/doctrine.rs` (detection, spec check 6, each counter, saves).
