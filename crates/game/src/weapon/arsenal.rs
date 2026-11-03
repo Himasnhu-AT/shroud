@@ -537,11 +537,11 @@ mod tests {
             w.ads = 1.0;
             let want = match kind {
                 WeaponKind::Rifle => Some(Optic::Reflex),
-                WeaponKind::Marksman => Some(Optic::Scope),
+                WeaponKind::Marksman | WeaponKind::Sniper => Some(Optic::Scope),
                 _ => None,
             };
             assert_eq!(w.sighted(), want, "{kind:?}");
-            assert_eq!(w.scoped(), kind == WeaponKind::Marksman);
+            assert_eq!(w.scoped(), kind.long_gun());
             w.ads = 0.5;
             assert_eq!(w.sighted(), None, "{kind:?} half aimed");
         }

@@ -20,7 +20,7 @@ use super::WeaponKind;
 pub struct GunFinish(pub WeaponKind);
 
 pub(super) fn build(app: &mut App) {
-    app.add_systems(Update, apply_finish);
+    app.add_systems(Update, apply_finish.run_if(crate::state::has_visuals));
 }
 
 /// Furniture (polymer stock/grip/handguard) colour per gun.

@@ -314,10 +314,10 @@ fn spawn_hands(commands: &mut Commands, k: &HandKit, f: &Fit, gun: Entity) {
     };
     // Firing hand: palm on the right of the grip, fingers wrapped round its front, thumb on top
     // of the left side; the forearm runs back and down out of frame.
-    let k = if f.pistol { 0.75 } else { 1.0 };
-    box_(commands, Vec3::new(0.02, -0.02, 0.0) * k, Vec3::new(0.018, 0.075, 0.065) * k, Quat::IDENTITY);
-    box_(commands, Vec3::new(0.0, -0.028, -0.03) * k, Vec3::new(0.042, 0.06, 0.018) * k, Quat::IDENTITY);
-    box_(commands, Vec3::new(-0.015, 0.01, -0.01) * k, Vec3::new(0.014, 0.016, 0.05) * k, Quat::IDENTITY);
+    let sc = if f.pistol { 0.75 } else { 1.0 };
+    box_(commands, Vec3::new(0.02, -0.02, 0.0) * sc, Vec3::new(0.018, 0.075, 0.065) * sc, Quat::IDENTITY);
+    box_(commands, Vec3::new(0.0, -0.028, -0.03) * sc, Vec3::new(0.042, 0.06, 0.018) * sc, Quat::IDENTITY);
+    box_(commands, Vec3::new(-0.015, 0.01, -0.01) * sc, Vec3::new(0.014, 0.016, 0.05) * sc, Quat::IDENTITY);
     arm(commands, k, gun, Vec3::new(0.02, -0.06, 0.045), Vec3::new(0.16, -0.32, 0.42));
     let s = f.support;
     if f.pistol {
