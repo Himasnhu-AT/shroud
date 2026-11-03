@@ -140,6 +140,8 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
      (clip names go in `enemy/animation.rs`'s table).
 
 ## Known issues
+- One offscreen capture on Office, ~1 s after a lamp was shot out, showed a corrupted frame (purple
+  floor, displaced ceiling). It did not reproduce in 3 reruns of the same script; watch for it in play.
 - Fixed: `contact_encircles` was never nondeterministic. Each commit gives the same number on every run
   (514fd60: 182, ab8f41c: 184, 065b63b: 178 deg); a 3-seed mean on a cliff moved with unrelated changes
   (gun loadouts). Cutoffs stalled on door jambs (sim collision now circle-vs-box), the NEAT back-off
