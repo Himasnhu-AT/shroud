@@ -292,6 +292,8 @@ fn budget(id: MapId) -> (f32, bool, usize, usize, usize) {
         MapId::Depot => (0.9, true, 30, 12, 24),
         MapId::Office => (0.32, false, 26, 18, 0),
         MapId::Township => (0.85, true, 40, 14, 40),
+        MapId::Sirocco => (0.8, true, 34, 12, 30),
+        MapId::Gantry => (1.0, true, 40, 16, 34),
     }
 }
 

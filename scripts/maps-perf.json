@@ -1,0 +1,219 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Township"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 40
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Sirocco"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 33
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Gantry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 33
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Sirocco"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -33,
+   "z": 22
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -33,
+    2,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Gantry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 32,
+   "z": 23
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    32,
+    2,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ }
+]
