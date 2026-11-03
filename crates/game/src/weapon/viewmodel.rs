@@ -17,6 +17,7 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use engine::fps::{FpsLook, FpsMotor};
 use engine::gfx::MainCamera;
+use engine::settings::GraphicsQuality;
 
 use super::arsenal::{HOLSTER_S, INSPECT_S, Phase, ReloadKind, Weapon};
 use super::{GunEvent, WeaponKind, WeaponSet, approach, ease};
@@ -39,11 +40,59 @@ const BARREL_LEN: f32 = 0.65;
 
 pub(super) fn build(app: &mut App) {
     app.init_resource::<MuzzleCam>()
+        .init_resource::<MuzzleShadows>()
         .add_systems(PostStartup, spawn_viewmodel.run_if(has_visuals))
         .add_systems(
             Update,
-            (find_mag_parts, show_held_gun, animate_viewmodel, viewmodel_no_shadows).chain().after(WeaponSet).run_if(has_visuals),
+            (find_mag_parts, show_held_gun, animate_viewmodel, muzzle_light_shadows, viewmodel_no_shadows).chain().after(WeaponSet).run_if(has_visuals),
         );
+    #[cfg(feature = "dev")]
+    {
+        use engine::devtools::{AddControlCommand, params};
+        app.add_control_command(
+            "muzzle.shadows",
+            "Muzzle-flash light shadows: force on/off (A/B perf checks), or omit `on` for the quality rule",
+            params(&[("on", "boolean", "force (omit: automatic)")]),
+            |world: &mut World, args| {
+                let force = args.get("on").and_then(|v| v.as_bool());
+                world.resource_mut::<MuzzleShadows>().force = force;
+                Ok(serde_json::json!({ "force": force }))
+            },
+        );
+    }
+}
+
+/// Override for the muzzle light's shadows (dev A/B); None = [`muzzle_shadows_allowed`].
+#[derive(Resource, Default)]
+pub struct MuzzleShadows {
+    pub force: Option<bool>,
+}
+
+/// The muzzle light casts shadows on High and Ultra while the render governor is not cutting
+/// game levels. A shadowed point light is six extra shadow views (512 cube) for the frames it
+/// is lit; on High, full-auto, it moved p95 by -0.2 ms (Office) and +0.3 ms (Sirocco), p50 by
+/// +0.2 / +0.7 ms (`scripts/muzzle-shadows-perf.json`).
+pub fn muzzle_shadows_allowed(q: GraphicsQuality, governor_level: u8) -> bool {
+    matches!(q, GraphicsQuality::High | GraphicsQuality::Ultra) && governor_level == 0
+}
+
+/// Shadows on the muzzle light only for the frames it is lit (an unlit shadowed light would
+/// still render its cube every frame).
+fn muzzle_light_shadows(
+    settings: Option<Res<engine::settings::CoreSettings>>,
+    governor: Option<Res<engine::render_budget::GovernorState>>,
+    force: Res<MuzzleShadows>,
+    mut lights: Query<&mut PointLight, With<MuzzleFlash>>,
+) {
+    let allowed = force.force.unwrap_or_else(|| {
+        muzzle_shadows_allowed(settings.map(|s| s.quality).unwrap_or_default(), governor.map_or(0, |g| g.game_level))
+    });
+    for mut l in &mut lights {
+        let want = allowed && l.intensity > 0.0;
+        if l.shadow_maps_enabled != want {
+            l.shadow_maps_enabled = want;
+        }
+    }
 }
 
 /// Where the muzzle of the gun in hand appears and where its barrel points, in camera space
@@ -923,5 +972,19 @@ fn viewmodel_no_shadows(
         if parents.iter_ancestors(e).any(|a| vms.contains(a)) {
             commands.entity(e).insert(NotShadowCaster);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn muzzle_shadows_only_high_up_and_unthrottled() {
+        assert!(!muzzle_shadows_allowed(GraphicsQuality::Low, 0));
+        assert!(!muzzle_shadows_allowed(GraphicsQuality::Medium, 0));
+        assert!(muzzle_shadows_allowed(GraphicsQuality::High, 0));
+        assert!(muzzle_shadows_allowed(GraphicsQuality::Ultra, 0));
+        assert!(!muzzle_shadows_allowed(GraphicsQuality::Ultra, 1));
     }
 }

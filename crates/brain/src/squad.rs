@@ -416,6 +416,8 @@ pub enum Role {
     Suppressor,
     /// Doctrine vs an entry fragger: holding an off-angle inside a door he will run through.
     Trapper,
+    /// Doctrine vs an angle holder: shooting out the lamp that lights him, from out of his sight.
+    Lights,
 }
 
 impl Role {
@@ -439,6 +441,7 @@ impl Role {
             Role::Jiggler => "jiggler",
             Role::Suppressor => "suppressor",
             Role::Trapper => "trapper",
+            Role::Lights => "lights",
         }
     }
 }
@@ -477,7 +480,24 @@ pub struct MemberDoctrine {
     pub counters: Counters,
     /// This member jiggle-peeks (its order is `Role::Jiggler`).
     pub jiggle: Option<Jiggle>,
+    /// This member shoots out a lamp (its order is `Role::Lights`).
+    pub light: Option<LightShot>,
 }
+
+/// Shooting out a lamp that lights an angle holder: `lamp` is the id (`Arena::decor.lamps`
+/// index), `pos`/`height` the fixture, `spot` where the shooter stands (sees the fixture, not him).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LightShot {
+    pub lamp: usize,
+    pub pos: V2,
+    pub height: f32,
+    pub spot: V2,
+}
+
+/// Lamps shot out per round, at most (the ones lighting him, nearest first).
+pub const MAX_LIGHTS: usize = 2;
+/// Seconds the squad works on one lamp (walk to a spot and shoot) before giving up on it.
+pub const LIGHT_TRY_S: f32 = 15.0;
 
 /// Step out this far (m) on a jiggle-peek.
 pub const JIGGLE_M: f32 = 0.25;
@@ -769,6 +789,12 @@ pub struct SquadCoordinator {
     /// Wallbang: (member, spot, until) and the time the next one may start.
     pub wallbang: Option<(usize, V2, f32)>,
     wallbang_next: f32,
+    /// Shooting out the light over him: the lamp and when to give up on it, the member on it
+    /// and its shot; lamps already tried this round; when to look for a shooter again.
+    pub light_target: Option<(usize, f32)>,
+    pub light_shot: Option<(usize, LightShot)>,
+    lights_tried: Vec<usize>,
+    lights_next: f32,
     /// Off-angle traps: (member, spot, door it watches).
     pub traps: Vec<(usize, V2, V2)>,
     traps_t: f32,
@@ -907,6 +933,10 @@ impl SquadCoordinator {
             jiggle_t: 0.0,
             wallbang: None,
             wallbang_next: 0.0,
+            light_target: None,
+            light_shot: None,
+            lights_tried: Vec::new(),
+            lights_next: 0.0,
             traps: Vec::new(),
             traps_t: -99.0,
         }
@@ -958,7 +988,9 @@ impl SquadCoordinator {
         if !self.enabled {
             return MemberDoctrine::default();
         }
-        MemberDoctrine { counters: self.doctrine.counters(), jiggle: self.jiggler.filter(|j| j.0 == i).map(|j| j.1) }
+        // The lights go out before anyone peeks: the jiggler waits at its hide spot meanwhile.
+        let jiggle = self.jiggler.filter(|j| j.0 == i && self.light_shot.is_none()).map(|j| j.1);
+        MemberDoctrine { counters: self.doctrine.counters(), jiggle, light: self.light_shot.filter(|l| l.0 == i).map(|l| l.1) }
     }
 
     /// The squad's doctrine genes: the mean over living members.
@@ -1601,6 +1633,47 @@ impl SquadCoordinator {
             if self.still_t >= CAMP_S * (1.3 - 0.8 * c.jiggle) && self.flashes_used < self.utility.flashes {
                 self.flash_wanted = self.flash_wanted.max(2.0);
             }
+            // Shoot out the lamps lighting him (where there are lamps), before anyone peeks: one
+            // member walks to a spot that sees the fixture but not him and taps it out.
+            // A lamp is out, or its time is up: next one (each lamp gets one try per round).
+            if let Some((lamp, until)) = self.light_target
+                && (now >= until || !arena.lamp_lit(lamp))
+            {
+                self.light_target = None;
+                self.light_shot = None;
+            }
+            // The shooter got pulled into the fight or another job: someone else takes the lamp.
+            if let Some((i, _)) = self.light_shot
+                && (busy.contains(&i) || members.get(i).is_none_or(|m| !m.alive || m.last_seen < 0.3))
+            {
+                self.light_shot = None;
+            }
+            if self.light_target.is_none() && self.lights_tried.len() < MAX_LIGHTS
+                && let Some(lamp) = arena.lamps_lighting(target).into_iter().find(|l| !self.lights_tried.contains(l))
+            {
+                self.lights_tried.push(lamp);
+                self.light_target = Some((lamp, now + LIGHT_TRY_S));
+            }
+            if let Some((lamp, _)) = self.light_target
+                && self.light_shot.is_none()
+                && now >= self.lights_next
+            {
+                self.lights_next = now + 1.0;
+                let (pos, height) = arena.decor.lamps[lamp].fixture();
+                let pick = (0..members.len())
+                    .filter(|&i| members[i].alive && !busy.contains(&i) && members[i].last_seen > 0.5 && self.jiggler.is_none_or(|j| j.0 != i))
+                    .filter_map(|i| doctrine::light_spot(arena, members[i].pos, pos, height, target).map(|(walk, spot)| (walk, i, spot)))
+                    .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+                if let Some((_, i, spot)) = pick {
+                    self.light_shot = Some((i, LightShot { lamp, pos, height, spot }));
+                    self.bark(i, "Shooting out his light".into(), false);
+                }
+            }
+            if let Some((i, s)) = self.light_shot {
+                busy.push(i);
+                self.orders[i] =
+                    Some(Order { role: Role::Lights, goal: Goal::Hold, dest: Some(s.spot), watch: Some(s.pos), threat: Some(target), sticky: true, via: None, prefire: None });
+            }
             self.jiggle_t -= RADIO_PERIOD_S;
             let keep = self.jiggler.filter(|(i, j)| {
                 members.get(*i).is_some_and(|m| m.alive && m.pos.dist(j.hide) < 12.0) && !busy.contains(i) && self.jiggle_t > 0.0
@@ -1654,6 +1727,8 @@ impl SquadCoordinator {
         } else {
             self.jiggler = None;
             self.wallbang = None;
+            self.light_target = None;
+            self.light_shot = None;
         }
 
         // --- Entry fragger: hold off-angles inside the doors he will run through.

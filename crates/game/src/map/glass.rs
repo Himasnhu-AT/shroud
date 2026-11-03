@@ -45,6 +45,14 @@ pub struct BulletPath {
     pub max_dist: f32,
 }
 
+/// A burst of small glass shards falling out of a box (a shot-out lamp, `map::lamps`).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct ShardBurst {
+    pub at: Vec3,
+    pub half: Vec3,
+    pub count: u8,
+}
+
 /// Falling shard (despawns when its time is up).
 #[derive(Component)]
 struct Shard {
@@ -69,6 +77,7 @@ impl Plugin for GlassPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ShatterGlass>()
             .add_message::<BulletPath>()
+            .add_message::<ShardBurst>()
             .add_systems(Update, (paths_from_shots, break_along_paths, shatter, fall).chain())
             .add_systems(OnEnter(GameState::Playing), restore_glass);
         #[cfg(feature = "dev")]
@@ -131,12 +140,13 @@ fn break_along_paths(mut paths: MessageReader<BulletPath>, panes: Query<(Entity,
 fn shatter(
     mut commands: Commands,
     mut reqs: MessageReader<ShatterGlass>,
+    mut bursts: MessageReader<ShardBurst>,
     panes: Query<(&GlobalTransform, &Glass), Without<Shattered>>,
     assets: Option<Res<ShardAssets>>,
     meshes: Option<ResMut<Assets<Mesh>>>,
     mats: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
-    if reqs.is_empty() {
+    if reqs.is_empty() && bursts.is_empty() {
         return;
     }
     let assets = match (assets, meshes, mats) {
@@ -157,6 +167,30 @@ fn shatter(
         }
         _ => None,
     };
+    for b in bursts.read() {
+        let Some(a) = &assets else { continue };
+        let mut seed = (b.at.x * 92.7 + b.at.z * 13.1 + b.at.y * 7.3).to_bits() | 1;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            (seed % 10_000) as f32 / 10_000.0
+        };
+        for _ in 0..b.count {
+            let at = b.at + Vec3::new((rnd() * 2.0 - 1.0) * b.half.x, -b.half.y, (rnd() * 2.0 - 1.0) * b.half.z);
+            let vel = Vec3::new((rnd() - 0.5) * 2.0, -rnd() * 1.5, (rnd() - 0.5) * 2.0);
+            let s = 0.03 + rnd() * 0.06;
+            commands.spawn((
+                Name::new("Glass shard"),
+                Shard { vel, spin: Vec3::new(rnd() * 9.0, rnd() * 9.0, rnd() * 9.0), life: 1.4 + rnd() * 0.8 },
+                Mesh3d(a.mesh.clone()),
+                MeshMaterial3d(a.mat.clone()),
+                Transform::from_translation(at).with_scale(Vec3::new(s, s * (0.6 + rnd()), 0.006)).with_rotation(Quat::from_rotation_y(rnd() * 6.3)),
+                NotShadowCaster,
+                engine::render_budget::Actor,
+            ));
+        }
+    }
     let mut done = Vec::new();
     for ShatterGlass(e) in reqs.read() {
         if done.contains(e) {

@@ -28,6 +28,27 @@ pub struct ShroudSettings {
     /// Classic (CS-style centre aim, full HUD) or Bodycam (chest-cam optics, free aim,
     /// stripped HUD; see `bodycam`).
     pub camera_style: CameraStyle,
+    /// Bodycam only: where the camera is worn (head height or the chest rig).
+    pub bodycam_mount: BodycamMount,
+}
+
+/// Where the bodycam sits (Bodycam style only; `bodycam::mount_offset`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BodycamMount {
+    #[default]
+    Head,
+    /// Spec §2.1 (`spine_02`): ~0.22 m below and 0.08 m right of the eyes, a little more sway.
+    Chest,
+}
+
+impl BodycamMount {
+    pub const ALL: [BodycamMount; 2] = [BodycamMount::Head, BodycamMount::Chest];
+    pub fn label(self) -> &'static str {
+        match self {
+            BodycamMount::Head => "Head",
+            BodycamMount::Chest => "Chest",
+        }
+    }
 }
 
 /// How the player's view is presented.
@@ -58,6 +79,7 @@ impl Default for ShroudSettings {
             show_callouts: true,
             primary: WeaponKind::Rifle,
             camera_style: CameraStyle::Classic,
+            bodycam_mount: BodycamMount::Head,
         }
     }
 }
@@ -71,6 +93,24 @@ impl Plugin for ShroudSettingsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SettingsPlugin::<ShroudSettings>::default());
         register_fields(app);
+        app.add_systems(Update, show_mount_row);
+    }
+}
+
+/// The "Bodycam mount" row sits on the Video tab only while the camera style is Bodycam (the
+/// open settings screen is rebuilt when it appears or goes).
+fn show_mount_row(settings: Res<ShroudSettings>, reg: Option<ResMut<SettingsRegistry>>, rebuild: Option<ResMut<Messages<engine::ui::prelude::RebuildScreen>>>) {
+    if !settings.is_changed() {
+        return;
+    }
+    let Some(mut reg) = reg else { return };
+    let want = if settings.camera_style == CameraStyle::Bodycam { "Video" } else { "" };
+    let Some(i) = reg.fields.iter().position(|f| f.key == "bodycam_mount") else { return };
+    if reg.fields[i].tab != want {
+        reg.fields[i].tab = want;
+        if let Some(mut r) = rebuild {
+            r.write(engine::ui::prelude::RebuildScreen);
+        }
     }
 }
 
@@ -151,6 +191,16 @@ fn register_fields(app: &mut App) {
         kind: FieldKind::Choice { options: CameraStyle::ALL.iter().map(|c| c.label()).collect() },
         get: |w| index_of(&CameraStyle::ALL, &s(w).camera_style),
         set: |w, v| s_mut(w).camera_style = pick(&CameraStyle::ALL, v),
+    })
+    // Shown on the Video tab only while the camera style is Bodycam (`show_mount_row`).
+    .register_setting(FieldDef {
+        key: "bodycam_mount",
+        tab: "",
+        label: "Bodycam mount",
+        hint: "Head: the camera at eye height. Chest: worn on the vest, lower and a little right, with more sway. Shots still leave the barrel; enemies still see your head.",
+        kind: FieldKind::Choice { options: BodycamMount::ALL.iter().map(|c| c.label()).collect() },
+        get: |w| index_of(&BodycamMount::ALL, &s(w).bodycam_mount),
+        set: |w, v| s_mut(w).bodycam_mount = pick(&BodycamMount::ALL, v),
     })
     .set_settings_tabs(&["Gameplay", "Controls", "Video", "Audio"])
     .settings_defaults::<ShroudSettings>();

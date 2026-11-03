@@ -181,6 +181,9 @@ pub struct Action {
     pub weapon: Option<WeaponKind>,
     /// Per-pellet cone (1 sigma, radians) around `shot_dir` for each bullet the gun fires.
     pub spread: f32,
+    /// This shot is at a lamp fixture (doctrine vs an angle holder): the game pitches it at the
+    /// fixture's height instead of at the player.
+    pub light: Option<squad::LightShot>,
 }
 
 pub struct MindCtx<'a> {
@@ -333,6 +336,8 @@ pub struct EnemyMind {
     /// Jiggle-peek cycle: 0 wait, 1 out, 2 back; seconds left in the phase.
     jiggle_phase: u8,
     jiggle_t: f32,
+    /// Seconds to the next tap at a lamp (one aimed shot at a time).
+    light_tap: f32,
     pub debug: MindDebug,
 }
 
@@ -380,6 +385,8 @@ pub const STUCK_S: f32 = 0.7;
 pub const STUCK_MIN_MOVE: f32 = 0.35;
 /// How long a heard sound keeps an enemy looking at / investigating it.
 pub const HEARD_MEMORY_S: f32 = 6.0;
+/// Seconds between taps at a lamp.
+pub const LIGHT_TAP_S: f32 = 0.35;
 /// Each half of a jiggle-peek (out, back) takes this long (s); at a walk that is ~0.25 m.
 pub const JIGGLE_STEP_S: f32 = 0.0625;
 
@@ -446,6 +453,7 @@ impl EnemyMind {
             doctrine_roll: rand::Rng::random::<f32>(&mut rng_from_seed(seed ^ 0xD0C7_0001)),
             jiggle_phase: 0,
             jiggle_t: 0.0,
+            light_tap: 0.0,
             debug: MindDebug::default(),
         }
     }
@@ -525,6 +533,7 @@ impl EnemyMind {
             let mut act = self.think(&o, cx);
             act.fire = false;
             act.prefire = None;
+            act.light = None;
             act.sprint = false;
             return act;
         }
@@ -899,7 +908,17 @@ impl EnemyMind {
         if prefire.is_none() {
             self.prefire_t = 0.0;
         }
-        let target_dir = if let Some(pf) = prefire {
+        // Doctrine: shooting out the lamp over him, once at the spot and with a clear line to
+        // the fixture from here.
+        let light = self.doctrine.light.filter(|l| {
+            !o.player_visible
+                && self.following().is_some_and(|od| od.role == squad::Role::Lights)
+                && o.pos.dist(l.spot) < 1.5
+                && cx.arena.clear_line_3d(o.pos, doctrine::MUZZLE_H, l.pos, l.height)
+        });
+        let target_dir = if let Some(l) = light {
+            (l.pos - o.pos).norm()
+        } else if let Some(pf) = prefire {
             (pf - o.pos).norm()
         } else if o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S || posting.is_some_and(|p| p != PostPhase::Move || self.own_unseen < 1.0) {
             // (At a post the gun stays on where he was: the peek comes out pre-aimed.)
@@ -972,11 +991,18 @@ impl EnemyMind {
             fire = true;
             self.prefire_t += o.dt;
         }
+        // Lamp: single aimed taps (same aim error as any shot) until the light goes out.
+        self.light_tap = (self.light_tap - o.dt).max(0.0);
+        let at_light = light.is_some() && !fire && aim_off < 0.05 && o.ammo_frac > 0.0 && self.light_tap <= 0.0;
+        if at_light {
+            fire = true;
+            self.light_tap = LIGHT_TAP_S;
+        }
 
         // Spread: base error, worse while moving, wide on the first shots and narrowing as the
         // aim settles on him; suppressive (no token, not self-defence) fire is wider still.
         // (Pre-fire aims at a fixed spot, not a target to settle on: its own spread covers it.)
-        let settle = if prefiring { 1.0 } else { 1.0 + SETTLE_SPREAD * (1.0 - (self.on_target_time / h.settle_s.max(0.05)).min(1.0)) };
+        let settle = if prefiring || at_light { 1.0 } else { 1.0 + SETTLE_SPREAD * (1.0 - (self.on_target_time / h.settle_s.max(0.05)).min(1.0)) };
         let suppress = if o.token_denied && !self.isolated && !o.taking_fire && dist >= 12.0 { SUPPRESS_SPREAD } else { 1.0 };
         let moving = 1.0 + move_dir.len() * h.move_mult;
         if o.taking_fire && !self.was_hit {
@@ -1117,6 +1143,7 @@ impl EnemyMind {
             lean,
             weapon,
             spread: loadout::pellet_spread(o.weapon),
+            light: light.filter(|_| at_light),
         }
     }
 

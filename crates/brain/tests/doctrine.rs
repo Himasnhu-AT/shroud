@@ -14,6 +14,70 @@ use brain::rooms;
 use brain::sim::{self, BODY_RADIUS, DT, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
 use brain::squad::{MemberDoctrine, MemberView, Order, Role, SquadCoordinator};
 
+/// vs a camper standing in a lamp's light (Office), one member walks to a spot that sees the
+/// fixture but not him and taps the lamp: a `Role::Lights` order and aimed shots at that lamp
+/// from a clear line. Maps without lamps never do it.
+#[test]
+fn camper_under_a_lamp_gets_his_light_shot_out() {
+    let a = Arena::build(MapId::Office);
+    assert!(!a.decor.lamps.is_empty());
+    let mut tried = 0;
+    for (id, l) in a.decor.lamps.iter().enumerate() {
+        let player = a.nav.nearest_walkable(l.pos + V2::new(0.8, 0.6));
+        if !a.lamps_lighting(player).contains(&id) {
+            continue;
+        }
+        tried += 1;
+        let mut w = World::new(&a, 5, 11, 0.8);
+        let mut roles = Vec::new();
+        let mut t = 0.0;
+        while t < 30.0 && w.light_taps.is_empty() {
+            t += DT;
+            w.squad.observe_player(&a, StyleTick { dt: DT, pos: player, vel: V2::ZERO, yaw: 0.4 });
+            for o in w.step(player).iter().flatten() {
+                if !roles.contains(&o.role) {
+                    roles.push(o.role);
+                }
+            }
+        }
+        let Some(&(i, from, lamp)) = w.light_taps.first() else {
+            eprintln!("lamp {id} at {:?}: no tap in 30 s (roles {roles:?})", l.pos);
+            continue;
+        };
+        assert!(roles.contains(&Role::Lights));
+        assert!(a.lamps_lighting(player).contains(&lamp), "shoots a lamp that lights him");
+        let (at, h) = a.decor.lamps[lamp].fixture();
+        assert!(a.clear_line_3d(from, brain::doctrine::MUZZLE_H, at, h), "line of sight to the fixture");
+        assert!(!a.line_of_sight(from, false, player, false), "from out of his sight");
+        assert_eq!(w.squad.doctrine.tactic, AiTactic::JigglePeekAndFlash);
+        eprintln!("lamp {lamp} shot at by m{i} from {from:?} after {t:.1} s (camper at {player:?})");
+        // Once it's out, it isn't a target any more.
+        let mut dark = Arena::build(MapId::Office);
+        dark.dark_lamps.push(lamp);
+        assert!(!dark.lamps_lighting(player).contains(&lamp));
+        return;
+    }
+    panic!("no lamp shot out ({tried} lit spots tried)");
+}
+
+/// No lamps lighting him (or none on the map): nobody gets a Lights order.
+#[test]
+fn no_lights_no_light_shots() {
+    let a = Arena::build(MapId::Sirocco);
+    let player = a.nav.nearest_walkable(a.player_spawn * 0.45);
+    if !a.lamps_lighting(player).is_empty() {
+        return;
+    }
+    let mut w = World::new(&a, 5, 3, 0.8);
+    let mut t = 0.0;
+    while t < 20.0 {
+        t += DT;
+        w.squad.observe_player(&a, StyleTick { dt: DT, pos: player, vel: V2::ZERO, yaw: -std::f32::consts::FRAC_PI_2 });
+        assert!(w.step(player).iter().flatten().all(|o| o.role != Role::Lights));
+    }
+    assert!(w.light_taps.is_empty());
+}
+
 fn still(p: &mut PlayerStyleProfile, pos: V2, yaw: f32, secs: f32) {
     let mut t = 0.0;
     while t < secs {
@@ -171,6 +235,8 @@ struct World<'a> {
     last_known: Vec<V2>,
     squad: SquadCoordinator,
     limits: brain::limits::Limits,
+    /// Taps at lamps: (member, its position, the lamp's id).
+    light_taps: Vec<(usize, V2, usize)>,
 }
 
 impl<'a> World<'a> {
@@ -194,6 +260,7 @@ impl<'a> World<'a> {
             last_known: vec![a.player_spawn; n],
             squad,
             limits,
+            light_taps: Vec::new(),
         }
     }
 
@@ -248,6 +315,9 @@ impl<'a> World<'a> {
                 ..Default::default()
             };
             let act = self.minds[i].think(&obs, &cx);
+            if let Some(l) = act.light.filter(|_| act.fire) {
+                self.light_taps.push((i, self.pos[i], l.lamp));
+            }
             self.looks[i] = act.look_dir;
             let speed = if act.crouch { sim::CROUCH_SPEED } else if act.sprint { SPRINT } else { WALK };
             self.pos[i] = a.resolve_collision(self.pos[i] + act.move_dir * speed * DT, BODY_RADIUS);
@@ -463,7 +533,7 @@ fn precision_aimer_meets_micro_strafes() {
         while t < 8.0 {
             t += DT;
             m.set_order(None);
-            m.set_doctrine(MemberDoctrine { counters: brain::doctrine::Counters { stagger, ..Default::default() }, jiggle: None });
+            m.set_doctrine(MemberDoctrine { counters: brain::doctrine::Counters { stagger, ..Default::default() }, jiggle: None, light: None });
             let o = Observation {
                 dt: DT,
                 pos,

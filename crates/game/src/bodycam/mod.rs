@@ -33,6 +33,25 @@ pub const DEADZONE: Vec2 = Vec2::new(18.0f32.to_radians(), 12.0f32.to_radians())
 pub const FOLLOW_HIP: f32 = 14.0;
 pub const FOLLOW_ADS: f32 = 35.0;
 pub const MAX_ROLL: f32 = 7.0f32.to_radians();
+/// Chest mount (spec §2.1 `spine_02`): the camera this far below and right of the eyes.
+pub const CHEST_DROP: f32 = 0.22;
+pub const CHEST_RIGHT: f32 = 0.08;
+/// Chest mount: the vest rolls more with turns and strafes than a head does.
+pub const CHEST_ROLL_GAIN: f32 = 1.35;
+
+/// Camera offset from the eyes (body space: +X right, +Y up) for a mount. `gait` is the step
+/// phase (radians), `pace` 0..~1.2 how fast he moves, `t` seconds (breathing). The head mount
+/// is the eye itself; the chest bobs side to side with each step and rises with each breath.
+pub fn mount_offset(mount: crate::settings::BodycamMount, gait: f32, pace: f32, t: f32) -> Vec3 {
+    match mount {
+        crate::settings::BodycamMount::Head => Vec3::ZERO,
+        crate::settings::BodycamMount::Chest => {
+            let step = Vec3::new(gait.sin() * 0.014, -gait.sin().abs() * 0.010, 0.0) * pace;
+            let breath = Vec3::Y * (t * 1.6).sin() * 0.004;
+            Vec3::new(CHEST_RIGHT, -CHEST_DROP, 0.0) + step + breath
+        }
+    }
+}
 
 pub fn is_bodycam(s: &ShroudSettings) -> bool {
     s.camera_style == CameraStyle::Bodycam
@@ -65,6 +84,10 @@ pub struct BodycamAim {
     yaw_rate: f32,
     /// The gun's rotation in camera space (applied to the viewmodel root).
     pub weapon_in_camera: Quat,
+    /// Step phase for the chest mount's sway (radians), and the camera's offset from the eyes
+    /// this frame (body space; zero on the head mount).
+    gait: f32,
+    pub mount_offset: Vec3,
 }
 
 impl BodycamAim {
@@ -139,6 +162,7 @@ fn dev(app: &mut App) {
             "camera_deg": [a.camera.x.to_degrees(), a.camera.y.to_degrees()],
             "delta_deg": [a.delta().x.to_degrees(), a.delta().y.to_degrees()],
             "roll_deg": a.roll.to_degrees(),
+            "mount_offset": [a.mount_offset.x, a.mount_offset.y, a.mount_offset.z],
             "muzzle_cam": [m.0.x, m.0.y, m.0.z],
             "barrel_cam": [m.1.x, m.1.y, m.1.z],
             "press_check_s": world.resource::<hud::PressCheck>().0,
@@ -234,7 +258,8 @@ fn free_aim(
     aim.last_weapon_yaw = Some(aim.weapon.x);
     aim.yaw_rate += (rate - aim.yaw_rate) * (1.0 - (-12.0 * dt).exp());
     let strafe = motor.velocity.dot(body.rotation * Vec3::X);
-    let want_roll = dutch_roll(aim.yaw_rate, strafe) * (1.0 - 0.6 * ads);
+    let chest = settings.bodycam_mount == crate::settings::BodycamMount::Chest;
+    let want_roll = dutch_roll(aim.yaw_rate, strafe) * (1.0 - 0.6 * ads) * if chest { CHEST_ROLL_GAIN } else { 1.0 };
     aim.roll += (want_roll - aim.roll) * (1.0 - (-6.0 * dt).exp());
 
     // Vest shock: each shot kicks the chest camera up and rolls it a little.
@@ -253,6 +278,21 @@ fn free_aim(
     if cam.rotation != cam_rot {
         cam.rotation = cam_rot;
     }
+
+    // Mount: the chest camera sits below and right of the eyes and sways with the steps. Only
+    // the view moves: the body, hitboxes and every sight line (AI, LOS) stay at the head.
+    let speed = Vec2::new(motor.velocity.x, motor.velocity.z).length();
+    let pace = (speed / 4.5).min(1.2) * if motor.grounded { 1.0 } else { 0.0 };
+    aim.gait = (aim.gait + dt * std::f32::consts::TAU * 0.95 * pace).rem_euclid(std::f32::consts::TAU * 2.0);
+    let offset = mount_offset(settings.bodycam_mount, aim.gait, pace, time.elapsed_secs());
+    let eye = Vec3::new(0.0, motor.eye_offset, 0.0);
+    if offset != Vec3::ZERO || aim.mount_offset != Vec3::ZERO {
+        let want = eye + offset;
+        if cam.translation != want {
+            cam.translation = want;
+        }
+    }
+    aim.mount_offset = offset;
 }
 
 #[cfg(test)]

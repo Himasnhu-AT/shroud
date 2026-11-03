@@ -1,0 +1,148 @@
+[
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 4.0,
+   "z": 2.2
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -3.0,
+    0.9,
+    -0.5
+   ]
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "lamp.break",
+  "params": {
+   "id": 0
+  }
+ },
+ {
+  "cmd": "lamp.break",
+  "params": {
+   "id": 1
+  }
+ },
+ {
+  "cmd": "lamp.break",
+  "params": {
+   "id": 2
+  }
+ },
+ {
+  "cmd": "lamp.break",
+  "params": {
+   "id": 13
+  }
+ },
+ {
+  "cmd": "lamp.break",
+  "params": {
+   "id": 14
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "shot": "dark_room"
+ },
+ {
+  "cmd": "muzzle.shadows",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "flash_off_a"
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "flash_off_b"
+ },
+ {
+  "cmd": "muzzle.shadows",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "flash_on_a"
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "flash_on_b"
+ }
+]

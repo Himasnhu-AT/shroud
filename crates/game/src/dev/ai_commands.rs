@@ -355,6 +355,7 @@ fn ai_doctrine(world: &mut World, _: Value) -> Result<Value, String> {
     v["frags_used"] = json!(c.frags_used);
     v["utility"] = json!({ "frags": c.utility.frags, "flashes": c.utility.flashes });
     v["jiggling"] = json!(jiggling);
+    v["light_shot"] = json!(c.light_shot.map(|(i, s)| json!({ "member": i, "lamp": s.lamp, "spot": [s.spot.x, s.spot.y] })));
     v["difficulty"] = json!(sq.difficulty.label());
     Ok(v)
 }

@@ -1,0 +1,242 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Sirocco"
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "cmd": "ui.setting",
+  "params": {
+   "key": "bodycam_mount",
+   "value": 0
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 33
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "shot": "sir_head_idle"
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "fire": true,
+   "ms": 500
+  }
+ },
+ {
+  "sleep": 0.25
+ },
+ {
+  "shot": "sir_head_firing"
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "sir_head_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1200
+  }
+ },
+ {
+  "shot": "sir_head_walk"
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 4000
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "shot": "sir_head_wall"
+ },
+ {
+  "cmd": "ui.setting",
+  "params": {
+   "key": "bodycam_mount",
+   "value": 1
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 33
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "shot": "sir_chest_idle"
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "fire": true,
+   "ms": 500
+  }
+ },
+ {
+  "sleep": 0.25
+ },
+ {
+  "shot": "sir_chest_firing"
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "sir_chest_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1200
+  }
+ },
+ {
+  "shot": "sir_chest_walk"
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 4000
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "shot": "sir_chest_wall"
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "classic"
+  }
+ },
+ {
+  "cmd": "settings.get"
+ }
+]

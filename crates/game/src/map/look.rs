@@ -841,14 +841,29 @@ pub(crate) fn apply_light_budget(
     time: Res<Time<Real>>,
     settings: Option<Res<Settings>>,
     added: Query<(), Added<MapLamp>>,
+    mut shot_out: Query<(Option<&mut SpotLight>, Option<&mut PointLight>), (With<MapLamp>, With<super::lamps::LampOut>, Added<super::lamps::LampOut>)>,
+    mut relit: RemovedComponents<super::lamps::LampOut>,
     cam: Query<&GlobalTransform, With<engine::gfx::MainCamera>>,
-    mut spots: Query<(Entity, &GlobalTransform, &mut SpotLight), With<MapLamp>>,
-    mut points: Query<(Entity, &GlobalTransform, &mut PointLight), (With<MapLamp>, Without<SpotLight>)>,
+    mut spots: Query<(Entity, &GlobalTransform, &mut SpotLight), (With<MapLamp>, Without<super::lamps::LampOut>)>,
+    mut points: Query<(Entity, &GlobalTransform, &mut PointLight), (With<MapLamp>, Without<SpotLight>, Without<super::lamps::LampOut>)>,
     governor: Option<Res<engine::render_budget::GovernorState>>,
     mut next: Local<f32>,
 ) {
     let now = time.elapsed_secs();
-    let changed = settings.as_ref().is_some_and(|s| s.is_changed()) || !added.is_empty() || governor.as_ref().is_some_and(|g| g.is_changed());
+    // Shot-out lamps leave the candidates (`map::lamps`): re-rank at once so the next lamp in
+    // line takes the freed shadow slot.
+    let mut lamps_changed = relit.read().count() > 0;
+    for (spot, point) in &mut shot_out {
+        lamps_changed = true;
+        // (Off again in case a re-rank gave it a shadow the frame it broke.)
+        if let Some(mut l) = spot.filter(|l| l.shadow_maps_enabled) {
+            l.shadow_maps_enabled = false;
+        }
+        if let Some(mut l) = point.filter(|l| l.shadow_maps_enabled) {
+            l.shadow_maps_enabled = false;
+        }
+    }
+    let changed = settings.as_ref().is_some_and(|s| s.is_changed()) || !added.is_empty() || lamps_changed || governor.as_ref().is_some_and(|g| g.is_changed());
     if !changed && now < *next {
         return;
     }

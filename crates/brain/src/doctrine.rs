@@ -607,6 +607,47 @@ pub fn jiggle_spot(arena: &Arena, me: V2, target: V2) -> Option<(f32, crate::squ
     best
 }
 
+/// A spot within [`LIGHT_WALK_M`] walk of `me` to shoot out the lamp fixture at (`lamp`,
+/// `height`) from: it sees the fixture (a clear 3D line from the muzzle, under lintels) and is
+/// hidden from `target` (he's holding an angle; the shooter shouldn't take the duel). Returns
+/// (walk, spot), the shortest walk. The line must be clear from a step around the spot too.
+pub fn light_spot(arena: &Arena, me: V2, lamp: V2, height: f32, target: V2) -> Option<(f32, V2)> {
+    let nav = &arena.nav;
+    let field = nav.distance_field(&[me], LIGHT_WALK_M);
+    let (cx, cz) = nav.cell_of(me);
+    let r = (LIGHT_WALK_M / nav.cell).ceil() as i64;
+    let mut best: Option<(f32, V2)> = None;
+    for dz in -r..=r {
+        for dx in -r..=r {
+            let (x, z) = (cx as i64 + dx, cz as i64 + dz);
+            if x < 0 || z < 0 || x >= nav.w as i64 || z >= nav.w as i64 {
+                continue;
+            }
+            let i = z as usize * nav.w + x as usize;
+            let walk = field[i];
+            if !walk.is_finite() || best.as_ref().is_some_and(|b| walk >= b.0) {
+                continue;
+            }
+            let c = nav.center(i);
+            if !(2.5..LIGHT_SHOT_M).contains(&c.dist(lamp)) || c.dist(target) < 3.0 || arena.line_of_sight(target, false, c, false) {
+                continue;
+            }
+            // Clear from anywhere a step around the cell too: a walk stops short of its goal.
+            let around = [V2::new(0.0, 0.0), V2::new(0.6, 0.0), V2::new(-0.6, 0.0), V2::new(0.0, 0.6), V2::new(0.0, -0.6)];
+            if around.iter().all(|&o| arena.clear_line_3d(c + o, MUZZLE_H, lamp, height)) {
+                best = Some((walk, c));
+            }
+        }
+    }
+    best
+}
+
+/// Longest walk (m) to a spot to shoot out a light from, and the longest shot at a lamp.
+pub const LIGHT_WALK_M: f32 = 14.0;
+pub const LIGHT_SHOT_M: f32 = 22.0;
+/// Height of an enemy's muzzle standing (m), for the line to a lamp.
+pub const MUZZLE_H: f32 = 1.4;
+
 /// Longest walk (m) to a jiggle-peek spot.
 pub const JIGGLE_WALK_M: f32 = 14.0;
 
