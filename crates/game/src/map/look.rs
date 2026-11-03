@@ -47,7 +47,7 @@ fn recipe(key: &str) -> Spec {
         "stucco" => spec("stucco", [0.97, 0.87, 0.70], [0.84, 0.73, 0.57], 1.0, 3.0),
         "stucco_b" => spec("stucco", [0.93, 0.76, 0.62], [0.80, 0.61, 0.48], 1.0, 3.0),
         "stucco_outer" => spec("stucco", [0.82, 0.74, 0.63], [0.66, 0.58, 0.48], 1.0, 3.0),
-        "concrete" => spec("wall", [0.82, 0.79, 0.74], [0.56, 0.55, 0.52], 0.9, 2.5),
+        "concrete" => spec("concrete_4k", [0.95, 0.91, 0.84], [0.56, 0.55, 0.52], 0.9, 3.0),
         "container0" => spec("container", [0.70, 0.26, 0.18], [0.55, 0.20, 0.14], 0.6, 2.6),
         "container1" => spec("container", [0.25, 0.42, 0.62], [0.18, 0.30, 0.46], 0.6, 2.6),
         "container2" => spec("container", [0.32, 0.50, 0.34], [0.22, 0.36, 0.24], 0.6, 2.6),
@@ -74,7 +74,8 @@ fn recipe(key: &str) -> Spec {
         "town_wall" => spec("brick", [0.78, 0.70, 0.66], [0.45, 0.30, 0.26], 0.95, 1.0),
         "brick" => spec("brick", [1.0, 0.94, 0.90], [0.55, 0.31, 0.25], 0.95, 0.9),
         "plaster0" => spec("stucco", [0.66, 0.78, 0.90], [0.55, 0.64, 0.74], 1.0, 3.0),
-        "plaster1" => spec("stucco", [1.0, 0.88, 0.58], [0.86, 0.74, 0.46], 1.0, 3.0),
+        // Peeling yellow paint over plaster (the set is already yellow: a light tint only).
+        "plaster1" => spec("peeling_paint", [1.0, 0.97, 0.9], [0.86, 0.74, 0.46], 1.0, 3.0),
         "plaster2" => spec("stucco", [0.72, 0.86, 0.66], [0.58, 0.70, 0.52], 1.0, 3.0),
         "plaster3" => spec("stucco", [0.98, 0.93, 0.85], [0.84, 0.80, 0.72], 1.0, 3.0),
         "siding" => spec("container", [0.62, 0.68, 0.70], [0.46, 0.50, 0.52], 0.55, 2.4),
@@ -95,16 +96,18 @@ fn recipe(key: &str) -> Spec {
         "sirocco_ground" => spec("depot_ground", [1.0, 0.93, 0.82], [0.78, 0.68, 0.52], 1.0, 5.0),
         "white0" => spec("stucco", [1.0, 0.99, 0.96], [0.90, 0.88, 0.84], 1.0, 3.0),
         "white1" => spec("stucco", [0.99, 0.94, 0.84], [0.88, 0.82, 0.72], 1.0, 3.0),
-        "white2" => spec("stucco", [0.97, 0.84, 0.64], [0.84, 0.70, 0.50], 1.0, 3.0),
-        "sirocco_outer" => spec("stucco", [0.92, 0.82, 0.68], [0.76, 0.66, 0.52], 1.0, 3.0),
-        "cobble" => spec("sidewalk", [0.96, 0.87, 0.74], [0.62, 0.55, 0.46], 1.0, 1.6),
+        // Bare sandstone ashlar for every third house and the town's outer walls.
+        "white2" => spec("sandstone", [1.08, 1.0, 0.92], [0.84, 0.70, 0.50], 1.0, 4.0),
+        "sirocco_outer" => spec("sandstone", [0.98, 0.92, 0.84], [0.76, 0.66, 0.52], 1.0, 4.0),
+        "cobble" => spec("cobblestone", [1.12, 1.04, 0.94], [0.62, 0.55, 0.46], 1.0, 2.4),
         "sirocco_paving" => spec("sidewalk", [1.0, 0.94, 0.84], [0.70, 0.64, 0.56], 1.0, 2.5),
         "terracotta_floor" => spec("tiles", [0.92, 0.58, 0.42], [0.66, 0.38, 0.26], 1.0, 1.2),
         "roof_terracotta" => spec("tiles", [0.74, 0.50, 0.40], [0.56, 0.36, 0.28], 0.9, 0.8),
         // Gantry: weathered harbour concrete, painted cladding, ballast, crane paint.
-        "harbor_ground" => spec("floor", [0.72, 0.73, 0.74], [0.42, 0.43, 0.44], 1.0, 4.0),
-        "harbor_concrete" => spec("wall", [0.80, 0.81, 0.82], [0.54, 0.55, 0.56], 0.9, 2.5),
-        "harbor_wall" => spec("wall", [0.64, 0.66, 0.68], [0.42, 0.43, 0.45], 0.9, 3.0),
+        // Wet asphalt after the night's rain; cast concrete quay walls (4K sets).
+        "harbor_ground" => spec("asphalt_wet", [1.0, 1.0, 1.0], [0.22, 0.23, 0.24], 1.0, 5.0),
+        "harbor_concrete" => spec("concrete_4k", [0.92, 0.93, 0.95], [0.54, 0.55, 0.56], 0.9, 3.0),
+        "harbor_wall" => spec("concrete_4k", [0.74, 0.76, 0.79], [0.42, 0.43, 0.45], 0.9, 3.5),
         "siding_teal" => spec("container", [0.34, 0.55, 0.56], [0.22, 0.38, 0.40], 0.55, 2.4),
         "siding_rust" => spec("container", [0.66, 0.38, 0.26], [0.48, 0.26, 0.17], 0.6, 2.4),
         "gravel" => spec("roof_gravel", [0.86, 0.83, 0.80], [0.40, 0.38, 0.36], 1.0, 2.0),
@@ -721,9 +724,48 @@ pub fn scenery_ranges(arena: &Arena) -> SceneryRanges {
     SceneryRanges { shadow: near, small_props: near, far: near, view: fog_end(arena.id), ..default() }
 }
 
+/// The HDRI sky of a map (Poly Haven CC0, converted to a KTX2 cubemap under `assets/sky/`,
+/// see `assets/CREDITS.md`): the skybox and the image-based light. The sun glow in each sky
+/// was rotated to the map's sun azimuth and the sun itself clamped out (the `DirectionalLight`
+/// is the sun), so shadows and sky agree. Maps without one keep their gradient/atmosphere.
+pub fn hdri_of(id: MapId) -> Option<&'static str> {
+    match id {
+        MapId::Sirocco => Some("sky/sirocco_kloofendal_48d.ktx2"),
+        MapId::Gantry => Some("sky/gantry_overcast_soil.ktx2"),
+        // Indoors: never seen, but the reflections and fill of a real interior.
+        MapId::Office => Some("sky/office_factory_canteen.ktx2"),
+        _ => None,
+    }
+}
+
+/// [`look_of`] with the map's HDRI sky when its cubemap is present (otherwise the procedural
+/// sky stays: the game runs without assets).
+pub fn look_with_sky(id: MapId, has: impl Fn(&str) -> bool) -> Look {
+    let mut l = look_of(id);
+    if let Some(path) = hdri_of(id).filter(|p| has(p)) {
+        l.sky.mode = SkyMode::Cubemap;
+        l.sky.cubemap = path.into();
+        // Same cd/m² per unit as the gradient: the cubemaps are normalised to a sky mean of ~0.55.
+        l.sky.brightness = match id {
+            MapId::Sirocco => 9000.0,
+            MapId::Gantry => 5200.0,
+            // Office: only its reflections and fill (it is never seen); kept dim.
+            _ => 2500.0,
+        };
+        l.name = format!("{}_hdri", l.name).into();
+    }
+    l
+}
+
 /// Keeps the engine `Look` and the render-budget ranges on the current map.
-pub(crate) fn sync_look(arena: Res<ArenaRes>, look: Option<Res<Look>>, mut ranges: ResMut<SceneryRanges>, mut commands: Commands) {
-    let want = look_of(arena.0.id);
+pub(crate) fn sync_look(
+    arena: Res<ArenaRes>,
+    look: Option<Res<Look>>,
+    dir: Option<Res<crate::assets::AssetsDir>>,
+    mut ranges: ResMut<SceneryRanges>,
+    mut commands: Commands,
+) {
+    let want = look_with_sky(arena.0.id, |p| dir.as_ref().is_some_and(|d| d.has(p)));
     if look.is_none_or(|l| l.name != want.name) {
         commands.insert_resource(want);
     }
@@ -880,6 +922,12 @@ mod tests {
             let r = scenery_ranges(&Arena::build(id));
             assert!(r.far * 0.6 >= Arena::build(id).half() * 2.0 * std::f32::consts::SQRT_2 - 1.0);
             assert_eq!(r.view, fog_end(id));
+            // Without the sky files the procedural sky stays; with them, the HDRI cubemap.
+            assert_eq!(look_with_sky(id, |_| false).sky.mode, l.sky.mode);
+            if let Some(p) = hdri_of(id) {
+                let h = look_with_sky(id, |_| true);
+                assert_eq!((h.sky.mode, h.sky.cubemap.as_ref()), (SkyMode::Cubemap, p));
+            }
         }
     }
 }

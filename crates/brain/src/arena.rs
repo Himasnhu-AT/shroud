@@ -204,6 +204,8 @@ pub struct Arena {
     pub cover: Vec<CoverPoint>,
     /// Visual-only dressing (roofs, lamps, door headers, floor patches). No gameplay effect.
     pub decor: Decor,
+    /// Live smoke clouds (the game keeps this up to date): they block [`Arena::line_of_sight`].
+    pub smokes: Vec<crate::grenade::SmokeCloud>,
 }
 
 /// Agent collision radius used for nav inflation.
@@ -544,6 +546,7 @@ impl Builder {
             nav,
             cover: Vec::new(),
             decor: self.decor,
+            smokes: Vec::new(),
         };
         arena.cover = arena.compute_cover();
         arena
@@ -972,7 +975,7 @@ impl Arena {
         let crouched = a_crouched || b_crouched;
         !self.blocks.iter().any(|blk| {
             (blk.kind != BlockKind::Low || crouched) && blk.intersects_segment(a, b)
-        })
+        }) && !crate::grenade::smoke_blocks(&self.smokes, a, b)
     }
 
     pub fn zone_of(&self, p: V2) -> Option<&Zone> {

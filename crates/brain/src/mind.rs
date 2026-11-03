@@ -149,6 +149,9 @@ pub struct Observation {
     pub primary_ammo: f32,
     /// Seconds until the held gun can fire again (reload / switch left).
     pub busy_s: f32,
+    /// Seconds of flashbang blindness left (0 = can see): blind, it neither sees the player
+    /// nor aims or fires (the caller also keeps `player_visible` false).
+    pub blind: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -481,6 +484,15 @@ impl EnemyMind {
     }
 
     pub fn think(&mut self, raw: &Observation, cx: &MindCtx) -> Action {
+        if raw.blind > 0.0 {
+            // Flashed: think on what it remembers, but no eyes and no trigger until it clears.
+            let o = Observation { blind: 0.0, player_visible: false, player_vel: V2::ZERO, allies: raw.allies.clone(), ..*raw };
+            let mut act = self.think(&o, cx);
+            act.fire = false;
+            act.prefire = None;
+            act.sprint = false;
+            return act;
+        }
         // Radio lag: what the squad says reaches this enemy `radio_lag` s late (its own eyes
         // are instant), so they don't all turn at once.
         let belief = *self.belief.get_or_insert(raw.player_pos);

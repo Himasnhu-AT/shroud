@@ -266,22 +266,32 @@ pub fn spawn_gun_model(commands: &mut Commands, server: &AssetServer, dir: &Asse
 }
 
 /// First-person arms: gloves and sleeves in the player's (attacker) colours, built from a few
-/// shared primitives. Children of each gun so they follow every gun animation.
+/// shared primitives (no rigged arm asset yet: see TODO.md, Phase 7). Children of each gun so
+/// they follow every gun animation. Rounded forearms, gloved fingers wrapped round the grip and
+/// the support hand, a field watch on the left wrist.
 struct HandKit {
-    cube: Handle<Mesh>,
     tube: Handle<Mesh>,
+    ball: Handle<Mesh>,
+    /// Unit capsule: radius 1, total height 4 along Y (scale to size).
+    capsule: Handle<Mesh>,
     glove: Handle<StandardMaterial>,
+    knuckle: Handle<StandardMaterial>,
     sleeve: Handle<StandardMaterial>,
     cuff: Handle<StandardMaterial>,
+    watch_case: Handle<StandardMaterial>,
+    watch_face: Handle<StandardMaterial>,
 }
 
 impl HandKit {
     fn new(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Self {
         HandKit {
-            cube: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            tube: meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(12).segments(1)),
-            // Black tactical gloves, coyote combat shirt, the player team's teal cuff band.
-            glove: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), perceptual_roughness: 0.75, ..default() }),
+            tube: meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(16).segments(1)),
+            ball: meshes.add(Sphere::new(1.0).mesh().uv(16, 10)),
+            capsule: meshes.add(Capsule3d::new(1.0, 2.0).mesh().rings(2).latitudes(8).longitudes(12)),
+            // Black tactical gloves (synthetic leather palm, rubber knuckle guard), coyote
+            // combat shirt, the player team's teal cuff band, a black field watch.
+            glove: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), perceptual_roughness: 0.72, ..default() }),
+            knuckle: materials.add(StandardMaterial { base_color: Color::srgb(0.035, 0.035, 0.04), perceptual_roughness: 0.5, ..default() }),
             sleeve: materials.add(StandardMaterial { base_color: Color::srgb(0.34, 0.29, 0.21), perceptual_roughness: 0.9, ..default() }),
             cuff: materials.add(StandardMaterial {
                 base_color: Color::srgb(0.08, 0.33, 0.3),
@@ -289,49 +299,119 @@ impl HandKit {
                 perceptual_roughness: 0.7,
                 ..default()
             }),
+            watch_case: materials.add(StandardMaterial { base_color: Color::srgb(0.05, 0.05, 0.055), metallic: 0.6, perceptual_roughness: 0.4, ..default() }),
+            watch_face: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.02, 0.025, 0.02),
+                // Faint lume so the dial reads in shade.
+                emissive: LinearRgba::rgb(0.02, 0.06, 0.03),
+                perceptual_roughness: 0.15,
+                ..default()
+            }),
         }
+    }
+
+    fn part(&self, commands: &mut Commands, gun: Entity, mesh: &Handle<Mesh>, mat: &Handle<StandardMaterial>, tf: Transform) {
+        commands.spawn((Name::new("arm"), Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), tf, ChildOf(gun)));
+    }
+
+    /// A rounded segment from `a` to `b` (radius `r`): a capsule stretched between them.
+    fn segment(&self, commands: &mut Commands, gun: Entity, mat: &Handle<StandardMaterial>, a: Vec3, b: Vec3, r: f32) {
+        let d = b - a;
+        let len = d.length().max(1e-4);
+        let rot = Quat::from_rotation_arc(Vec3::Y, d / len);
+        // Unit capsule is 4 tall: the caps add `r` at each end.
+        let tf = Transform::from_translation((a + b) * 0.5).with_rotation(rot).with_scale(Vec3::new(r, (len + 2.0 * r) / 4.0, r));
+        self.part(commands, gun, &self.capsule, mat, tf);
     }
 }
 
-/// A forearm from `wrist` running toward `elbow` (pivot space): sleeve tube plus cuff band.
-fn arm(commands: &mut Commands, k: &HandKit, gun: Entity, wrist: Vec3, elbow: Vec3) {
+/// A forearm from `wrist` running toward `elbow` (pivot space): glove cuff, team band, then a
+/// sleeve that widens toward the elbow. `watch`: a field watch on top of the wrist, facing
+/// `outward`.
+fn arm(commands: &mut Commands, k: &HandKit, gun: Entity, wrist: Vec3, elbow: Vec3, watch: Option<Vec3>) {
     let d = elbow - wrist;
     let len = d.length();
-    let rot = Quat::from_rotation_arc(Vec3::Y, d / len);
-    let mut part = |mesh: &Handle<Mesh>, mat: &Handle<StandardMaterial>, tf: Transform| {
-        commands.spawn((Name::new("arm"), Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), tf, ChildOf(gun)));
-    };
-    // The glove's wrist, then the cuff, then the sleeve.
-    part(&k.tube, &k.glove, Transform::from_translation(wrist + d / len * 0.02).with_rotation(rot).with_scale(Vec3::new(0.024, 0.05, 0.024)));
-    part(&k.tube, &k.cuff, Transform::from_translation(wrist + d / len * 0.055).with_rotation(rot).with_scale(Vec3::new(0.03, 0.018, 0.03)));
-    let s0 = 0.064;
-    part(&k.tube, &k.sleeve, Transform::from_translation(wrist + d / len * (s0 + (len - s0) * 0.5)).with_rotation(rot).with_scale(Vec3::new(0.032, len - s0, 0.032)));
+    let dir = d / len;
+    let rot = Quat::from_rotation_arc(Vec3::Y, dir);
+    k.segment(commands, gun, &k.glove, wrist, wrist + dir * 0.05, 0.024);
+    k.part(commands, gun, &k.tube, &k.cuff, Transform::from_translation(wrist + dir * 0.06).with_rotation(rot).with_scale(Vec3::new(0.029, 0.016, 0.029)));
+    let s0 = 0.066;
+    let mid = wrist + dir * (s0 + (len - s0) * 0.45);
+    k.segment(commands, gun, &k.sleeve, wrist + dir * s0, mid, 0.03);
+    k.segment(commands, gun, &k.sleeve, mid - dir * 0.03, elbow, 0.036);
+    if let Some(out) = watch {
+        // Outward normal of the wrist, square to the arm.
+        let n = (out - dir * out.dot(dir)).normalize_or(Vec3::Y);
+        let at = wrist + dir * 0.035;
+        let face_rot = Quat::from_rotation_arc(Vec3::Y, n);
+        // Strap round the glove cuff, case and dial on top.
+        k.part(commands, gun, &k.tube, &k.watch_case, Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::new(0.0265, 0.014, 0.0265)));
+        k.part(commands, gun, &k.tube, &k.watch_case, Transform::from_translation(at + n * 0.026).with_rotation(face_rot).with_scale(Vec3::new(0.014, 0.008, 0.014)));
+        k.part(commands, gun, &k.tube, &k.watch_face, Transform::from_translation(at + n * 0.0302).with_rotation(face_rot).with_scale(Vec3::new(0.011, 0.001, 0.011)));
+    }
+}
+
+/// Four fingers wrapped across the front of a grip (`front`: knuckle-line centre), each a
+/// rounded segment, then a fingertip curling back on the far side; the knuckle guard on top.
+fn fingers(commands: &mut Commands, k: &HandKit, gun: Entity, front: Vec3, sc: f32, side: f32) {
+    for i in 0..4 {
+        let y = front.y - i as f32 * 0.0165 * sc;
+        let r = (0.0085 - i as f32 * 0.0006) * sc;
+        let a = Vec3::new(front.x + side * 0.02 * sc, y, front.z + 0.012 * sc);
+        let b = Vec3::new(front.x - side * 0.016 * sc, y, front.z - 0.004 * sc);
+        let tip = Vec3::new(front.x - side * 0.024 * sc, y, front.z + 0.016 * sc);
+        k.segment(commands, gun, &k.glove, a, b, r);
+        k.segment(commands, gun, &k.glove, b, tip, r * 0.9);
+    }
+    // Knuckle guard over the first joints.
+    k.segment(
+        commands,
+        gun,
+        &k.knuckle,
+        Vec3::new(front.x + side * 0.022 * sc, front.y + 0.004 * sc, front.z + 0.014 * sc),
+        Vec3::new(front.x + side * 0.022 * sc, front.y - 0.05 * sc, front.z + 0.014 * sc),
+        0.007 * sc,
+    );
 }
 
 fn spawn_hands(commands: &mut Commands, k: &HandKit, f: &Fit, gun: Entity) {
-    let box_ = |commands: &mut Commands, at: Vec3, size: Vec3, rot: Quat| {
-        commands.spawn((Name::new("glove"), Mesh3d(k.cube.clone()), MeshMaterial3d(k.glove.clone()), Transform::from_translation(at).with_rotation(rot).with_scale(size), ChildOf(gun)));
+    let ball = |commands: &mut Commands, at: Vec3, size: Vec3| {
+        k.part(commands, gun, &k.ball, &k.glove, Transform::from_translation(at).with_scale(size));
     };
-    // Firing hand: palm on the right of the grip, fingers wrapped round its front, thumb on top
-    // of the left side; the forearm runs back and down out of frame.
+    // Firing hand: palm on the right of the grip, fingers wrapped round its front, thumb along
+    // the left side above them; the forearm runs back and down out of frame.
     let sc = if f.pistol { 0.75 } else { 1.0 };
-    box_(commands, Vec3::new(0.02, -0.02, 0.0) * sc, Vec3::new(0.018, 0.075, 0.065) * sc, Quat::IDENTITY);
-    box_(commands, Vec3::new(0.0, -0.028, -0.03) * sc, Vec3::new(0.042, 0.06, 0.018) * sc, Quat::IDENTITY);
-    box_(commands, Vec3::new(-0.015, 0.01, -0.01) * sc, Vec3::new(0.014, 0.016, 0.05) * sc, Quat::IDENTITY);
-    arm(commands, k, gun, Vec3::new(0.018, -0.055, 0.04) * sc, Vec3::new(0.2, -0.36, 0.36));
+    ball(commands, Vec3::new(0.02, -0.024, 0.004) * sc, Vec3::new(0.013, 0.04, 0.036) * sc);
+    fingers(commands, k, gun, Vec3::new(0.0, -0.004, -0.03) * sc, sc, 1.0);
+    k.segment(commands, gun, &k.glove, Vec3::new(0.008, 0.012, 0.012) * sc, Vec3::new(-0.016, 0.01, -0.03) * sc, 0.0085 * sc);
+    arm(commands, k, gun, Vec3::new(0.018, -0.055, 0.04) * sc, Vec3::new(0.2, -0.36, 0.36), None);
     let s = f.support;
     if f.pistol {
-        // Cupping the firing hand from the left.
-        box_(commands, s + Vec3::new(-0.008, 0.0, -0.004), Vec3::new(0.016, 0.06, 0.055), Quat::IDENTITY);
-        box_(commands, s + Vec3::new(0.008, -0.01, -0.03), Vec3::new(0.034, 0.045, 0.016), Quat::IDENTITY);
-        arm(commands, k, gun, s + Vec3::new(-0.015, -0.035, 0.035), s + Vec3::new(-0.24, -0.36, 0.3));
+        // Cupping the firing hand from the left: palm on the grip's left, fingers round the front.
+        ball(commands, s + Vec3::new(-0.01, 0.0, -0.002), Vec3::new(0.011, 0.032, 0.03));
+        fingers(commands, k, gun, s + Vec3::new(0.004, -0.004, -0.03), 0.8, -1.0);
+        k.segment(commands, gun, &k.glove, s + Vec3::new(-0.012, 0.016, 0.0), s + Vec3::new(-0.008, 0.02, -0.03), 0.0075);
+        arm(commands, k, gun, s + Vec3::new(-0.015, -0.035, 0.035), s + Vec3::new(-0.24, -0.36, 0.3), Some(Vec3::new(-1.0, 0.6, 0.0)));
     } else {
-        // Under the handguard / on the pump: palm below, fingers up the right side, thumb left.
-        box_(commands, s + Vec3::new(0.0, -0.032, 0.0), Vec3::new(0.06, 0.024, 0.09), Quat::IDENTITY);
-        box_(commands, s + Vec3::new(0.03, -0.012, 0.0), Vec3::new(0.018, 0.045, 0.08), Quat::IDENTITY);
-        box_(commands, s + Vec3::new(-0.03, -0.014, 0.01), Vec3::new(0.016, 0.035, 0.06), Quat::IDENTITY);
-        arm(commands, k, gun, s + Vec3::new(-0.005, -0.045, 0.04), s + Vec3::new(-0.22, -0.34, 0.36));
+        // Under the handguard / on the pump: palm below, fingers curled up the right side,
+        // thumb along the left.
+        ball(commands, s + Vec3::new(0.0, -0.032, 0.004), Vec3::new(0.032, 0.014, 0.046));
+        for i in 0..4 {
+            let z = 0.022 - i as f32 * 0.016;
+            let r = 0.0082 - i as f32 * 0.0005;
+            k.segment(commands, gun, &k.glove, s + Vec3::new(0.022, -0.034, z), s + Vec3::new(0.032, -0.008, z - 0.002), r);
+            k.segment(commands, gun, &k.glove, s + Vec3::new(0.032, -0.008, z - 0.002), s + Vec3::new(0.024, 0.012, z - 0.004), r * 0.9);
+        }
+        k.segment(commands, gun, &k.glove, s + Vec3::new(-0.024, -0.03, 0.03), s + Vec3::new(-0.03, -0.006, -0.02), 0.009);
+        arm(commands, k, gun, s + Vec3::new(-0.005, -0.045, 0.04), s + Vec3::new(-0.22, -0.34, 0.36), Some(Vec3::new(-1.0, 0.5, 0.0)));
     }
+}
+
+/// The combat shirt sleeves in the ripstop fabric set (coyote), if it is there.
+pub fn sleeve_fabric(server: &AssetServer, dir: &AssetsDir, pending: &mut crate::gfx::PendingMips) -> Option<StandardMaterial> {
+    let tint = crate::enemy::skin::fabric_tint(Color::srgb(0.34, 0.29, 0.21));
+    crate::gfx::load_pbr(server, dir, pending, "ripstop", tint)
+        .map(|m| StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(Vec2::new(2.0, 3.0)), perceptual_roughness: 1.0, ..m })
 }
 
 /// The camera child that carries the viewmodel (named "ViewModel": the menu hides it outside
@@ -387,6 +467,7 @@ fn spawn_viewmodel(
     fx: Option<Res<FxAssets>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    pending: Option<ResMut<crate::gfx::PendingMips>>,
 ) {
     let Ok(cam) = cams.single() else { return };
     commands.entity(cam).insert(Visibility::default());
@@ -395,7 +476,10 @@ fn spawn_viewmodel(
     let pivot = commands
         .spawn((Name::new("ViewModel pivot"), ViewModel::default(), Transform::from_translation(rifle.hip), Visibility::default(), ChildOf(root)))
         .id();
-    let hands = HandKit::new(&mut meshes, &mut materials);
+    let mut hands = HandKit::new(&mut meshes, &mut materials);
+    if let Some(m) = pending.and_then(|mut p| sleeve_fabric(&asset_server, &assets_dir, &mut p)) {
+        hands.sleeve = materials.add(m);
+    }
     // Primitive fallback, shared by every gun that has no model file.
     let mut prim: Option<(Handle<StandardMaterial>, Handle<StandardMaterial>)> = None;
     for kind in WeaponKind::ALL {
@@ -508,6 +592,7 @@ fn animate_viewmodel(
     mut flashes: Query<(&mut Visibility, &mut Transform, Option<&mut PointLight>), (With<MuzzleFlash>, Without<ViewModel>, Without<ViewRoot>)>,
     mut events: MessageReader<GunEvent>,
     mut muzzle_cam: ResMut<MuzzleCam>,
+    grenade: Option<Res<super::throwing::GrenadeHand>>,
 ) {
     let dt = time.delta_secs().clamp(1e-4, 0.05);
     let Ok((player, look, motor, weapon)) = players.single() else { return };
@@ -654,8 +739,8 @@ fn animate_viewmodel(
     if *tf != new_tf {
         *tf = new_tf;
     }
-    // Hidden behind the optic (its overlay is the sight picture).
-    let want_vis = if w.sighted().is_some() { Visibility::Hidden } else { Visibility::Inherited };
+    // Hidden behind the optic (its overlay is the sight picture), and put away while a grenade is out.
+    let want_vis = if w.sighted().is_some() || grenade.is_some_and(|g| g.out()) { Visibility::Hidden } else { Visibility::Inherited };
     if *vis != want_vis {
         *vis = want_vis;
     }

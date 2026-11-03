@@ -370,7 +370,7 @@ fn ai_throw(world: &mut World, p: Value) -> Result<Value, String> {
             .get("from")
             .and_then(|f| Some(Vec3::new(num(f, 0)?, num(f, 1)?, num(f, 2)?)))
             .unwrap_or(target + Vec3::new(0.0, 1.5, -6.0));
-        world.write_message(ThrowGrenade { thrower: Entity::PLACEHOLDER, kind, from, target });
+        world.write_message(ThrowGrenade { thrower: Entity::PLACEHOLDER, kind, from, target, vel: None });
         return Ok(json!({ "thrown": kind.label(), "from": [from.x, from.y, from.z], "at": [x, z] }));
     }
     let mut sq = world.resource_mut::<Squad>();

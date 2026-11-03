@@ -315,6 +315,7 @@ pub fn run_round_opts(
                 weapon: enemies[i].gun.held,
                 primary_ammo: enemies[i].gun.primary_frac(),
                 busy_s: enemies[i].gun.busy_s(),
+                blind: 0.0,
             };
             let act = minds[i].think(&obs, &cx);
             let e = &mut enemies[i];
@@ -394,6 +395,8 @@ pub fn run_round_opts(
                         blind_t = blind_t.max(grenade::flash_duration(grenade::flash_intensity(facing, at.dist(gp))));
                     }
                 }
+                // The squad never throws smoke (the player buys it).
+                GrenadeKind::Smoke => {}
             }
             false
         });

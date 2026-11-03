@@ -1,5 +1,5 @@
-//! Utility grenades: frags (flush a player out of cover) and flashbangs (blind him before a
-//! push). The squad coordinator decides who throws what where (`squad::ThrowOrder`); this
+//! Utility grenades: frags (flush a player out of cover), flashbangs (blind him before a
+//! push) and smokes (a cloud that blocks sight; the player buys them, see [`SmokeCloud`]). The squad coordinator decides who throws what where (`squad::ThrowOrder`); this
 //! module holds the shared numbers, the effect falloffs, and the 2D sim's rough model, so
 //! evolution trains with the same utility the game uses.
 
@@ -10,6 +10,7 @@ use crate::math::V2;
 pub enum GrenadeKind {
     Frag,
     Flash,
+    Smoke,
 }
 
 impl GrenadeKind {
@@ -17,19 +18,28 @@ impl GrenadeKind {
         match self {
             GrenadeKind::Frag => "frag",
             GrenadeKind::Flash => "flashbang",
+            GrenadeKind::Smoke => "smoke",
         }
     }
+    pub const ALL: [GrenadeKind; 3] = [GrenadeKind::Frag, GrenadeKind::Flash, GrenadeKind::Smoke];
     /// Seconds from release to detonation.
     pub fn fuse(self) -> f32 {
         match self {
             GrenadeKind::Frag => FRAG_FUSE_S,
             GrenadeKind::Flash => FLASH_FUSE_S,
+            GrenadeKind::Smoke => SMOKE_FUSE_S,
         }
     }
 }
 
 pub const FRAG_FUSE_S: f32 = 2.2;
 pub const FLASH_FUSE_S: f32 = 1.5;
+/// Smoke pops this long after release (or once it stops rolling, whichever is later).
+pub const SMOKE_FUSE_S: f32 = 1.8;
+/// Smoke cloud: radius at full size (m), how long it lasts (s) and how long it takes to bloom.
+pub const SMOKE_RADIUS: f32 = 3.2;
+pub const SMOKE_S: f32 = 15.0;
+pub const SMOKE_BLOOM_S: f32 = 1.2;
 /// Frag: full damage inside `FRAG_INNER`, falling to 0 at `FRAG_RADIUS` (quadratic).
 pub const FRAG_RADIUS: f32 = 6.5;
 pub const FRAG_INNER: f32 = 1.5;
@@ -79,6 +89,48 @@ pub fn flash_intensity(facing: f32, d: f32) -> f32 {
 /// How long a flash of `intensity` whites the screen out.
 pub fn flash_duration(intensity: f32) -> f32 {
     if intensity <= 0.05 { 0.0 } else { 0.4 + (FLASH_MAX_S - 0.4) * intensity }
+}
+
+/// A smoke cloud on the ground: a column that blocks sight lines through it (enemies' eyes, the
+/// 2D line-of-sight checks via `Arena::smokes`). It blooms, holds, and thins out at the end.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SmokeCloud {
+    pub at: V2,
+    /// Seconds since it popped.
+    pub age: f32,
+}
+
+impl SmokeCloud {
+    pub fn new(at: V2) -> Self {
+        SmokeCloud { at, age: 0.0 }
+    }
+    /// Current radius: grows over the bloom, shrinks over the last 1.5 s.
+    pub fn radius(&self) -> f32 {
+        let grow = (self.age / SMOKE_BLOOM_S).clamp(0.0, 1.0);
+        let fade = ((SMOKE_S - self.age) / 1.5).clamp(0.0, 1.0);
+        SMOKE_RADIUS * grow.sqrt() * fade
+    }
+    pub fn done(&self) -> bool {
+        self.age >= SMOKE_S
+    }
+    /// Does the segment `a`–`b` pass through the opaque core (85% of the radius)? A viewer
+    /// standing inside sees nothing beyond arm's length either.
+    pub fn blocks(&self, a: V2, b: V2) -> bool {
+        let r = self.radius() * 0.85;
+        if r <= 0.3 {
+            return false;
+        }
+        let d = b - a;
+        let len2 = d.dot(d);
+        let t = if len2 < 1e-9 { 0.0 } else { ((self.at - a).dot(d) / len2).clamp(0.0, 1.0) };
+        let closest = a + d * t;
+        closest.dist(self.at) < r && a.dist(b) > 1.0
+    }
+}
+
+/// Does any cloud in `smokes` block the sight line `a`–`b`?
+pub fn smoke_blocks(smokes: &[SmokeCloud], a: V2, b: V2) -> bool {
+    smokes.iter().any(|s| s.blocks(a, b))
 }
 
 /// Does a lob from `from` reach `to`? Low cover is cleared by the arc; tall blocks and walls are not.
@@ -156,6 +208,25 @@ mod tests {
         assert_eq!(flash_intensity(1.0, FLASH_RANGE + 1.0), 0.0);
         assert_eq!(flash_duration(0.0), 0.0);
         assert!(flash_duration(1.0) > flash_duration(0.3));
+    }
+
+    #[test]
+    fn smoke_blocks_sight_through_it() {
+        let mut s = SmokeCloud::new(V2::new(0.0, 0.0));
+        let (a, b) = (V2::new(-10.0, 0.5), V2::new(10.0, -0.5));
+        assert!(!s.blocks(a, b), "not yet bloomed");
+        s.age = 3.0;
+        assert!(s.blocks(a, b), "through the middle");
+        assert!(!s.blocks(V2::new(-10.0, 5.0), V2::new(10.0, 5.0)), "past the edge");
+        assert!(!s.blocks(V2::new(-10.0, 0.0), V2::new(-5.0, 0.0)), "stops short of it");
+        assert!(s.blocks(V2::new(0.5, 0.0), V2::new(8.0, 0.0)), "from inside");
+        s.age = SMOKE_S;
+        assert!(s.done() && !s.blocks(a, b), "gone");
+        let mut arena = Arena::foundry();
+        let (p, q) = (V2::new(-10.0, 18.0), V2::new(-10.0, 28.0));
+        assert!(arena.line_of_sight(p, false, q, false));
+        arena.smokes.push(SmokeCloud { at: V2::new(-10.0, 23.0), age: 5.0 });
+        assert!(!arena.line_of_sight(p, false, q, false), "the arena's LOS respects smoke");
     }
 
     #[test]

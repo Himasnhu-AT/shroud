@@ -1308,6 +1308,7 @@ impl SquadCoordinator {
                     self.flash_wanted = 0.0;
                     "Flashbang!".to_string()
                 }
+                GrenadeKind::Smoke => "Smoke out!".to_string(),
             };
             self.bark(t.thrower, text, true);
             return;
