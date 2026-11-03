@@ -154,6 +154,8 @@ pub struct GhostStats {
     /// First-sight-to-first-shot times (sum, count).
     pub reaction_sum: f32,
     pub reaction_n: f32,
+    /// Hits that landed on a head (rate from `PlayerModel::headshot_rate`).
+    pub headshots: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

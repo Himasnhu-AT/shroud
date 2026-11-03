@@ -196,3 +196,37 @@ fn old_trainer_checkpoint_loads_with_current_grids() {
     assert_eq!(back.state.player_model.heat.len(), fresh.heat.len());
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A precise player trains a precise ghost: the model learns the real headshot share and the
+/// trainer's ghost lands headshots at that rate, so the squad's precision counters get pressure.
+#[test]
+fn ghost_headshots_follow_the_players_habit() {
+    use brain::player_model::MatchTelemetry;
+    let mut model = PlayerModel::default();
+    let prior = model.headshot_rate;
+    let mut t = MatchTelemetry::default();
+    for k in 0..40 {
+        t.shot(12.0, true, k % 5 < 3); // 60% headshots
+    }
+    t.samples = 100.0;
+    model.ingest(&t);
+    assert!(model.headshot_rate > prior + 0.1, "learned {} from prior {prior}", model.headshot_rate);
+
+    let a = Arena::foundry();
+    let limits = Limits::for_generation(0);
+    let s = BrainState::new(3);
+    let rate = |m: &PlayerModel| {
+        let (mut head, mut hits) = (0.0, 0.0);
+        for seed in 0..12 {
+            let r = sim::run_round(&a, m, limits, s.squad_minds(seed), 300 + seed);
+            head += r.ghost.headshots;
+            hits += r.ghost.hits.iter().sum::<f32>();
+        }
+        head / hits.max(1.0)
+    };
+    let mut precise = PlayerModel::default();
+    precise.headshot_rate = 0.6;
+    let (base, sharp) = (rate(&PlayerModel::default()), rate(&precise));
+    eprintln!("ghost headshot share: default {base:.2}, precise {sharp:.2}");
+    assert!(sharp > base + 0.2);
+}

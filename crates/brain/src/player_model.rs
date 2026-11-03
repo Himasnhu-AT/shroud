@@ -583,6 +583,10 @@ pub struct PlayerModel {
     pub camping: f32,
     pub crouch_rate: f32,
     pub overall_accuracy: f32,
+    /// Share of the player's hits that are headshots (EMA over matches). The trainer's ghost
+    /// lands headshots at this rate, so a precise player trains squads that counter it.
+    #[serde(default = "default_headshot_rate")]
+    pub headshot_rate: f32,
     pub matches_observed: u32,
     /// Look-direction share per compass sector.
     #[serde(default)]
@@ -656,6 +660,7 @@ impl Default for PlayerModel {
             camping: 0.3,
             crouch_rate: 0.2,
             overall_accuracy: 0.28,
+            headshot_rate: crate::sim::GHOST_HEADSHOT,
             matches_observed: 0,
             facing: [0.125; 8],
             shots: [0.0; 6],
@@ -666,6 +671,10 @@ impl Default for PlayerModel {
             style: crate::doctrine::StyleSummary::default(),
         }
     }
+}
+
+fn default_headshot_rate() -> f32 {
+    crate::sim::GHOST_HEADSHOT
 }
 
 fn normalize(v: &[f32]) -> Vec<f32> {
@@ -758,6 +767,9 @@ impl PlayerModel {
         if shots >= 5.0 {
             let hits: f32 = t.hits.iter().sum();
             self.overall_accuracy += (hits / shots - self.overall_accuracy) * a;
+            if hits >= 5.0 {
+                self.headshot_rate += ((t.headshots / hits).clamp(0.0, 1.0) - self.headshot_rate) * a;
+            }
         }
         let gun_shots: f32 = t.weapon_shots.iter().sum();
         if gun_shots >= 5.0 {

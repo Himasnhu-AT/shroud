@@ -24,7 +24,8 @@ pub const PLAYER_DAMAGE: f32 = 25.0;
 pub const FIRE_INTERVAL: f32 = 0.1;
 pub const MAG: u32 = 30;
 pub const RELOAD_S: f32 = 2.0;
-/// Share of the ghost's hits that are headshots.
+/// Share of the ghost's hits that are headshots before any real match (the prior for
+/// `PlayerModel::headshot_rate`, which the ghost uses).
 pub const GHOST_HEADSHOT: f32 = 0.12;
 pub const WALK: f32 = 4.0;
 pub const SPRINT: f32 = 6.0;
@@ -501,8 +502,11 @@ pub fn run_round_opts(
                 };
                 if let Some(j) = hit {
                     let base = spec.damage_at(enemies[j].pos.dist(from));
-                    let head = rng.random::<f32>() < GHOST_HEADSHOT;
+                    let head = rng.random::<f32>() < model.headshot_rate.clamp(0.02, 0.8);
                     squad.player_hit(head);
+                    if head {
+                        ghost.stats.headshots += 1.0;
+                    }
                     ghost_dmg[j] += if head { base * spec.headshot_mult } else { base };
                 }
             }
