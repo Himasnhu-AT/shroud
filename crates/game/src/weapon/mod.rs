@@ -34,7 +34,9 @@ pub mod viewmodel;
 
 pub use crate::armed::{Armed, WeaponKind};
 pub use arsenal::{Arsenal, Weapon};
-pub use brain::weapons::{FireMode, Slot};
+pub use brain::weapons::FireMode;
+#[cfg(feature = "dev")]
+pub use brain::weapons::Slot;
 pub use fire::Surface;
 
 use crate::assets::{AssetsDir, ENEMY_MODEL};

@@ -310,6 +310,7 @@ fn camp(seed: u64, profile: bool, secs: f32) -> CampRun {
             match th.kind {
                 GrenadeKind::Flash => out.flashes += 1,
                 GrenadeKind::Frag => out.frags += 1,
+                GrenadeKind::Smoke => {}
             }
         }
         out.calls.extend(w.squad.drain_callouts().into_iter().map(|c| c.text));

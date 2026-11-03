@@ -596,7 +596,7 @@ pub fn look_of(id: MapId) -> Look {
         MapId::Office => Look {
             name: "office".into(),
             sun: SunLook { enabled: false, shadows: false, ..arena_sun },
-            ambient: AmbientLook { color: Rgb::new(0.97, 0.95, 0.92), brightness: 400.0, env_intensity: 0.14 },
+            ambient: AmbientLook { color: Rgb::new(0.97, 0.95, 0.92), brightness: 400.0, env_intensity: 0.06 },
             fog: fog([0.30, 0.30, 0.32], 60.0, fog_end(id)),
             exposure: ExposureLook { ev100: 7.8, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
