@@ -78,6 +78,8 @@ fn difficulty_and_grenades() {
     // Elite from the next round: end this one.
     let d = exec(&mut c, "ai.difficulty", json!({"level": "elite"}));
     assert_eq!(d["squad_size"], json!(6), "{d}");
+    // Grenades come from what the squad buys: give it the money for a full buy.
+    exec(&mut c, "econ.set_money", json!({"squad": 6000}));
     exec(&mut c, "enemy.kill", json!({}));
     // Wait for the next round's squad to be alive (not just the setting to read Elite).
     let alive = |c: &mut Client| exec(c, "enemy.list", json!({})).as_array().map_or(0, |a| a.len());

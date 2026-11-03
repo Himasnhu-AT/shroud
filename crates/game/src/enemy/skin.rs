@@ -126,13 +126,48 @@ impl Plugin for EnemySkinPlugin {
     }
 }
 
+/// The fabric set is off-white: scale its tint so the textured fatigues average the variant's
+/// flat colour.
+pub fn fabric_tint(c: Color) -> Color {
+    let l = c.to_linear();
+    // The ripstop colour map averages ~0.27 linear (`textures/ripstop/color.avg`); divide it out.
+    let k = 1.0 / 0.27;
+    Color::LinearRgba(LinearRgba::rgb(l.red * k, l.green * k, l.blue * k))
+}
+
 fn mat(materials: &mut Assets<StandardMaterial>, c: Color, rough: f32) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial { base_color: c, perceptual_roughness: rough, reflectance: 0.3, ..default() })
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+/// UV repeats of the ripstop weave across the mannequin's texture atlas (a fine weave, not a
+/// pattern you notice at range).
+const FABRIC_REPEAT: f32 = 4.0;
+
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    server: Option<Res<AssetServer>>,
+    dir: Option<Res<crate::assets::AssetsDir>>,
+    pending: Option<ResMut<crate::gfx::PendingMips>>,
+) {
     let l = looks();
-    let fatigues = std::array::from_fn(|i| mat(&mut materials, l[i].fatigues, 0.85));
+    // Fatigues: the ripstop fabric set tinted per variant (CC0, `textures/ripstop`), or flat.
+    let mut pending = pending;
+    let fatigues = std::array::from_fn(|i| {
+        let fabric = match (&server, &dir, pending.as_deref_mut()) {
+            (Some(s), Some(d), Some(p)) => crate::gfx::load_pbr(s, d, p, "ripstop", fabric_tint(l[i].fatigues)),
+            _ => None,
+        };
+        match fabric {
+            Some(m) => materials.add(StandardMaterial {
+                uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(FABRIC_REPEAT)),
+                reflectance: 0.3,
+                ..m
+            }),
+            None => mat(&mut materials, l[i].fatigues, 0.85),
+        }
+    });
     let base = std::array::from_fn(|i| mat(&mut materials, l[i].base, 0.8));
     let gear = std::array::from_fn(|i| mat(&mut materials, l[i].gear, 0.75));
     let helmet_mat = std::array::from_fn(|i| mat(&mut materials, l[i].helmet, 0.6));

@@ -166,6 +166,8 @@ pub struct EnemyCombat {
     pub lean: f32,
     /// Was pre-firing last frame (for the telegraph glint).
     pub prefiring: bool,
+    /// Seconds of flashbang blindness left (the player's flashes, `grenade.rs`).
+    pub blind: f32,
 }
 
 impl EnemyCombat {
@@ -303,6 +305,7 @@ pub fn spawn_squad(
                     report,
                     lean: 0.0,
                     prefiring: false,
+                    blind: 0.0,
                 },
                 Mind(mind),
                 Health::new(ENEMY_HP),
@@ -570,7 +573,7 @@ fn think_and_act(
         if let Some(Some((thrower, from))) = hands.get(t.thrower)
             && !freeze.0
         {
-            throws_out.write(ThrowGrenade { thrower: *thrower, kind: t.kind, from: *from, target: Vec3::new(t.target.x, 0.1, t.target.y) });
+            throws_out.write(ThrowGrenade { thrower: *thrower, kind: t.kind, from: *from, target: Vec3::new(t.target.x, 0.1, t.target.y), vel: None });
         }
     }
     let board = coord.board;
@@ -603,8 +606,11 @@ fn think_and_act(
         let to_p = p_ground - pos;
         let dist = to_p.len();
         let in_cone = dist < 5.0 || c.hit_t < 1.0 || brain::math::angle_diff(to_p.angle(), look.angle()).abs() < VISION_HALF_ANGLE;
+        // Flashed enemies see nothing; smoke hides the player (both from the player's grenades).
         let sees = dist < VISION_RANGE
             && in_cone
+            && c.blind <= 0.0
+            && !brain::grenade::smoke_blocks(&arena.0.smokes, to_ground(eye), p_ground)
             && (ray_reaches(&spatial, &filter, eye, p_head, player) || ray_reaches(&spatial, &filter, eye, p_center, player));
         c.sees_player = sees;
         c.engage_t += dt;
@@ -660,6 +666,7 @@ fn think_and_act(
             weapon: c.gun.held,
             primary_ammo: c.gun.primary_frac(),
             busy_s: c.gun.busy_s(),
+            blind: c.blind,
         };
         if let Ok(en) = slots.get(e) {
             mind.0.set_order(orders.get(en.slot).copied().flatten());

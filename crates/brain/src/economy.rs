@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::grenade::GrenadeKind;
 use crate::weapons::{Slot, WeaponKind};
 
 /// Rounds needed to win a match.
@@ -104,10 +105,12 @@ pub enum BuyCategory {
     SmgsShotguns,
     RiflesSnipers,
     Gear,
+    Grenades,
 }
 
 impl BuyCategory {
-    pub const ALL: [BuyCategory; 4] = [BuyCategory::Pistols, BuyCategory::SmgsShotguns, BuyCategory::RiflesSnipers, BuyCategory::Gear];
+    pub const ALL: [BuyCategory; 5] =
+        [BuyCategory::Pistols, BuyCategory::SmgsShotguns, BuyCategory::RiflesSnipers, BuyCategory::Gear, BuyCategory::Grenades];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -115,6 +118,7 @@ impl BuyCategory {
             BuyCategory::SmgsShotguns => "SMGs & Shotguns",
             BuyCategory::RiflesSnipers => "Rifles & Snipers",
             BuyCategory::Gear => "Gear",
+            BuyCategory::Grenades => "Grenades",
         }
     }
 }
@@ -173,6 +177,120 @@ impl Gear {
             Gear::KevlarHelmet => Some(KEVLAR_HELMET_PRICE),
         }
     }
+}
+
+pub const FRAG_PRICE: u32 = 300;
+pub const FLASH_PRICE: u32 = 200;
+pub const SMOKE_PRICE: u32 = 300;
+
+/// What a grenade costs.
+pub fn grenade_price(kind: GrenadeKind) -> u32 {
+    match kind {
+        GrenadeKind::Frag => FRAG_PRICE,
+        GrenadeKind::Flash => FLASH_PRICE,
+        GrenadeKind::Smoke => SMOKE_PRICE,
+    }
+}
+
+/// How many of a grenade one person may carry.
+pub fn grenade_max(kind: GrenadeKind) -> u8 {
+    match kind {
+        GrenadeKind::Flash => 2,
+        GrenadeKind::Frag | GrenadeKind::Smoke => 1,
+    }
+}
+
+/// The grenades someone carries (bought, kept by surviving like guns).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GrenadeBag {
+    pub frag: u8,
+    pub flash: u8,
+    pub smoke: u8,
+}
+
+impl GrenadeBag {
+    pub fn count(&self, kind: GrenadeKind) -> u8 {
+        match kind {
+            GrenadeKind::Frag => self.frag,
+            GrenadeKind::Flash => self.flash,
+            GrenadeKind::Smoke => self.smoke,
+        }
+    }
+
+    fn slot(&mut self, kind: GrenadeKind) -> &mut u8 {
+        match kind {
+            GrenadeKind::Frag => &mut self.frag,
+            GrenadeKind::Flash => &mut self.flash,
+            GrenadeKind::Smoke => &mut self.smoke,
+        }
+    }
+
+    pub fn total(&self) -> u8 {
+        self.frag + self.flash + self.smoke
+    }
+
+    /// Room for one more of `kind`?
+    pub fn can_add(&self, kind: GrenadeKind) -> bool {
+        self.count(kind) < grenade_max(kind)
+    }
+
+    /// Add one if there is room.
+    pub fn add(&mut self, kind: GrenadeKind) -> bool {
+        let ok = self.can_add(kind);
+        if ok {
+            *self.slot(kind) += 1;
+        }
+        ok
+    }
+
+    /// Use one up (thrown); false if there was none.
+    pub fn take(&mut self, kind: GrenadeKind) -> bool {
+        let n = self.slot(kind);
+        if *n == 0 {
+            return false;
+        }
+        *n -= 1;
+        true
+    }
+
+    /// The next grenade carried after `current` in frag → flash → smoke order (wrapping), for
+    /// the cycle key; the first carried one when `current` is `None`.
+    pub fn next_after(&self, current: Option<GrenadeKind>) -> Option<GrenadeKind> {
+        let all = GrenadeKind::ALL;
+        let start = current.and_then(|c| all.iter().position(|&k| k == c)).map_or(0, |i| i + 1);
+        (0..all.len()).map(|k| all[(start + k) % all.len()]).find(|&k| self.count(k) > 0)
+    }
+
+    /// What buying `kind` costs: `Err` when the bag is full of it.
+    pub fn quote(&self, kind: GrenadeKind) -> Result<u32, &'static str> {
+        if self.can_add(kind) { Ok(grenade_price(kind)) } else { Err("full") }
+    }
+}
+
+/// Grenades a squad member buys with what is left after its gun and armor: a flashbang first
+/// (cheapest, sets up pushes), then a frag, on force and full buys only. Returns the bag and
+/// its cost.
+pub fn member_grenades(mode: BuyMode, left: u32, kept: GrenadeBag) -> (GrenadeBag, u32) {
+    let mut bag = kept;
+    let mut cost = 0;
+    if mode == BuyMode::Eco {
+        return (bag, 0);
+    }
+    for kind in [GrenadeKind::Flash, GrenadeKind::Frag] {
+        let p = grenade_price(kind);
+        if left >= cost + p && bag.add(kind) {
+            cost += p;
+        }
+    }
+    (bag, cost)
+}
+
+/// A squad member with at least this much buys its grenades before its gun (a flash and a frag
+/// still leave a force-buy SMG); below it, grenades come out of what the gun and armor leave.
+pub const UTILITY_FIRST_AT: u32 = 1_800;
+
+pub fn utility_first(money: u32) -> bool {
+    money >= UTILITY_FIRST_AT
 }
 
 /// Split a hit of `amount` between health and a vest of `points`: returns
@@ -345,7 +463,7 @@ mod tests {
     fn every_gun_has_a_column() {
         for k in WeaponKind::ALL {
             let c = category(k);
-            assert_ne!(c, BuyCategory::Gear);
+            assert!(c != BuyCategory::Gear && c != BuyCategory::Grenades);
             assert!(guns_in(c).contains(&k));
         }
         assert_eq!(category(WeaponKind::Pistol), BuyCategory::Pistols);
@@ -366,6 +484,42 @@ mod tests {
         assert_eq!(Gear::KevlarHelmet.price(100.0, false), Some(350));
         assert_eq!(Gear::KevlarHelmet.price(100.0, true), None);
         assert_eq!(Gear::Kevlar.price(40.0, true), Some(650), "a damaged vest can be refilled");
+    }
+
+    #[test]
+    fn grenade_limits_and_prices() {
+        assert_eq!((grenade_price(GrenadeKind::Frag), grenade_price(GrenadeKind::Flash), grenade_price(GrenadeKind::Smoke)), (300, 200, 300));
+        let mut b = GrenadeBag::default();
+        assert!(b.add(GrenadeKind::Frag));
+        assert!(!b.add(GrenadeKind::Frag), "one frag");
+        assert_eq!(b.quote(GrenadeKind::Frag), Err("full"));
+        assert!(b.add(GrenadeKind::Flash) && b.add(GrenadeKind::Flash));
+        assert!(!b.add(GrenadeKind::Flash), "two flashbangs");
+        assert!(b.add(GrenadeKind::Smoke));
+        assert!(!b.add(GrenadeKind::Smoke), "one smoke");
+        assert_eq!(b, GrenadeBag { frag: 1, flash: 2, smoke: 1 });
+        assert_eq!(b.total(), 4);
+        // Cycling: frag → flash → smoke → frag, skipping what isn't carried.
+        assert_eq!(b.next_after(None), Some(GrenadeKind::Frag));
+        assert_eq!(b.next_after(Some(GrenadeKind::Smoke)), Some(GrenadeKind::Frag));
+        assert!(b.take(GrenadeKind::Frag));
+        assert!(!b.take(GrenadeKind::Frag));
+        assert_eq!(b.next_after(Some(GrenadeKind::Smoke)), Some(GrenadeKind::Flash));
+        assert_eq!(b.quote(GrenadeKind::Frag), Ok(300));
+        assert_eq!(GrenadeBag::default().next_after(None), None);
+    }
+
+    #[test]
+    fn squad_members_buy_grenades_with_what_is_left() {
+        let none = GrenadeBag::default();
+        assert_eq!(member_grenades(BuyMode::Eco, 5_000, none), (none, 0));
+        assert_eq!(member_grenades(BuyMode::Full, 600, none), (GrenadeBag { flash: 1, frag: 1, smoke: 0 }, 500));
+        assert_eq!(member_grenades(BuyMode::Force, 250, none), (GrenadeBag { flash: 1, ..none }, 200));
+        assert_eq!(member_grenades(BuyMode::Force, 100, none), (none, 0));
+        assert!(utility_first(2_200) && !utility_first(800), "force rounds keep utility, pistol rounds don't");
+        // A kept frag is not bought twice.
+        let kept = GrenadeBag { frag: 1, ..none };
+        assert_eq!(member_grenades(BuyMode::Full, 1_000, kept), (GrenadeBag { frag: 1, flash: 1, smoke: 0 }, 200));
     }
 
     #[test]

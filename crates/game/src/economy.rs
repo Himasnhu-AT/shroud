@@ -14,7 +14,8 @@
 //! - New match: everything resets (start money, pistol only, no armor).
 
 use bevy::prelude::*;
-use brain::economy::{self as econ, BuyMode, Gear, Wallet};
+use brain::economy::{self as econ, BuyMode, Gear, GrenadeBag, Wallet};
+use brain::grenade::GrenadeKind;
 use brain::weapons::{Slot, WeaponKind};
 
 use crate::armed::Armed;
@@ -78,13 +79,19 @@ pub struct RoundLoadout {
     pub primary: Option<WeaponKind>,
     pub secondary: WeaponKind,
     pub armor: Option<Armor>,
+    /// Grenades not thrown (kept like guns).
+    pub grenades: GrenadeBag,
 }
 
 impl Default for RoundLoadout {
     fn default() -> Self {
-        RoundLoadout { primary: None, secondary: WeaponKind::Pistol, armor: None }
+        RoundLoadout { primary: None, secondary: WeaponKind::Pistol, armor: None, grenades: GrenadeBag::default() }
     }
 }
+
+/// The grenades the player carries this round (`weapon::throwing` equips and throws them).
+#[derive(Resource, Debug, Clone, Copy, Default, PartialEq)]
+pub struct PlayerGrenades(pub GrenadeBag);
 
 impl RoundLoadout {
     /// The arsenal for a round start: full ammo, the primary drawn if there is one.
@@ -118,6 +125,16 @@ pub struct BuyMenu {
 pub enum BuyItem {
     Gun(WeaponKind),
     Gear(Gear),
+    Grenade(GrenadeKind),
+}
+
+/// Buy-menu name of a grenade.
+pub fn grenade_label(kind: GrenadeKind) -> &'static str {
+    match kind {
+        GrenadeKind::Frag => "Frag grenade",
+        GrenadeKind::Flash => "Flashbang",
+        GrenadeKind::Smoke => "Smoke grenade",
+    }
 }
 
 impl BuyItem {
@@ -125,6 +142,7 @@ impl BuyItem {
         match self {
             BuyItem::Gun(k) => k.label(),
             BuyItem::Gear(g) => g.label(),
+            BuyItem::Grenade(k) => grenade_label(k),
         }
     }
 
@@ -132,17 +150,20 @@ impl BuyItem {
         match self {
             BuyItem::Gun(k) => econ::category(k),
             BuyItem::Gear(_) => econ::BuyCategory::Gear,
+            BuyItem::Grenade(_) => econ::BuyCategory::Grenades,
         }
     }
 }
 
 /// Every buy-menu item in column order: guns from `WeaponKind::ALL` (so new guns appear by
-/// themselves), then gear.
+/// themselves), then gear, then grenades.
 pub fn catalog() -> Vec<BuyItem> {
     let mut v = Vec::new();
     for cat in econ::BuyCategory::ALL {
         if cat == econ::BuyCategory::Gear {
             v.extend(Gear::ALL.iter().map(|g| BuyItem::Gear(*g)));
+        } else if cat == econ::BuyCategory::Grenades {
+            v.extend(GrenadeKind::ALL.iter().map(|k| BuyItem::Grenade(*k)));
         } else {
             v.extend(econ::guns_in(cat).into_iter().map(BuyItem::Gun));
         }
@@ -150,9 +171,10 @@ pub fn catalog() -> Vec<BuyItem> {
     v
 }
 
-/// What an item costs the player now: `Err` says why it can't be bought ("owned").
-pub fn quote(item: BuyItem, carried: &[WeaponKind], armor: Option<Armor>) -> Result<u32, &'static str> {
+/// What an item costs the player now: `Err` says why it can't be bought ("owned", "full").
+pub fn quote(item: BuyItem, carried: &[WeaponKind], armor: Option<Armor>, bag: GrenadeBag) -> Result<u32, &'static str> {
     match item {
+        BuyItem::Grenade(k) => bag.quote(k),
         BuyItem::Gun(k) if carried.contains(&k) => Err("owned"),
         BuyItem::Gun(k) => Ok(k.price()),
         BuyItem::Gear(g) => {
@@ -174,6 +196,7 @@ impl Plugin for EconomyPlugin {
             .init_resource::<RoundPhase>()
             .init_resource::<PlayerWallet>()
             .init_resource::<RoundLoadout>()
+            .init_resource::<PlayerGrenades>()
             .init_resource::<SquadEconomy>()
             .init_resource::<BuyMenu>()
             .add_systems(Startup, test_runs_skip_freeze)
@@ -306,7 +329,8 @@ pub fn buy(world: &mut World, item: BuyItem, anywhere: bool) -> Result<u32, Stri
         can_buy(world)?;
     }
     let (carried, armor) = player_kit(world).ok_or("no player")?;
-    let price = quote(item, &carried, armor)?;
+    let bag = world.resource::<PlayerGrenades>().0;
+    let price = quote(item, &carried, armor, bag)?;
     if !world.resource_mut::<PlayerWallet>().0.spend(price) {
         return Err(format!("can't afford {} (${price})", item.label()));
     }
@@ -331,6 +355,9 @@ pub fn buy(world: &mut World, item: BuyItem, anywhere: bool) -> Result<u32, Stri
         BuyItem::Gear(g) => {
             let helmet = g == Gear::KevlarHelmet || armor.is_some_and(|a| a.helmet && a.points > 0.0);
             world.entity_mut(e).insert(Armor::vest(helmet));
+        }
+        BuyItem::Grenade(k) => {
+            world.resource_mut::<PlayerGrenades>().0.add(k);
         }
     }
     let left = world.resource::<PlayerWallet>().0.money;
@@ -384,6 +411,7 @@ fn pay_round(
     mut loadout: ResMut<RoundLoadout>,
     mut squad: ResMut<SquadEconomy>,
     mut menu: ResMut<BuyMenu>,
+    grenades: Res<PlayerGrenades>,
     player: Query<(&Health, &Arsenal, &Weapon, Option<&Armor>), With<Player>>,
     enemies: Query<(&Enemy, &EnemyCombat, Option<&Armor>)>,
     dev: Dev,
@@ -404,6 +432,7 @@ fn pay_round(
                 primary: slots[0].map(|g| g.kind),
                 secondary: slots[1].map_or(WeaponKind::Pistol, |g| g.kind),
                 armor: armor.copied().filter(|a| a.points > 0.0),
+                grenades: grenades.0,
             }
         }
         _ => RoundLoadout::default(),
@@ -432,7 +461,7 @@ fn pay_round(
 fn squad_buy(
     mut commands: Commands,
     flow: Res<MatchFlow>,
-    squad: Res<Squad>,
+    mut squad: ResMut<Squad>,
     mut econ_res: ResMut<SquadEconomy>,
     mut enemies: Query<(Entity, &Enemy, &mut Mind, &mut EnemyCombat, &mut Armed)>,
     dev: Dev,
@@ -460,14 +489,36 @@ fn squad_buy(
         WeaponKind::PRIMARIES.iter().enumerate().filter(|(i, _)| caps.get(*i).is_none_or(|c| *c > 0)).map(|(_, k)| *k).collect();
     let mut spent = 0;
     let mut bought = Vec::new();
+    // Grenades: only squads that use utility (Veteran, Elite) buy them; what they buy is what
+    // the coordinator may throw this round (capped by the difficulty).
+    let buys_utility = squad.params.is_some_and(|p| p.utility);
+    let mut bag_total = GrenadeBag::default();
     let mut list: Vec<_> = enemies.iter_mut().collect();
     list.sort_by_key(|(_, e, ..)| e.slot);
     for (ent, e, mind, c, armed) in list {
         let slot = e.slot;
         let ranked = econ::rank_primaries(mind.0.weapon(), &mind.0.traits.loadout, &allowed);
+        // Utility squads with money for a gun anyway buy their grenades first (CS-style force
+        // buys keep a flash and a frag); poorer ones buy them with what is left.
+        let first = buys_utility && econ::utility_first(s.wallets[slot].money);
+        let mut bag = GrenadeBag::default();
+        if first {
+            let (g, cost) = econ::member_grenades(mode, s.wallets[slot].money, bag);
+            s.wallets[slot].spend(cost);
+            spent += cost;
+            bag = g;
+        }
         let b = econ::member_buy(mode, s.wallets[slot].money, s.kept[slot], s.kept_armor[slot].is_some(), &ranked);
         s.wallets[slot].spend(b.cost);
         spent += b.cost;
+        if buys_utility && !first {
+            let (g, cost) = econ::member_grenades(mode, s.wallets[slot].money, bag);
+            s.wallets[slot].spend(cost);
+            spent += cost;
+            bag = g;
+        }
+        bag_total.frag += bag.frag;
+        bag_total.flash += bag.flash;
         let kind = b.primary.unwrap_or(WeaponKind::Pistol);
         apply_enemy_gun(kind, mind, c, armed);
         let armor = match (s.kept_armor[slot], b.armor) {
@@ -478,7 +529,16 @@ fn squad_buy(
         if let Some(a) = armor {
             commands.entity(ent).insert(a);
         }
-        bought.push(format!("{}{}", kind.label(), if armor.is_some() { "+armor" } else { "" }));
+        bought.push(format!(
+            "{}{}{}",
+            kind.label(),
+            if armor.is_some() { "+armor" } else { "" },
+            if bag.total() > 0 { format!("+{}F{}B", bag.frag, bag.flash) } else { String::new() }
+        ));
+    }
+    let (frags, flashes) = squad.difficulty.grenades();
+    if buys_utility && let Some(c) = squad.coord.as_mut() {
+        c.utility = brain::squad::UtilityBudget { frags: frags.min(bag_total.frag as u32), flashes: flashes.min(bag_total.flash as u32) };
     }
     info!("squad {}: {} (spent ${spent})", mode.label(), bought.join(", "));
     dev.trace("econ.squad_buy", &[("spent", Prop::Int(spent as i64)), ("full", Prop::Bool(mode == BuyMode::Full)), ("eco", Prop::Bool(mode == BuyMode::Eco))]);
@@ -537,6 +597,7 @@ mod commands {
         let s = world.resource::<SquadEconomy>().clone();
         let can = can_buy(world).err();
         let kit = player_kit(world);
+        let g = world.resource::<PlayerGrenades>().0;
         Ok(json!({
             "money": w.money,
             "loss_streak": w.loss_streak,
@@ -547,6 +608,7 @@ mod commands {
             "menu_open": world.resource::<BuyMenu>().open,
             "carried": kit.as_ref().map(|(k, _)| k.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>()),
             "armor": kit.and_then(|(_, a)| a).map(|a| json!({"points": a.points, "helmet": a.helmet})),
+            "grenades": {"frag": g.frag, "flash": g.flash, "smoke": g.smoke},
             "next_round": {"primary": l.primary.map(|k| format!("{k:?}")), "secondary": format!("{:?}", l.secondary), "armor": l.armor.is_some()},
             "squad": {
                 "mode": s.mode.map(|m| m.label()),
@@ -577,6 +639,9 @@ mod commands {
         match s.trim().to_ascii_lowercase().as_str() {
             "kevlar" | "vest" | "armor" => Some(BuyItem::Gear(Gear::Kevlar)),
             "helmet" | "kevlar+helmet" | "kevlar_helmet" => Some(BuyItem::Gear(Gear::KevlarHelmet)),
+            "frag" | "he" | "grenade" => Some(BuyItem::Grenade(GrenadeKind::Frag)),
+            "flash" | "flashbang" => Some(BuyItem::Grenade(GrenadeKind::Flash)),
+            "smoke" => Some(BuyItem::Grenade(GrenadeKind::Smoke)),
             other => crate::weapon::parse_kind(other).map(BuyItem::Gun),
         }
     }
@@ -621,6 +686,9 @@ mod tests {
             assert!(c.contains(&BuyItem::Gun(k)), "{k:?}");
         }
         assert!(c.contains(&BuyItem::Gear(Gear::Kevlar)) && c.contains(&BuyItem::Gear(Gear::KevlarHelmet)));
+        for k in GrenadeKind::ALL {
+            assert!(c.contains(&BuyItem::Grenade(k)), "{k:?}");
+        }
         // Column order.
         let cats: Vec<_> = c.iter().map(|i| i.category()).collect();
         let mut sorted = cats.clone();
@@ -631,10 +699,15 @@ mod tests {
     #[test]
     fn quotes() {
         let carried = [WeaponKind::Pistol];
-        assert_eq!(quote(BuyItem::Gun(WeaponKind::Pistol), &carried, None), Err("owned"));
-        assert_eq!(quote(BuyItem::Gun(WeaponKind::Rifle), &carried, None), Ok(WeaponKind::Rifle.price()));
-        assert_eq!(quote(BuyItem::Gear(Gear::Kevlar), &carried, Some(Armor::vest(false))), Err("owned"));
-        assert_eq!(quote(BuyItem::Gear(Gear::KevlarHelmet), &carried, Some(Armor::vest(false))), Ok(econ::HELMET_UPGRADE_PRICE));
+        let bag = GrenadeBag::default();
+        assert_eq!(quote(BuyItem::Gun(WeaponKind::Pistol), &carried, None, bag), Err("owned"));
+        assert_eq!(quote(BuyItem::Gun(WeaponKind::Rifle), &carried, None, bag), Ok(WeaponKind::Rifle.price()));
+        assert_eq!(quote(BuyItem::Gear(Gear::Kevlar), &carried, Some(Armor::vest(false)), bag), Err("owned"));
+        assert_eq!(quote(BuyItem::Gear(Gear::KevlarHelmet), &carried, Some(Armor::vest(false)), bag), Ok(econ::HELMET_UPGRADE_PRICE));
+        assert_eq!(quote(BuyItem::Grenade(GrenadeKind::Smoke), &carried, None, bag), Ok(300));
+        let one_flash = GrenadeBag { flash: 1, ..bag };
+        assert_eq!(quote(BuyItem::Grenade(GrenadeKind::Flash), &carried, None, one_flash), Ok(200), "a second flashbang");
+        assert_eq!(quote(BuyItem::Grenade(GrenadeKind::Flash), &carried, None, GrenadeBag { flash: 2, ..bag }), Err("full"));
     }
 
     #[test]

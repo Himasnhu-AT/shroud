@@ -1,6 +1,7 @@
 //! The buy menu (B) and the money HUD. Items come from `economy::catalog()` (every
-//! `WeaponKind` plus armor) in four columns: Pistols, SMGs & Shotguns, Rifles & Snipers, Gear.
-//! Number keys 1–9, 0 buy the first ten items; every item is clickable. Owned items are marked,
+//! `WeaponKind`, armor and grenades) in five columns: Pistols, SMGs & Shotguns, Rifles & Snipers,
+//! Gear, Grenades. Number keys 1–9, 0 buy the first ten items; every item is clickable.
+//! Grenades show how many are carried of the most allowed (frag 1, flashbang 2, smoke 1). Owned items are marked,
 //! unaffordable ones greyed. The menu frees the cursor (`state::rounds_only`) and closes on B,
 //! Esc, or when the buy window ends.
 
@@ -12,7 +13,7 @@ use engine::ui::widgets::{ActionButton, KeepColor, Look, UiAction};
 
 use super::hud::HideWhenPaused;
 use super::theme::*;
-use crate::economy::{self, BuyItem, BuyMenu, PlayerWallet, RoundPhase, can_buy, catalog, player_kit, quote};
+use crate::economy::{self, BuyItem, BuyMenu, PlayerGrenades, PlayerWallet, RoundPhase, can_buy, catalog, player_kit, quote};
 use crate::match_flow::MatchFlow;
 use crate::state::{GameState, Paused, has_visuals};
 
@@ -151,6 +152,7 @@ struct MenuSig {
     money: u32,
     carried: Vec<crate::weapon::WeaponKind>,
     armor: (u32, bool),
+    grenades: brain::economy::GrenadeBag,
 }
 
 fn rebuild_menu(world: &mut World) {
@@ -166,7 +168,8 @@ fn rebuild_menu(world: &mut World) {
     carried.sort();
     carried.dedup();
     let money = world.resource::<PlayerWallet>().0.money;
-    let sig = MenuSig { money, carried: carried.clone(), armor: armor.map_or((0, false), |a| (a.points.ceil() as u32, a.helmet && a.points > 0.0)) };
+    let bag = world.resource::<PlayerGrenades>().0;
+    let sig = MenuSig { money, carried: carried.clone(), armor: armor.map_or((0, false), |a| (a.points.ceil() as u32, a.helmet && a.points > 0.0)), grenades: bag };
     let old = world.get_resource::<LastSig>().map(|s| s.0.clone());
     if !roots.is_empty() && old.as_ref() == Some(&sig) {
         return;
@@ -210,7 +213,7 @@ fn rebuild_menu(world: &mut World) {
                         padding: UiRect::all(px(GAP_L)),
                         border: UiRect::top(px(3)),
                         border_radius: BorderRadius::all(px(RADIUS)),
-                        width: px(1240),
+                        width: px(1340),
                         ..default()
                     },
                     BackgroundColor(t.panel.with_alpha(0.96)),
@@ -222,11 +225,11 @@ fn rebuild_menu(world: &mut World) {
                     panel.spawn(rule(t.line));
                     panel.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::FlexStart, ..default() }, Pickable::IGNORE)).with_children(|cols| {
                         for cat in brain::economy::BuyCategory::ALL {
-                            cols.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(GAP_S), width: px(287), ..default() }, Pickable::IGNORE))
+                            cols.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(GAP_S), width: px(244), ..default() }, Pickable::IGNORE))
                                 .with_children(|col| {
                                     col.spawn(eyebrow(cat.label(), t.text_muted));
                                     for (i, item) in items.iter().enumerate().filter(|(_, it)| it.category() == cat) {
-                                        item_card(col, &t, i, *item, quote(*item, &carried, armor), money);
+                                        item_card(col, &t, i, *item, quote(*item, &carried, armor, bag), money, bag);
                                     }
                                 });
                         }
@@ -273,7 +276,7 @@ pub fn fmt_money(m: u32) -> String {
     out
 }
 
-fn item_card(p: &mut ChildSpawnerCommands, t: &Theme, i: usize, item: BuyItem, quote: Result<u32, &'static str>, money: u32) {
+fn item_card(p: &mut ChildSpawnerCommands, t: &Theme, i: usize, item: BuyItem, quote: Result<u32, &'static str>, money: u32, bag: brain::economy::GrenadeBag) {
     let owned = quote.is_err();
     let afford = quote.is_ok_and(|q| q <= money);
     let clear = Color::NONE;
@@ -286,8 +289,18 @@ fn item_card(p: &mut ChildSpawnerCommands, t: &Theme, i: usize, item: BuyItem, q
         BuyItem::Gun(k) => format!("{}  \u{b7}  KILL +${}", crate::weapon::class_label(k), k.kill_reward()),
         BuyItem::Gear(brain::economy::Gear::Kevlar) => "100 ARMOR  \u{b7}  SOAKS HALF".into(),
         BuyItem::Gear(brain::economy::Gear::KevlarHelmet) => "ARMOR + HEAD COVER".into(),
+        BuyItem::Grenade(k) => {
+            use brain::grenade::GrenadeKind as G;
+            let what = match k {
+                G::Frag => "BLAST 6.5 M",
+                G::Flash => "BLINDS",
+                G::Smoke => "15 S COVER",
+            };
+            format!("{what}  \u{b7}  {}/{}", bag.count(k), brain::economy::grenade_max(k))
+        }
     };
     let (price, price_color) = match quote {
+        Err("full") => ("FULL".to_string(), t.good),
         Err(_) => ("OWNED".to_string(), t.good),
         Ok(q) if q <= money => (fmt_money(q), t.accent),
         Ok(q) => (fmt_money(q), t.bad.with_alpha(0.7)),

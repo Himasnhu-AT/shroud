@@ -14,6 +14,7 @@
 //! - `fx`: muzzle flash, tracers, impacts per surface, shell casings, bullet holes (pooled).
 //! - `pickups`: dropped guns (enemies drop theirs), hold E to swap, ammo from same-kind guns.
 //! - `sound`: per-gun shots and foley from [`GunEvent`]s.
+//! - `throwing`: the player's grenades (equip with 4 / G, throw, the hand that holds them).
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -26,6 +27,7 @@ mod dev;
 pub mod fire;
 pub mod fx;
 pub mod pickups;
+pub mod throwing;
 pub mod finish;
 mod sound;
 pub mod viewmodel;
@@ -63,6 +65,7 @@ impl Plugin for WeaponPlugin {
         finish::build(app);
         fx::build(app);
         pickups::build(app);
+        throwing::build(app);
         sound::build(app);
         #[cfg(feature = "dev")]
         dev::build(app);

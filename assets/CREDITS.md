@@ -36,6 +36,12 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `textures/wood_floor/*` | WoodFloor051 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=WoodFloor051 | CC0 1.0 |
 | `textures/sidewalk/*` | PavingStones130 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PavingStones130 | CC0 1.0 |
 | `textures/roof_gravel/*` | Gravel022 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Gravel022 | CC0 1.0 |
+| `textures/sandstone/*` | Bricks084 (2K JPG, 2048×1024: Color, NormalGL, Roughness, AmbientOcclusion; each map stacked twice vertically to a 2048² tile) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Bricks084 | CC0 1.0 |
+| `textures/cobblestone/*` | PavingStones150 (2K JPG, 2048×1024: Color, NormalGL, Roughness, AmbientOcclusion; each map stacked twice vertically to a 2048² tile) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PavingStones150 | CC0 1.0 |
+| `textures/concrete_4k/*` | Concrete030 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete030 | CC0 1.0 |
+| `textures/asphalt_wet/*` | Asphalt025C (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Asphalt025C | CC0 1.0 |
+| `textures/peeling_paint/*` | PaintedPlaster018 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedPlaster018 | CC0 1.0 |
+| `textures/ripstop/*` | Fabric061 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Fabric061 | CC0 1.0 |
 
 Notes:
 - ambientCG maps are renamed to `color.jpg`, `normal.jpg` (OpenGL convention), `rough.jpg` and `ao.jpg` and are otherwise unmodified. Mipmaps are built at load time (`gfx.rs`).
@@ -44,6 +50,24 @@ Notes:
 - Animation clip names are listed in `ANIMATIONS.md`.
 - The gun models (Pichuliru's set on poly.pizza, each page marked CC0 1.0) replace the earlier Kenney Blaster Kit toy guns. They are skinned meshes in real-world metres with named part bones (`Magazine`, `Bolt`, `Slide`) and `Attach_*` nodes; the game mounts the separate optics on `Attach_Scope` and swaps their flat colours for its own steel / polymer / wood finishes at load (`weapon/finish.rs`).
 - `models/rifle.glb` and `models/enemy_rifle.glb` (Kenney) are no longer used by the game.
+- The 4K sets (`concrete_4k`, `asphalt_wet`, `peeling_paint`, `ripstop`) keep only the cooked `color.ktx2`, `normal.ktx2`, `orm.ktx2` and `color.avg`; the source JPGs were deleted after cooking to keep the repo small. Re-download the 4K-JPG zip from the URL to re-cook.
+
+## HDRI skies (`sky/*.ktx2`), CC0
+Poly Haven 2K Radiance `.hdr` files, converted by `scripts/hdri_to_cube.py` into KTX2 cubemaps
+(RGBA16F, zstd): normalised in brightness, the sun hot spot clamped (the map's directional light
+is the sun), the sky turned about the vertical so its sun sits at the map's sun azimuth, and for
+the outdoor skies everything below the horizon replaced by a flat ground colour. The `.hdr`
+sources are not kept (download them from the URLs into `assets/hdri/` to rebuild).
+
+| File | Source HDRI | Author | URL | License |
+|---|---|---|---|---|
+| `sky/sirocco_kloofendal_48d.ktx2` (512² faces) | kloofendal_48d_partly_cloudy_puresky (sunny, partly cloudy) | Greg Zaal, Jarod Guest | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | CC0 1.0 |
+| `sky/gantry_overcast_soil.ktx2` (512² faces) | overcast_soil_puresky (overcast) | Jarod Guest, Sergej Majboroda | https://polyhaven.com/a/overcast_soil_puresky | CC0 1.0 |
+| `sky/office_factory_canteen.ktx2` (256² faces, interior light only) | abandoned_factory_canteen_01 | Sergej Majboroda | https://polyhaven.com/a/abandoned_factory_canteen_01 | CC0 1.0 |
+
+`old_depot` (Sergej Majboroda, https://polyhaven.com/a/old_depot, CC0) was evaluated and not
+shipped: it is the inside of an open-sided hall (a roof fills the sky), which no outdoor map can
+use as its sky, and the indoor maps already bake reflection probes of their own rooms.
 
 ## Audio (`audio/*.ogg`), all CC0
 Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
