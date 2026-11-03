@@ -174,6 +174,7 @@ pub fn fire_and_reload(
     mut out: FireOut,
     mut hits: Local<Vec<(Entity, f32, bool)>>,
     mut last_breath: Local<Vec2>,
+    aim: Res<crate::bodycam::BodycamAim>,
 ) {
     let dt = time.delta_secs();
     let Ok((player, ptf, mut w, mut kick, motor)) = players.single_mut() else { return };
@@ -322,8 +323,11 @@ pub fn fire_and_reload(
     let Ok(cam_local) = cams.single() else { return };
     // Compose from local transforms: GlobalTransform lags a frame behind movement.
     let cam = ptf.mul_transform(*cam_local);
-    let origin = cam.translation;
-    let (fwd, right, up) = (*cam.forward(), *cam.right(), *cam.up());
+    let (origin, fwd, right, up) = if aim.active {
+        bodycam_barrel(&spatial, player, &cam, muzzle.0, muzzle.1)
+    } else {
+        (cam.translation, *cam.forward(), *cam.right(), *cam.up())
+    };
 
     w.ammo -= 1;
     w.cooldown += spec.shot_interval();
@@ -409,6 +413,26 @@ pub fn fire_and_reload(
         let head = headshot || (marker.timer > 0.0 && marker.headshot);
         *marker = HitMarker { timer: super::HIT_MARKER_S, headshot: head, kill: false };
     }
+}
+
+/// Bodycam: the shot leaves the muzzle along the barrel (spec §3.2 "true barrel"), not the
+/// screen centre. If the muzzle is past a wall (the gun is folded against it), the shot starts
+/// just short of the wall. Returns (origin, forward, right, up).
+fn bodycam_barrel(spatial: &SpatialQuery, player: Entity, cam: &Transform, muzzle_cam: Vec3, barrel_cam: Vec3) -> (Vec3, Vec3, Vec3, Vec3) {
+    let muzzle = cam.transform_point(muzzle_cam);
+    let fwd = (cam.rotation * barrel_cam).normalize_or(*cam.forward());
+    let to_muzzle = muzzle - cam.translation;
+    let filter = SpatialQueryFilter::from_excluded_entities([player]);
+    let origin = match Dir3::new(to_muzzle) {
+        Ok(d) => match spatial.cast_ray(cam.translation, d, to_muzzle.length(), true, &filter) {
+            Some(h) => cam.translation + *d * (h.distance - 0.02).max(0.0),
+            None => muzzle,
+        },
+        Err(_) => cam.translation,
+    };
+    let right = fwd.cross(Vec3::Y).normalize_or(*cam.right());
+    let up = right.cross(fwd);
+    (origin, fwd, right, up)
 }
 
 /// Message writers for [`fire_and_reload`] (bundled to stay under the system parameter limit).

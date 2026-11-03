@@ -96,6 +96,7 @@ fn spawn(mut commands: Commands) {
     // Bottom right: the gun panel.
     commands
         .spawn((
+            crate::bodycam::hud::AmmoPanel,
             Node {
                 position_type: PositionType::Absolute,
                 right: px(40),
@@ -448,7 +449,8 @@ fn crosshair_spread(
     let scale = ui_scale.map_or(1.0, |s| s.0) * settings.crosshair_size.max(0.1);
     // Pixels from the centre to the cone edge, beyond the bars' resting 5 px gap.
     let gap = (w.spread.tan() / (fov * 0.5).tan() * h * 0.5 / scale - 5.0).clamp(0.0, 120.0);
-    let hidden = w.ads > 0.3 || w.sprint > 0.5 || !w.ready();
+    // Bodycam: no crosshair (the gun is the aim).
+    let hidden = w.ads > 0.3 || w.sprint > 0.5 || !w.ready() || crate::bodycam::is_bodycam(&settings);
     for (e, kids, mut vis) in &mut xs {
         // Only the HUD's crosshair (not the settings preview).
         if !parents.iter_ancestors(e).any(|a| hud.contains(a)) {
