@@ -87,13 +87,13 @@ pub fn preferred(prefs: &[f32; PREF_COUNT]) -> WeaponKind {
 /// Most of each primary (in `PRIMARIES` order) a squad of `n` may field on a difficulty. Rifles
 /// are unlimited, so every member always gets a gun.
 /// Order: SMG, Kestrel, shotgun, Longbow, Shrike, Osprey. The Osprey (one-shot body kills)
-/// only shows up from Veteran, one per squad. Long guns (Longbow + Osprey) together are capped by
+/// only shows up on Elite, one per squad (the trainer equips as Veteran, so it never trains around one). Long guns (Longbow + Osprey) together are capped by
 /// the Longbow's number, so a squad never parks more shooters on sightlines than before.
 pub fn caps(d: Difficulty, n: usize) -> [usize; PREF_COUNT] {
     match d {
         Difficulty::Recruit => [1, n, 0, 0, 0, 0],
         Difficulty::Regular => [1, n, 1, 1, 1, 0],
-        Difficulty::Veteran => [2, n, 1, 1, 2, 1],
+        Difficulty::Veteran => [2, n, 1, 1, 2, 0],
         Difficulty::Elite => [2, n, 2, 2, 2, 1],
     }
 }
@@ -204,8 +204,8 @@ pub fn fit_range(k: WeaponKind, r: f32) -> f32 {
         WeaponKind::Rifle => (6.0, 30.0),
         WeaponKind::Marksman => (24.0, 42.0),
         WeaponKind::HeavyPistol => (6.0, 15.0),
-        WeaponKind::BattleRifle => (7.0, 30.0),
-        WeaponKind::Sniper => (28.0, 45.0),
+        WeaponKind::BattleRifle => (6.0, 30.0),
+        WeaponKind::Sniper => (24.0, 42.0),
     };
     lo + (hi - lo) * t
 }
@@ -387,17 +387,17 @@ mod tests {
         // Recruit: no shotguns or marksmen at all.
         let r = assign(&prefs, caps(Difficulty::Recruit, 4));
         assert!(r.iter().all(|&x| matches!(x, WeaponKind::Rifle | WeaponKind::Smg)));
-        // One Osprey per squad from Veteran; never on Regular.
+        // One Osprey per squad, Elite only.
         let snipers = vec![[0.0, 0.1, 0.0, 0.2, 0.3, 0.9]; 4];
-        let v = assign(&snipers, caps(Difficulty::Veteran, 4));
+        let v = assign(&snipers, caps(Difficulty::Elite, 4));
         assert_eq!(v.iter().filter(|&&x| x == WeaponKind::Sniper).count(), 1);
         assert_eq!(v.iter().filter(|&&x| x == WeaponKind::BattleRifle).count(), 2);
-        let g = assign(&snipers, caps(Difficulty::Regular, 4));
+        let g = assign(&snipers, caps(Difficulty::Veteran, 4));
         assert!(!g.contains(&WeaponKind::Sniper));
-        // Long guns share the Longbow's cap: on Veteran the Osprey takes the only long slot.
-        assert!(!v.contains(&WeaponKind::Marksman));
+        // Long guns share the Longbow's cap.
         let e = assign(&vec![[0.0, 0.1, 0.0, 0.8, 0.0, 0.9]; 6], caps(Difficulty::Elite, 6));
         assert_eq!(e.iter().filter(|k| k.long_gun()).count(), 2);
+        assert_eq!(e.iter().filter(|&&k| k == WeaponKind::Sniper).count(), 1);
     }
 
     #[test]

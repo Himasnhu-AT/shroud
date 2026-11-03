@@ -720,7 +720,7 @@ fn entry_weight(k: WeaponKind) -> f32 {
         WeaponKind::Shotgun => 1.0,
         WeaponKind::Smg => 0.8,
         WeaponKind::Rifle => 0.5,
-        WeaponKind::BattleRifle => 0.6,
+        WeaponKind::BattleRifle => 0.5,
         WeaponKind::Pistol | WeaponKind::HeavyPistol => 0.4,
         WeaponKind::Marksman | WeaponKind::Sniper => -1.0,
     }
