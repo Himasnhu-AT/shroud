@@ -667,6 +667,7 @@ impl BrainState {
         let after = squad_avg(&self.traits, &self.squad);
         let mut deltas: Vec<TraitDelta> = Gene::ALL
             .iter()
+            .filter(|g| g.is_technique())
             .map(|&g| TraitDelta { label: g.label(), before: before[g as usize], after: after[g as usize] })
             .collect();
         deltas.sort_by(|a, b| (b.after - b.before).abs().total_cmp(&(a.after - a.before).abs()));

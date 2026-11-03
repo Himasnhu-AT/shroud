@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 
 pub const GENE_COUNT: usize = 10;
 
+/// Enemies react and aim this much slower/looser than the fairness floor (fixed, not evolved).
+pub const MECHANICS_SLACK: f32 = 1.3;
+
+impl Gene {
+    /// Genes that shape technique. `ReactionTime` and `AimError` are raw mechanics and are not
+    /// evolved (see `TraitGenome::decode`).
+    pub fn is_technique(self) -> bool {
+        !matches!(self, Gene::ReactionTime | Gene::AimError)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Gene {
     Aggression = 0,
@@ -153,7 +164,11 @@ impl TraitGenome {
         self.genes[g as usize]
     }
 
-    /// Decode genes to real values. Higher ReactionTime/AimError genes mean *better* (faster, tighter).
+    /// Decode genes to real values.
+    ///
+    /// Technique only: the `ReactionTime` and `AimError` genes are inert (kept so old saves
+    /// load). Every enemy reacts and aims at the same fixed level set by `limits` (difficulty),
+    /// so evolution can't buy a squad better mechanics, only better decisions.
     pub fn decode(&self, limits: &Limits) -> Traits {
         let g = |x: Gene| self.get(x);
         let loadout = if self.loadout.iter().any(|g| *g < 0.0) { seeded_loadout(&self.genes) } else { self.loadout };
@@ -168,8 +183,8 @@ impl TraitGenome {
             loadout,
             flank_bias: g(Gene::FlankBias),
             cover_affinity: g(Gene::CoverAffinity),
-            reaction_time: 0.7 - (0.7 - limits.min_reaction_s) * g(Gene::ReactionTime),
-            aim_error_deg: 8.0 - (8.0 - limits.min_aim_error_deg) * g(Gene::AimError),
+            reaction_time: limits.min_reaction_s * MECHANICS_SLACK,
+            aim_error_deg: limits.min_aim_error_deg * MECHANICS_SLACK,
             burst_length: 2 + (8.0 * g(Gene::BurstLength)).round() as u32,
             retreat_health: 0.6 * g(Gene::RetreatHealth),
             team_cohesion: g(Gene::TeamCohesion),

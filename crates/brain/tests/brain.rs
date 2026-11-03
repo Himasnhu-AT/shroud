@@ -94,7 +94,10 @@ fn save_load_round_trip() {
 fn evolution_makes_squads_stronger() {
     let a = Arena::foundry();
     let model = PlayerModel::default();
-    let limits = Limits::for_generation(0);
+    // Evaluate under Recruit mechanics: at the default level the fresh squad already wins most
+    // rounds against the ghost, leaving no headroom to see technique gains. Evolution never
+    // changes aim/reaction/damage (`limits.rs`), so the gain measured here is technique alone.
+    let limits = brain::difficulty::Difficulty::Recruit.limits(0);
     let mut s = BrainState::new(11);
     let gen0 = s.clone();
     let cfg = EvolveConfig { budget: Duration::from_secs(60), max_neat_generations: 4, ..Default::default() };

@@ -56,6 +56,27 @@ impl WeaponKind {
     pub fn label(self) -> &'static str {
         self.spec().name
     }
+
+    /// Buy-menu price in credits (the economy reads this; enemies buy from the same table).
+    pub fn price(self) -> u32 {
+        match self {
+            WeaponKind::Pistol => 200,
+            WeaponKind::Smg => 1250,
+            WeaponKind::Rifle => 2900,
+            WeaponKind::Shotgun => 1100,
+            WeaponKind::Marksman => 4750,
+        }
+    }
+
+    /// Credits for a kill with this gun (cheap guns pay more, the sniper pays least).
+    pub fn kill_reward(self) -> u32 {
+        match self {
+            WeaponKind::Pistol | WeaponKind::Rifle => 300,
+            WeaponKind::Smg => 600,
+            WeaponKind::Shotgun => 900,
+            WeaponKind::Marksman => 100,
+        }
+    }
 }
 
 /// Ballistics and handling. Distances in metres, times in seconds, angles in radians.
