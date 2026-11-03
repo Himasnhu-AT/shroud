@@ -52,11 +52,13 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [ ] Screenshot tour script
 
 ### Phase 3: guns + skins
-- [ ] More guns: heavy pistol, second rifle, bolt sniper (AWP-like role), with prices
-- [ ] Gun models read as real firearms (gunmetal/polymer materials, or CC0 realistic models)
-- [ ] Enemy operators: helmet, plate carrier, team colours, no pink mannequins
-- [ ] Player viewmodel sleeves/gloves in team colours
-- [ ] Enemies use new guns (loadout genes)
+- [x] More guns: Warden heavy pistol (700), Shrike battle rifle (2700, the attacker rifle), Osprey
+  bolt sniper (4750, one-shot body kill). Longbow retuned as the cheap scout (1700)
+- [x] Gun models read as real firearms (Pichuliru CC0 set + per-gun steel/polymer/wood finishes)
+- [x] Enemy operators: helmet, plate carrier, pack/radio, gloves, boots, red armband; 3 variants
+- [x] Player viewmodel sleeves/gloves in team colours (primitive hands; no finger rig)
+- [x] Enemies use new guns (six loadout genes; old four-gene saves load and seed the new two)
+- [ ] Real rigged first-person arms (needs an asset; see Phase 7)
 
 ### Phase 4: bodycam optics (spec §4)
 - [ ] Optional "Bodycam" video mode (off by default; conflicts with the CS HUD, see notes)

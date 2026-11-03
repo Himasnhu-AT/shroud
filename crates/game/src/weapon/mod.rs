@@ -26,6 +26,7 @@ mod dev;
 pub mod fire;
 pub mod fx;
 pub mod pickups;
+pub mod finish;
 mod sound;
 pub mod viewmodel;
 
@@ -59,6 +60,7 @@ impl Plugin for WeaponPlugin {
         arsenal::build(app);
         fire::build(app);
         viewmodel::build(app);
+        finish::build(app);
         fx::build(app);
         pickups::build(app);
         sound::build(app);

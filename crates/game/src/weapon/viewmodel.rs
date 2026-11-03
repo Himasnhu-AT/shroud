@@ -66,130 +66,271 @@ pub struct Fit {
     pub body: Vec3,
     /// Model-space centre of the model's bounds (pickups lie centred on it).
     pub center: Vec3,
+    /// An optic model mounted on the gun: path and model-space position (the rail's
+    /// `Attach_Scope` node).
+    pub optic: Option<(&'static str, Vec3)>,
+    /// The support hand relative to the pivot (the firing hand is the pivot).
+    pub support: Vec3,
+    /// Pistols: both hands on the grip.
+    pub pistol: bool,
 }
 
-/// Per-gun placement, from each GLB's measured bounds (Kenney blasters: barrel toward -Z,
-/// grip toward +Z, so no turn). The pivot sits at the firing hand, just above the grip.
+/// Per-gun numbers, model space (metres, barrel toward -Z) unless noted.
+struct Raw {
+    path: &'static str,
+    scale: f32,
+    /// Firing hand on the grip (becomes the pivot).
+    hand: Vec3,
+    /// Front of the barrel.
+    muzzle: Vec3,
+    /// Height of the sight line (iron sights or the optic's axis).
+    sight: f32,
+    center: Vec3,
+    /// Support hand (handguard / pump / under the firing hand on pistols).
+    support: Vec3,
+    optic: Option<(&'static str, Vec3)>,
+    /// Camera space: hip pivot, ADS depth.
+    hip: Vec3,
+    ads_z: f32,
+    kick: f32,
+    flash: f32,
+    body: Vec3,
+}
+
+/// Per-gun placement, from each GLB's measured rest-pose bounds and attachment nodes
+/// (Pichuliru's CC0 gun set: real-world metres, barrel toward -Z, stock toward +Z, so no turn
+/// and scale ~1). The pivot sits at the firing hand on the grip.
 pub fn fit(kind: WeaponKind) -> Fit {
-    // Model space: hand point, muzzle, sight-line height, bounds centre. Camera space: hip, ADS z.
-    let (path, scale, hand, muzzle, sight, center, hip, ads_z, kick, flash, body) = match kind {
-        WeaponKind::Pistol => (
-            "models/weapons/pistol.glb",
-            0.42,
-            Vec3::new(0.0, -0.06, 0.15),
-            Vec3::new(0.0, 0.017, -0.238),
-            0.16,
-            Vec3::ZERO,
-            Vec3::new(0.16, -0.165, -0.34),
-            -0.36,
-            22.0,
-            0.7,
-            Vec3::new(0.05, 0.08, 0.24),
-        ),
-        WeaponKind::Smg => (
-            "models/weapons/smg.glb",
-            0.56,
-            Vec3::new(0.0, -0.03, 0.19),
-            Vec3::new(0.0, 0.094, -0.305),
-            0.18,
-            Vec3::ZERO,
-            Vec3::new(0.18, -0.19, -0.3),
-            -0.26,
-            14.0,
-            0.6,
-            Vec3::new(0.06, 0.1, 0.4),
-        ),
-        WeaponKind::Rifle => (
-            "models/weapons/rifle.glb",
-            0.46,
-            Vec3::new(-0.045, -0.08, 1.0),
-            Vec3::new(-0.045, 0.03, 0.0),
-            0.15,
-            Vec3::new(-0.045, -0.0125, 0.695),
-            Vec3::new(0.2, -0.2, -0.28),
-            -0.32,
-            30.0,
-            1.0,
-            Vec3::new(0.07, 0.1, 0.6),
-        ),
-        WeaponKind::Shotgun => (
-            "models/weapons/shotgun.glb",
-            0.64,
-            Vec3::new(0.0, -0.07, 0.19),
-            Vec3::new(0.0, 0.039, -0.275),
-            0.15,
-            Vec3::ZERO,
-            Vec3::new(0.2, -0.2, -0.3),
-            -0.28,
-            55.0,
-            1.5,
-            Vec3::new(0.08, 0.11, 0.55),
-        ),
-        WeaponKind::Marksman => (
-            "models/weapons/marksman.glb",
-            0.5,
-            Vec3::new(0.0, -0.06, 0.36),
-            Vec3::new(0.0, 0.05, -0.655),
-            0.1825,
-            Vec3::ZERO,
-            Vec3::new(0.2, -0.2, -0.28),
-            -0.24,
-            60.0,
-            1.3,
-            Vec3::new(0.07, 0.1, 0.72),
-        ),
-        WeaponKind::HeavyPistol => (
-            "models/weapons/pistol.glb",
-            0.46,
-            Vec3::new(0.0, -0.06, 0.15),
-            Vec3::new(0.0, 0.017, -0.238),
-            0.16,
-            Vec3::ZERO,
-            Vec3::new(0.16, -0.165, -0.34),
-            -0.36,
-            40.0,
-            1.0,
-            Vec3::new(0.055, 0.09, 0.26),
-        ),
-        WeaponKind::BattleRifle => (
-            "models/weapons/rifle.glb",
-            0.46,
-            Vec3::new(-0.045, -0.08, 1.0),
-            Vec3::new(-0.045, 0.03, 0.0),
-            0.15,
-            Vec3::new(-0.045, -0.0125, 0.695),
-            Vec3::new(0.2, -0.2, -0.28),
-            -0.32,
-            38.0,
-            1.1,
-            Vec3::new(0.07, 0.1, 0.62),
-        ),
-        WeaponKind::Sniper => (
-            "models/weapons/marksman.glb",
-            0.56,
-            Vec3::new(0.0, -0.06, 0.36),
-            Vec3::new(0.0, 0.05, -0.655),
-            0.1825,
-            Vec3::ZERO,
-            Vec3::new(0.2, -0.2, -0.28),
-            -0.24,
-            75.0,
-            1.5,
-            Vec3::new(0.075, 0.11, 0.85),
-        ),
+    const PISTOL_HIP: Vec3 = Vec3::new(0.13, -0.15, -0.4);
+    const RIFLE_HIP: Vec3 = Vec3::new(0.17, -0.2, -0.34);
+    let r = match kind {
+        WeaponKind::Pistol => Raw {
+            path: "models/weapons/pistol.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.03, 0.05),
+            muzzle: Vec3::new(0.0, 0.025, -0.117),
+            sight: 0.042,
+            center: Vec3::new(0.0, -0.025, -0.02),
+            support: Vec3::new(-0.022, -0.045, 0.035),
+            optic: None,
+            hip: PISTOL_HIP,
+            ads_z: -0.34,
+            kick: 22.0,
+            flash: 0.7,
+            body: Vec3::new(0.03, 0.13, 0.19),
+        },
+        WeaponKind::HeavyPistol => Raw {
+            path: "models/weapons/heavy_pistol.glb",
+            scale: 1.05,
+            hand: Vec3::new(0.0, -0.035, 0.05),
+            muzzle: Vec3::new(0.0, 0.024, -0.127),
+            sight: 0.04,
+            center: Vec3::new(0.0, -0.036, -0.024),
+            support: Vec3::new(-0.024, -0.05, 0.035),
+            optic: None,
+            hip: PISTOL_HIP,
+            ads_z: -0.34,
+            kick: 40.0,
+            flash: 1.0,
+            body: Vec3::new(0.03, 0.15, 0.21),
+        },
+        WeaponKind::Smg => Raw {
+            path: "models/weapons/smg.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.045, 0.085),
+            muzzle: Vec3::new(0.0, 0.017, -0.222),
+            sight: 0.064,
+            center: Vec3::new(0.0, -0.057, 0.06),
+            support: Vec3::new(0.0, -0.005, -0.13),
+            optic: None,
+            hip: Vec3::new(0.16, -0.19, -0.34),
+            ads_z: -0.26,
+            kick: 14.0,
+            flash: 0.6,
+            body: Vec3::new(0.046, 0.12, 0.45),
+        },
+        WeaponKind::Rifle => Raw {
+            path: "models/weapons/rifle.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.05, 0.11),
+            muzzle: Vec3::new(0.0, 0.016, -0.339),
+            sight: 0.083,
+            center: Vec3::new(0.0, -0.05, 0.01),
+            support: Vec3::new(0.0, -0.012, -0.17),
+            optic: Some(("models/weapons/optic_magnified.glb", Vec3::new(0.0, 0.041, 0.011))),
+            hip: RIFLE_HIP,
+            ads_z: -0.3,
+            kick: 30.0,
+            flash: 1.0,
+            body: Vec3::new(0.05, 0.12, 0.65),
+        },
+        WeaponKind::BattleRifle => Raw {
+            path: "models/weapons/battle_rifle.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.06, 0.125),
+            muzzle: Vec3::new(0.0, 0.006, -0.34),
+            sight: 0.074,
+            center: Vec3::new(0.0, -0.06, 0.02),
+            support: Vec3::new(0.0, -0.01, -0.16),
+            optic: None,
+            hip: RIFLE_HIP,
+            ads_z: -0.3,
+            kick: 38.0,
+            flash: 1.1,
+            body: Vec3::new(0.06, 0.13, 0.7),
+        },
+        WeaponKind::Shotgun => Raw {
+            path: "models/weapons/shotgun.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.03, 0.175),
+            muzzle: Vec3::new(0.0, 0.03, -0.277),
+            sight: 0.052,
+            center: Vec3::new(0.0, -0.01, 0.02),
+            support: Vec3::new(0.0, -0.01, -0.087),
+            optic: None,
+            hip: RIFLE_HIP,
+            ads_z: -0.28,
+            kick: 55.0,
+            flash: 1.5,
+            body: Vec3::new(0.046, 0.1, 0.58),
+        },
+        WeaponKind::Marksman => Raw {
+            path: "models/weapons/marksman.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.06, 0.125),
+            muzzle: Vec3::new(0.0, 0.012, -0.452),
+            sight: 0.096,
+            center: Vec3::new(0.0, -0.03, -0.03),
+            support: Vec3::new(0.0, -0.01, -0.2),
+            optic: Some(("models/weapons/scope_short.glb", Vec3::new(0.0, 0.052, 0.011))),
+            hip: RIFLE_HIP,
+            ads_z: -0.24,
+            kick: 60.0,
+            flash: 1.3,
+            body: Vec3::new(0.054, 0.13, 0.84),
+        },
+        WeaponKind::Sniper => Raw {
+            path: "models/weapons/sniper.glb",
+            scale: 1.0,
+            hand: Vec3::new(0.0, -0.06, 0.2),
+            muzzle: Vec3::new(0.0, 0.015, -0.545),
+            sight: 0.083,
+            center: Vec3::new(0.0, -0.02, -0.065),
+            support: Vec3::new(0.0, -0.01, -0.26),
+            optic: Some(("models/weapons/scope_long.glb", Vec3::new(0.0, 0.044, 0.011))),
+            hip: Vec3::new(0.18, -0.21, -0.31),
+            ads_z: -0.24,
+            kick: 75.0,
+            flash: 1.5,
+            body: Vec3::new(0.06, 0.13, 0.96),
+        },
     };
     Fit {
-        path,
-        scale,
-        offset: -hand * scale,
+        path: r.path,
+        scale: r.scale,
+        offset: -r.hand * r.scale,
         yaw: 0.0,
-        muzzle: (muzzle - hand) * scale,
-        hip,
-        ads: Vec3::new(0.0, -(sight - hand.y) * scale, ads_z),
-        kick,
-        flash,
-        body,
-        center,
+        muzzle: (r.muzzle - r.hand) * r.scale,
+        hip: r.hip,
+        ads: Vec3::new(0.0, -(r.sight - r.hand.y) * r.scale, r.ads_z),
+        kick: r.kick,
+        flash: r.flash,
+        body: r.body,
+        center: r.center,
+        optic: r.optic,
+        support: (r.support - r.hand) * r.scale,
+        pistol: kind.spec().slot == brain::weapons::Slot::Secondary,
+    }
+}
+
+/// Spawn gun `kind`'s model (and its optic) under `parent` with transform `tf`; its materials
+/// get the gun's finish (`finish.rs`). The caller checks that the model file exists.
+pub fn spawn_gun_model(commands: &mut Commands, server: &AssetServer, dir: &AssetsDir, kind: WeaponKind, tf: Transform, parent: Entity) -> Entity {
+    let f = fit(kind);
+    let scene = |p: &'static str| server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(p));
+    let model = commands
+        .spawn((bevy::world_serialization::WorldAssetRoot(scene(f.path)), super::finish::GunFinish(kind), tf, Visibility::default(), ChildOf(parent)))
+        .id();
+    if let Some((path, at)) = f.optic
+        && dir.has(path)
+    {
+        commands.spawn((
+            bevy::world_serialization::WorldAssetRoot(scene(path)),
+            super::finish::GunFinish(kind),
+            Transform::from_translation(at),
+            Visibility::default(),
+            ChildOf(model),
+        ));
+    }
+    model
+}
+
+/// First-person arms: gloves and sleeves in the player's (attacker) colours, built from a few
+/// shared primitives. Children of each gun so they follow every gun animation.
+struct HandKit {
+    cube: Handle<Mesh>,
+    tube: Handle<Mesh>,
+    glove: Handle<StandardMaterial>,
+    sleeve: Handle<StandardMaterial>,
+    cuff: Handle<StandardMaterial>,
+}
+
+impl HandKit {
+    fn new(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Self {
+        HandKit {
+            cube: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+            tube: meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(12).segments(1)),
+            // Black tactical gloves, coyote combat shirt, the player team's teal cuff band.
+            glove: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), perceptual_roughness: 0.75, ..default() }),
+            sleeve: materials.add(StandardMaterial { base_color: Color::srgb(0.34, 0.29, 0.21), perceptual_roughness: 0.9, ..default() }),
+            cuff: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.1, 0.45, 0.4),
+                emissive: LinearRgba::rgb(0.02, 0.12, 0.1),
+                perceptual_roughness: 0.7,
+                ..default()
+            }),
+        }
+    }
+}
+
+/// A forearm from `wrist` running toward `elbow` (pivot space): sleeve tube plus cuff band.
+fn arm(commands: &mut Commands, k: &HandKit, gun: Entity, wrist: Vec3, elbow: Vec3) {
+    let d = elbow - wrist;
+    let len = d.length();
+    let rot = Quat::from_rotation_arc(Vec3::Y, d / len);
+    let mut part = |mesh: &Handle<Mesh>, mat: &Handle<StandardMaterial>, tf: Transform| {
+        commands.spawn((Name::new("arm"), Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), tf, ChildOf(gun)));
+    };
+    // The glove's wrist, then the cuff, then the sleeve.
+    part(&k.tube, &k.glove, Transform::from_translation(wrist + d / len * 0.02).with_rotation(rot).with_scale(Vec3::new(0.03, 0.05, 0.03)));
+    part(&k.tube, &k.cuff, Transform::from_translation(wrist + d / len * 0.06).with_rotation(rot).with_scale(Vec3::new(0.037, 0.03, 0.037)));
+    let s0 = 0.075;
+    part(&k.tube, &k.sleeve, Transform::from_translation(wrist + d / len * (s0 + (len - s0) * 0.5)).with_rotation(rot).with_scale(Vec3::new(0.042, len - s0, 0.042)));
+}
+
+fn spawn_hands(commands: &mut Commands, k: &HandKit, f: &Fit, gun: Entity) {
+    let box_ = |commands: &mut Commands, at: Vec3, size: Vec3, rot: Quat| {
+        commands.spawn((Name::new("glove"), Mesh3d(k.cube.clone()), MeshMaterial3d(k.glove.clone()), Transform::from_translation(at).with_rotation(rot).with_scale(size), ChildOf(gun)));
+    };
+    // Firing hand: palm on the right of the grip, fingers wrapped round its front, thumb on top
+    // of the left side; the forearm runs back and down out of frame.
+    let k = if f.pistol { 0.75 } else { 1.0 };
+    box_(commands, Vec3::new(0.02, -0.02, 0.0) * k, Vec3::new(0.018, 0.075, 0.065) * k, Quat::IDENTITY);
+    box_(commands, Vec3::new(0.0, -0.028, -0.03) * k, Vec3::new(0.042, 0.06, 0.018) * k, Quat::IDENTITY);
+    box_(commands, Vec3::new(-0.015, 0.01, -0.01) * k, Vec3::new(0.014, 0.016, 0.05) * k, Quat::IDENTITY);
+    arm(commands, k, gun, Vec3::new(0.02, -0.06, 0.045), Vec3::new(0.16, -0.32, 0.42));
+    let s = f.support;
+    if f.pistol {
+        // Cupping the firing hand from the left.
+        box_(commands, s + Vec3::new(-0.008, 0.0, -0.004), Vec3::new(0.016, 0.06, 0.055), Quat::IDENTITY);
+        box_(commands, s + Vec3::new(0.008, -0.01, -0.03), Vec3::new(0.034, 0.045, 0.016), Quat::IDENTITY);
+        arm(commands, k, gun, s + Vec3::new(-0.02, -0.04, 0.04), s + Vec3::new(-0.2, -0.3, 0.38));
+    } else {
+        // Under the handguard / on the pump: palm below, fingers up the right side, thumb left.
+        box_(commands, s + Vec3::new(0.0, -0.032, 0.0), Vec3::new(0.06, 0.024, 0.09), Quat::IDENTITY);
+        box_(commands, s + Vec3::new(0.03, -0.012, 0.0), Vec3::new(0.018, 0.045, 0.08), Quat::IDENTITY);
+        box_(commands, s + Vec3::new(-0.03, -0.014, 0.01), Vec3::new(0.016, 0.035, 0.06), Quat::IDENTITY);
+        arm(commands, k, gun, s + Vec3::new(-0.005, -0.045, 0.04), s + Vec3::new(-0.22, -0.34, 0.36));
     }
 }
 
@@ -254,6 +395,7 @@ fn spawn_viewmodel(
     let pivot = commands
         .spawn((Name::new("ViewModel pivot"), ViewModel::default(), Transform::from_translation(rifle.hip), Visibility::default(), ChildOf(root)))
         .id();
+    let hands = HandKit::new(&mut meshes, &mut materials);
     // Primitive fallback, shared by every gun that has no model file.
     let mut prim: Option<(Handle<StandardMaterial>, Handle<StandardMaterial>)> = None;
     for kind in WeaponKind::ALL {
@@ -261,13 +403,10 @@ fn spawn_viewmodel(
         let gun = commands
             .spawn((Name::new(format!("Gun {kind:?}")), GunModel(kind), Transform::default(), Visibility::Hidden, ChildOf(pivot)))
             .id();
+        spawn_hands(&mut commands, &hands, &f, gun);
         if assets_dir.has(f.path) {
-            let scene = asset_server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(f.path));
-            commands.spawn((
-                bevy::world_serialization::WorldAssetRoot(scene),
-                Transform::from_translation(f.offset).with_rotation(Quat::from_rotation_y(f.yaw)).with_scale(Vec3::splat(f.scale)),
-                ChildOf(gun),
-            ));
+            let tf = Transform::from_translation(f.offset).with_rotation(Quat::from_rotation_y(f.yaw)).with_scale(Vec3::splat(f.scale));
+            spawn_gun_model(&mut commands, &asset_server, &assets_dir, kind, tf, gun);
             continue;
         }
         let (dark, accent) = prim
@@ -324,7 +463,8 @@ fn find_mag_parts(
 ) {
     for (e, name, tf) in &added {
         let n = name.as_str().to_ascii_lowercase();
-        if n.contains("mag") && parents.iter_ancestors(e).any(|a| guns.contains(a)) {
+        // "magazine" (not "Magazine Release", the button).
+        if n.contains("mag") && !n.contains("release") && !n.ends_with("_end") && parents.iter_ancestors(e).any(|a| guns.contains(a)) {
             commands.entity(e).insert(MagPart { rest: *tf });
         }
     }
@@ -364,6 +504,7 @@ fn animate_viewmodel(
     mut mags: Query<(&MagPart, &mut Transform, &ChildOf), (Without<ViewModel>, Without<ViewRoot>, Without<MuzzleFlash>)>,
     parents: Query<&ChildOf>,
     guns: Query<&GunModel>,
+    globals: Query<&GlobalTransform>,
     mut flashes: Query<(&mut Visibility, &mut Transform, Option<&mut PointLight>), (With<MuzzleFlash>, Without<ViewModel>, Without<ViewRoot>)>,
     mut events: MessageReader<GunEvent>,
     mut muzzle_cam: ResMut<MuzzleCam>,
@@ -523,21 +664,21 @@ fn animate_viewmodel(
         muzzle_cam.0 = m;
     }
 
-    // Magazines of the held gun.
+    // Magazines of the held gun: ~12 cm down (gun space) and out of frame. The magazine node's
+    // parent can be any frame (Kenney meshes, skinned Pichuliru bones under a 100x rig), so the
+    // drop is carried into the parent's space.
     for (part, mut mtf, parent) in &mut mags {
-        let held = std::iter::once(parent.parent())
-            .chain(parents.iter_ancestors(parent.parent()))
-            .find_map(|a| guns.get(a).ok())
-            .is_some_and(|g| g.0 == w.kind);
-        if !held {
+        let Some(gun_e) = std::iter::once(parent.parent()).chain(parents.iter_ancestors(parent.parent())).find(|a| guns.get(*a).is_ok_and(|g| g.0 == w.kind)) else {
             continue;
-        }
-        // Model-space units (the model is scaled by `f.scale`): ~12 cm down and out of frame.
-        let s = 1.0 / f.scale.max(0.05);
+        };
         let target = if mag_drop == 0.0 {
             part.rest
         } else {
-            Transform { translation: part.rest.translation + Vec3::new(0.0, -0.12 * s, 0.02 * s) * mag_drop, ..part.rest }
+            let drop = match (globals.get(gun_e), globals.get(parent.parent())) {
+                (Ok(g), Ok(p)) => p.affine().inverse().transform_vector3(g.affine().transform_vector3(Vec3::new(0.0, -0.12, 0.02))),
+                _ => Vec3::ZERO,
+            };
+            Transform { translation: part.rest.translation + drop * mag_drop, ..part.rest }
         };
         if *mtf != target {
             *mtf = target;

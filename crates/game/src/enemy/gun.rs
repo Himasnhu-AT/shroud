@@ -228,15 +228,8 @@ fn restyle_guns(
         let fit = viewmodel::fit(kind);
         let k = THIRD_PERSON;
         let model = if dir.has(fit.path) {
-            let scene = server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(fit.path));
-            commands
-                .spawn((
-                    bevy::world_serialization::WorldAssetRoot(scene),
-                    Transform::from_translation(fit.offset * k).with_scale(Vec3::splat(fit.scale * k)),
-                    Visibility::default(),
-                    ChildOf(gun),
-                ))
-                .id()
+            let tf = Transform::from_translation(fit.offset * k).with_scale(Vec3::splat(fit.scale * k));
+            viewmodel::spawn_gun_model(&mut commands, &server, &dir, kind, tf, gun)
         } else {
             let size = fit.body * k;
             commands
