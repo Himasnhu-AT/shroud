@@ -83,9 +83,26 @@ footage:
   Money, timer, score, kill feed, freeze time and the buy menu stay (the round loop needs them).
   **Ammo check**: R on a full magazine turns the gun and shows the ammo panel for 2 s (it also
   shows while reloading). This replaces the spec's press-check animation (no arm rig yet).
-- Muzzle flash light (both styles): one pooled 45 ms point light at the muzzle, no shadows.
-- Control port: `video.camera_style {style}`, `video.bodycam` (state; `{turn, strafe, fire, ms}`
-  drives the player for screenshots). Visual check: `scripts/bodycam.json`.
+- **Mount** (Video → "Bodycam mount", shown only in Bodycam): Head (default, eye height) or
+  Chest (spec §2.1: 0.22 m lower, 0.08 m right, the dutch roll ×1.35, a side-to-side step bob
+  and a breath). Only the view moves: shots still leave the barrel, and the body, hitboxes
+  and every AI sight line stay at the head. Check: `scripts/bodycam-chest.json`.
+- Muzzle flash light (both styles): one pooled 45 ms point light at the muzzle. It casts
+  shadows (only while lit) on High and Ultra unless the render governor is cutting game
+  levels; measured cost on High: p95 within ±0.3 ms on Office and Sirocco
+  (`scripts/muzzle-shadows-perf.json`; dev A/B `muzzle.shadows {on}`).
+- Control port: `video.camera_style {style}`, `video.bodycam` (state, incl. `mount_offset`;
+  `{turn, strafe, fire, ms}` drives the player for screenshots). Visual check:
+  `scripts/bodycam.json`.
+
+## Breakable lights
+Every map lamp (`Decor::lamps`; its index is the lamp id) breaks when any bullet's path, the
+player's or an enemy's, crosses its fixture: the light goes off, the panel or bulb turns to dark
+glass, sparks, an impact sound and a few shards. It stays out for the round (all relit at round
+start); `Arena::dark_lamps` tells the AI. Shot-out lamps leave the nearest-K shadow ranking so the
+next lamp in line takes the shadow. Control port: `lamp.info` (fixtures, broken ids, the lamps
+lighting the player), `lamp.break {id}`. Checks: `scripts/lamps-office.json` (shoot one out),
+`scripts/doctrine-lamps.json` (the squad shoots out the lamp over a camper).
 
 ## Debrief screen
 - Match result + round scores.

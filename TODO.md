@@ -17,10 +17,10 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 | 1 | Match loop: 5 rounds, freeze time, economy, buy menu, simple menu | done (player grenades: frag, flash, smoke) |
 | 2 | CS-style defusal maps (A/B sites, mid, spawns, buy zones) | done (Sirocco, Gantry; Depot signs) |
 | 3 | Guns + operator skins (CS feel, original designs) | done (procedural gloved hands; rigged arms need a user download) |
-| 4 | Bodycam optics (spec §4): post-process shader, muzzle flash light, auto-exposure | planned |
-| 5 | Adaptive doctrine (spec §5): player archetypes → squad counters | done (lights not breakable: skipped) |
-| 6 | Bodycam handling (spec §2–3): free-aim deadzone, springs, wall compression, dutch roll | planned |
-| 7 | Realistic assets (spec §6): HDRI, 4K PBR, rigged arms | mostly: HDRI skies, 4K PBR sets, CC0 guns in; rigged arms/bodies need user downloads |
+| 4 | Bodycam optics (spec §4): post-process shader, muzzle flash light, auto-exposure | done (muzzle light shadows on High+, governor-aware) |
+| 5 | Adaptive doctrine (spec §5): player archetypes → squad counters | done (incl. shooting out the lamp over a camper) |
+| 6 | Bodycam handling (spec §2–3): free-aim deadzone, springs, wall compression, dutch roll | done (head or chest mount; arm IK waits for a rigged arms download) |
+| 7 | Realistic assets (spec §6): HDRI, 4K PBR, rigged arms | mostly: HDRI skies, 4K PBR sets, CC0 guns in; rigged arms/bodies need user downloads (see Phase 7 list) |
 
 ## Checklist
 
@@ -79,10 +79,13 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] AgX + auto-exposure (fast up, slow down) + bloom tuning; bloom only on tiers that have it
 - [x] 45 ms muzzle-flash point light (both styles; pooled, no shadows)
 - [x] [REC] timestamp stamp overlay; no crosshair / health / ammo (R on a full mag = ammo check)
-- [ ] Muzzle light casting shadows (spec): needs a governor-aware budget; a 45 ms shadowed point
-  light is six extra views for a few frames
-- [ ] Chest offset for the camera (spec §2.1 `spine_02`): kept at eye height so cover and
-  peeking play the same in both styles
+- [x] Muzzle light casting shadows (spec): only for the frames it is lit, on High and Ultra
+  while the governor isn't cutting game levels (`viewmodel::muzzle_shadows_allowed`). Same
+  binary, governor off, High, full-auto rifle (`scripts/muzzle-shadows-perf.json`): p95 Office
+  13.07 → 12.99 ms, Sirocco 12.76 → 13.10 ms (< 1 ms, so kept on High); p50 +0.2 / +0.7 ms
+- [x] Chest mount (spec §2.1 `spine_02`): Video → "Bodycam mount: Head / Chest" (default Head,
+  shown only in Bodycam). Chest: 0.22 m lower, 0.08 m right, roll ×1.35, step bob and breath;
+  view only (shots from the barrel, AI and LOS use the head). `scripts/bodycam-chest.json`
 
 ### Phase 5: adaptive doctrine (spec §5)
 - [x] `PlayerStyleProfile` (`brain/src/doctrine.rs`): speed EMA, angle-hold time, ADS ratio, headshot
@@ -94,7 +97,12 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] `ai.tactic {from, to, reason}` log / trace / callout; F3 doctrine panel; `ai.doctrine`; debrief line
 - [x] Tests: `brain/tests/doctrine.rs` (spec check 6: holding a doorway > 4 s → `JigglePeekAndFlash`)
 - [x] In-game check: `scripts/doctrine-camper.json` (switch at 4.0 s, a member jiggles, two flashes)
-- [ ] Shoot out lights (lamps aren't breakable yet; worth it with Phase 4's auto-exposure)
+- [x] Breakable lights (`map/lamps.rs`): any bullet through a fixture kills its light, darkens
+  the glass, sparks + shards; relit at round start; broken lamps drop out of the nearest-K
+  shadow ranking. Doctrine: vs a camper in a lamp's light one member shoots it out from a spot
+  that sees the fixture but not him, before the jiggle (`Role::Lights`). Test
+  `camper_under_a_lamp_gets_his_light_shot_out`; in game `scripts/doctrine-lamps.json`
+  (Office, Veteran: `ai.tactic` at 4.0 s, lamp 0 broken ~8 s later)
 - [x] These are technique counters, so they fit Phase 0's rule
 
 ### Phase 6: bodycam handling (spec §2–3)

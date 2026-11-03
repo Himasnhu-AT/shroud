@@ -199,7 +199,13 @@ and damage stay fixed by difficulty (`limits.rs`).
     cooldown still rule: Recruit/Regular throw nothing); a member with a penetrating gun and
     no sight of him fires a 0.7 s pre-fire burst through thin cover (`Arena::penetration`, the
     same rule as the player's bullets; damage scaled by what gets through). Enemy bullets now
-    penetrate like the player's. Shooting out lights: skipped (lamps aren't breakable).
+    penetrate like the player's. **Lights**: if lamps light his spot (`Arena::lamps_lighting`:
+    lit, within the lamp's reach, a clear line), one member out of contact walks (≤ 14 m) to a
+    spot that sees the fixture under every lintel (`Arena::clear_line_3d` from muzzle height,
+    also a step around the spot) but not him (`doctrine::light_spot`), and taps it (one aimed
+    shot per 0.35 s, the same aim error as any shot; the game aims from the muzzle) until it
+    breaks: `Role::Lights`, "Shooting out his light". Up to two lamps a round, 15 s each; the
+    jiggler waits at its hide spot meanwhile. No lamps (Sirocco, Gantry streets): nothing.
   - Entry fragger: one or two members out of contact hold a spot 3.5–8 m inside a door he
     would come through, 35–80° off the door line, hidden from outside it
     (`doctrine::off_angle_spot`); adopters drop to a crouch as he comes into view.
