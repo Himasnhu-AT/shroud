@@ -2,6 +2,7 @@
 //! The game and the 2D trainer both call `think(&Observation, &MindCtx) -> Action`.
 
 use crate::arena::Arena;
+use crate::doctrine;
 use crate::genome::{TraitGenome, Traits};
 use crate::limits::Limits;
 use crate::loadout;
@@ -13,6 +14,7 @@ use crate::posts;
 use crate::posture;
 use crate::rooms::{self, Doorway};
 use crate::squad::{self, Order};
+use crate::sim::WALK;
 use crate::utility::{self, Goal, UtilityInput};
 use crate::weapons::{FireMode, WeaponKind};
 
@@ -200,6 +202,8 @@ pub struct MindDebug {
     pub isolated: bool,
     /// Clearing a doorway: looking through it / checking the corners behind it.
     pub clearing: bool,
+    /// Jiggle-peeking (doctrine vs an angle holder).
+    pub jiggle: bool,
 }
 
 /// Peek-shoot-hide loop at cover posts (`posts.rs`).
@@ -318,6 +322,14 @@ pub struct EnemyMind {
     clear_t: f32,
     /// Seconds idling at a spot without an order or a sighting (window sills, empty rooms).
     stale_t: f32,
+    /// What the squad's doctrine asks of this member (`squad::MemberDoctrine`), and this
+    /// member's fixed roll in [0, 1): it adopts a squad-wide counter of strength s when
+    /// roll < s, so a stronger gene means more of the squad uses it.
+    doctrine: squad::MemberDoctrine,
+    doctrine_roll: f32,
+    /// Jiggle-peek cycle: 0 wait, 1 out, 2 back; seconds left in the phase.
+    jiggle_phase: u8,
+    jiggle_t: f32,
     pub debug: MindDebug,
 }
 
@@ -365,6 +377,8 @@ pub const STUCK_S: f32 = 0.7;
 pub const STUCK_MIN_MOVE: f32 = 0.35;
 /// How long a heard sound keeps an enemy looking at / investigating it.
 pub const HEARD_MEMORY_S: f32 = 6.0;
+/// Each half of a jiggle-peek (out, back) takes this long (s); at a walk that is ~0.25 m.
+pub const JIGGLE_STEP_S: f32 = 0.0625;
 
 impl EnemyMind {
     pub fn new(tg: &TraitGenome, trait_id: usize, ng: &neat::Genome, neat_id: usize, limits: &Limits, seed: u64) -> Self {
@@ -424,6 +438,11 @@ impl EnemyMind {
             door: None,
             clear_t: 0.0,
             stale_t: 0.0,
+            doctrine: squad::MemberDoctrine::default(),
+            // Its own stream: drawing from `rng` would change every other decision a seed makes.
+            doctrine_roll: rand::Rng::random::<f32>(&mut rng_from_seed(seed ^ 0xD0C7_0001)),
+            jiggle_phase: 0,
+            jiggle_t: 0.0,
             debug: MindDebug::default(),
         }
     }
@@ -468,6 +487,22 @@ impl EnemyMind {
     /// Set (or clear) the squad's order. Call before `think`.
     pub fn set_order(&mut self, order: Option<Order>) {
         self.order = order;
+    }
+
+    /// Set what the squad's doctrine asks of this member (`SquadCoordinator::member_doctrine`).
+    /// Call before `think`.
+    pub fn set_doctrine(&mut self, d: squad::MemberDoctrine) {
+        self.doctrine = d;
+    }
+
+    /// Does this member use a counter of strength `s` (0 = off)?
+    fn adopts(&self, s: f32) -> bool {
+        s > 0.0 && self.doctrine_roll < s
+    }
+
+    /// Jiggle-peeking right now (the doctrine's bait vs an angle holder).
+    pub fn jiggling(&self) -> bool {
+        self.debug.jiggle
     }
 
     /// A pending callout ("Reloading", "Falling back", ...), if any.
@@ -567,7 +602,7 @@ impl EnemyMind {
             && !window
             && self.goal != Goal::Retreat
             && dist > posts::MIN_PLAYER_DIST
-            && (self.isolated || o.token_denied && open_fight || self.goal == Goal::TakeCover || marksman);
+            && (self.isolated || o.token_denied && open_fight || self.goal == Goal::TakeCover || marksman || self.adopts(self.doctrine.counters.stagger) && open_fight);
         // Reload behind cover when it is close, not in the open.
         let hidden_here = !cx.arena.line_of_sight(o.player_pos, false, o.pos, true);
         let reload_spot = if engaged && o.ammo_frac < 0.2 && !hidden_here && !want_post {
@@ -830,7 +865,9 @@ impl EnemyMind {
                 let (cover_d, cover_side) = self.nearest_cover(o.pos, dir_p, cx);
                 let flip = -self.strafe_sign;
                 self.strafe_sign = if cover_d < 6.0 && cover_side != 0.0 && flip != cover_side && self.rng_f() < 0.6 { cover_side } else { flip };
-                self.strafe_t = 0.35 + 0.75 * self.rng_f();
+                // Doctrine vs a precision aimer: short, irregular micro-strafes (no rhythm to
+                // time a headshot on); otherwise an A-D rhythm.
+                self.strafe_t = if self.adopts(self.doctrine.counters.stagger) { 0.12 + 0.3 * self.rng_f() } else { 0.35 + 0.75 * self.rng_f() };
             }
             let w = if self.path.is_empty() { 0.6 } else { 0.3 };
             move_dir += dir_p.perp() * self.strafe_sign * w;
@@ -957,8 +994,11 @@ impl EnemyMind {
             match self.goal {
                 Goal::TakeCover | Goal::Retreat => self.path.is_empty(),
                 Goal::Attack => {
-                    // The net's crouch call holds for a beat: no bobbing every burst.
-                    let want_c = micro[3] > 0.3;
+                    // The net's crouch call holds for a beat: no bobbing every burst. Doctrine
+                    // vs an entry fragger: drop to a crouch as he comes into view (his
+                    // crosshair is at head height).
+                    let level_change = o.player_visible && self.seen_time < 1.2 && self.adopts(self.doctrine.counters.off_angle);
+                    let want_c = micro[3] > 0.3 || level_change;
                     if want_c != self.crouch_prev && self.crouch_hold <= 0.0 {
                         self.crouch_prev = want_c;
                         self.crouch_hold = 0.5 + 0.6 * self.rng_f();
@@ -1013,6 +1053,38 @@ impl EnemyMind {
             self.bark = Some("Reloading");
         }
         self.was_reloading = reload;
+
+        // Jiggle-peek (doctrine vs an angle holder): at the hide spot, step ~0.25 m out toward
+        // the peek side and snap straight back, then wait; it baits his shot without giving a
+        // real look. The lean follows the step so the shoulder shows.
+        let mut move_dir = move_dir;
+        let mut lean = lean;
+        let mut sprint = sprint;
+        let mut crouch = crouch;
+        self.debug.jiggle = false;
+        if let Some(j) = self.doctrine.jiggle.filter(|j| self.following().is_some_and(|od| od.role == squad::Role::Jiggler) && o.pos.dist(j.hide) < 0.9) {
+            self.debug.jiggle = true;
+            self.jiggle_t -= o.dt;
+            if self.jiggle_t <= 0.0 {
+                let s = self.doctrine.counters.jiggle.max(doctrine::COUNTER_MIN);
+                (self.jiggle_phase, self.jiggle_t) = match self.jiggle_phase {
+                    0 => (1, JIGGLE_STEP_S),
+                    1 => (2, JIGGLE_STEP_S),
+                    _ => (0, (0.35 + 0.8 * self.rng_f()) / (0.5 + s)),
+                };
+            }
+            let step = j.out * (1.0 / (JIGGLE_STEP_S * WALK));
+            move_dir = match self.jiggle_phase {
+                1 => step,
+                2 => -step,
+                _ => (j.hide - o.pos) * (1.0 / (JIGGLE_STEP_S * WALK)),
+            }
+            .clamp_len(1.0);
+            let side = j.out.norm().dot(look.perp());
+            lean = if self.jiggle_phase == 1 && side.abs() > 0.3 { side.signum() } else { 0.0 };
+            sprint = false;
+            crouch = false;
+        }
 
         self.debug.goal = Some(self.goal);
         self.debug.post = posting;
