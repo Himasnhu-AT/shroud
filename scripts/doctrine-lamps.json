@@ -1,0 +1,346 @@
+[
+ {
+  "cmd": "ai.difficulty",
+  "params": {
+   "level": "veteran"
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0.5,
+   "z": 2.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -6.0,
+    1.4,
+    2.5
+   ]
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_start"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_05s"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_10s"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_15s"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_20s"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_25s"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "shot": "camp_30s"
+ },
+ {
+  "cmd": "enemy.list"
+ }
+]

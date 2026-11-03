@@ -1,0 +1,102 @@
+[
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3.5,
+   "z": 3.0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -1.5,
+    2.0,
+    -1.5
+   ]
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "shot": "lamp_before"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0.0,
+    3.17,
+    0.0
+   ]
+  }
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "sleep": 0.05
+ },
+ {
+  "shot": "lamp_hit"
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -1.5,
+    2.0,
+    -1.5
+   ]
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "shot": "lamp_after"
+ },
+ {
+  "cmd": "lamp.info"
+ }
+]

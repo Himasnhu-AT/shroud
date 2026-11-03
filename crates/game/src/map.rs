@@ -8,6 +8,7 @@
 mod dressing;
 pub mod glass;
 mod grime;
+pub mod lamps;
 mod look;
 mod props;
 
@@ -34,7 +35,7 @@ impl Plugin for MapPlugin {
         let id = app.world().get_resource::<ShroudSettings>().map(|s| s.map).unwrap_or_default();
         app.insert_resource(ArenaRes(Arena::build(id)))
             .init_resource::<MapRequest>()
-            .add_plugins(GlassPlugin)
+            .add_plugins((GlassPlugin, lamps::LampsPlugin))
             .add_systems(Startup, (spawn_current_map, grime::setup.run_if(has_visuals)))
             .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
             // Map pieces are static scenery for the engine's render budget.

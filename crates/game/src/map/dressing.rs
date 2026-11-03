@@ -20,6 +20,7 @@ use engine::meshkit::MeshKit;
 use engine::settings::GraphicsQuality;
 
 use super::glass::Glass;
+use super::lamps::{LampGlow, LampLight};
 use super::look::{MapLamp, Palette, fog_end};
 use super::{ArenaPiece, Gfx};
 use crate::gfx::world_uv_cuboid;
@@ -266,10 +267,25 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
         metallic: 0.7,
         ..default()
     });
-    p.glow(g, "lamp_panel", LinearRgba::new(7.0, 6.8, 6.3, 0.0));
-    p.glow(g, "lamp_bulb", LinearRgba::new(9.0, 6.0, 2.6, 0.0));
-    // Fixtures are merged per material (one mesh each for the whole map); lights stay apart.
+    let panel = p.glow(g, "lamp_panel", LinearRgba::new(7.0, 6.8, 6.3, 0.0));
+    let bulb = p.glow(g, "lamp_bulb", LinearRgba::new(9.0, 6.0, 2.6, 0.0));
+    // A shot-out lamp: dark, cracked-looking glass (`super::lamps`).
+    let dead = p.flat(g, "lamp_dead", || StandardMaterial { base_color: Color::srgb(0.10, 0.10, 0.11), perceptual_roughness: 0.35, metallic: 0.1, ..default() });
+    let cube = p.cube(g);
+    // Housings are merged per material (one mesh each for the whole map); the glowing part of
+    // each lamp stays its own entity (it goes dark when the lamp is shot out), as do the lights.
     let mut fx = Batch::default();
+    let glow = |commands: &mut Commands, id: usize, lit: &Handle<StandardMaterial>, tf: Transform| {
+        commands.spawn((
+            Name::new(format!("Lamp glow {id}")),
+            ArenaPiece,
+            LampGlow { id, lit: lit.clone(), dead: dead.clone() },
+            Mesh3d(cube.clone()),
+            MeshMaterial3d(lit.clone()),
+            tf,
+            NotShadowCaster,
+        ));
+    };
     for (rank, l) in arena.decor.lamps.iter().enumerate() {
         let top = l.height + 0.02;
         let at = |y: f32| Vec3::new(l.pos.x, y, l.pos.y);
@@ -277,11 +293,12 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
             // Recessed ceiling panel + a downward spot.
             LampStyle::Panel => {
                 fx.add_shape("lamp_housing", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.015)).with_scale(Vec3::new(1.26, 0.03, 0.66)));
-                fx.add_shape("lamp_panel", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.02)).with_scale(Vec3::new(1.2, 0.04, 0.6)));
+                glow(commands, rank, &panel, Transform::from_translation(at(top - 0.02)).with_scale(Vec3::new(1.2, 0.04, 0.6)));
                 commands.spawn((
                     Name::new(format!("Lamp light {rank}")),
                     ArenaPiece,
                     MapLamp,
+                    LampLight { id: rank, power: 200_000.0 },
                     SpotLight {
                         color: Color::srgb(1.0, 0.95, 0.88),
                         intensity: 200_000.0,
@@ -298,7 +315,7 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
             // Caged bulkhead under a roof + a warm point light.
             LampStyle::Bulkhead => {
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(at(top + 0.06)).with_scale(Vec3::new(0.5, 0.12, 0.26)));
-                fx.add_shape("lamp_bulb", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.025)).with_scale(Vec3::new(0.4, 0.05, 0.16)));
+                glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.025)).with_scale(Vec3::new(0.4, 0.05, 0.16)));
                 point(commands, rank, at(top - 0.2), Color::srgb(1.0, 0.78, 0.5), 1_500_000.0, 12.0);
             }
             // House pendant: cord, shade, warm bulb.
@@ -306,14 +323,14 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
                 let drop = 0.7;
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(at(top - drop * 0.5)).with_scale(Vec3::new(0.015, drop, 0.015)));
                 fx.add_shape("lamp_housing", Cylinder::new(0.22, 0.2), Transform::from_translation(at(top - drop - 0.05)));
-                fx.add_shape("lamp_bulb", Cuboid::from_length(1.0), Transform::from_translation(at(top - drop - 0.16)).with_scale(Vec3::splat(0.09)));
+                glow(commands, rank, &bulb, Transform::from_translation(at(top - drop - 0.16)).with_scale(Vec3::splat(0.09)));
                 point(commands, rank, at(top - drop - 0.3), Color::srgb(1.0, 0.8, 0.58), 600_000.0, 10.0);
             }
             // Industrial high-bay under a tall roof.
             LampStyle::HighBay => {
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.3)).with_scale(Vec3::new(0.02, 0.6, 0.02)));
                 fx.add_shape("lamp_cage", Cylinder::new(0.38, 0.22), Transform::from_translation(at(top - 0.7)));
-                fx.add_shape("lamp_bulb", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.82)).with_scale(Vec3::new(0.5, 0.03, 0.5)));
+                glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.82)).with_scale(Vec3::new(0.5, 0.03, 0.5)));
                 point(commands, rank, at(top - 1.1), Color::srgb(1.0, 0.88, 0.7), 3_000_000.0, 18.0);
             }
             // Street lamp on a wall bracket.
@@ -324,7 +341,7 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
                 let arm_scale = if facing_x != 0 { Vec3::new(0.6, 0.05, 0.05) } else { Vec3::new(0.05, 0.05, 0.6) };
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(arm).with_scale(arm_scale));
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(base + f * 0.62).with_scale(Vec3::new(0.26, 0.2, 0.26)));
-                fx.add_shape("lamp_bulb", Cuboid::from_length(1.0), Transform::from_translation(base + f * 0.62 - Vec3::Y * 0.13).with_scale(Vec3::new(0.2, 0.06, 0.2)));
+                glow(commands, rank, &bulb, Transform::from_translation(base + f * 0.62 - Vec3::Y * 0.13).with_scale(Vec3::new(0.2, 0.06, 0.2)));
                 point(commands, rank, base + f * 0.62 - Vec3::Y * 0.3, Color::srgb(1.0, 0.72, 0.42), 900_000.0, 14.0);
             }
         }
@@ -337,6 +354,7 @@ fn point(commands: &mut Commands, rank: usize, pos: Vec3, color: Color, intensit
         Name::new(format!("Lamp light {rank}")),
         ArenaPiece,
         MapLamp,
+        LampLight { id: rank, power: intensity },
         PointLight { color, intensity, range, radius: 0.1, shadow_maps_enabled: false, ..default() },
         Transform::from_translation(pos),
     ));

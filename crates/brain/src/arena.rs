@@ -234,6 +234,9 @@ pub struct Arena {
     pub decor: Decor,
     /// Live smoke clouds (the game keeps this up to date): they block [`Arena::line_of_sight`].
     pub smokes: Vec<crate::grenade::SmokeCloud>,
+    /// Lamps shot out this round (indices into `decor.lamps`, the lamp ids). The game keeps it
+    /// up to date and clears it at round start; the doctrine reads it (`Arena::lamps_lighting`).
+    pub dark_lamps: Vec<usize>,
 }
 
 /// Agent collision radius used for nav inflation.
@@ -381,6 +384,68 @@ pub struct Lamp {
     /// Mount height (just below the ceiling or roof).
     pub height: f32,
     pub style: LampStyle,
+}
+
+impl Lamp {
+    /// Middle of the fixture (ground position, height): what a shot aims at, and the centre of
+    /// its hit box. Matches the renderer's fixtures (`game::map::dressing::lamps`).
+    pub fn fixture(&self) -> (V2, f32) {
+        let top = self.height + 0.02;
+        match self.style {
+            LampStyle::Panel => (self.pos, top - 0.025),
+            LampStyle::Bulkhead => (self.pos, top + 0.01),
+            LampStyle::Pendant => (self.pos, top - 0.8),
+            LampStyle::HighBay => (self.pos, top - 0.75),
+            LampStyle::Wall { facing_x, facing_z } => (self.pos + V2::new(facing_x as f32, facing_z as f32) * 0.62, self.height - 0.05),
+        }
+    }
+
+    /// Half extents (x, y, z) of the fixture's hit box around [`Lamp::fixture`].
+    pub fn fixture_half(&self) -> [f32; 3] {
+        match self.style {
+            LampStyle::Panel => [0.63, 0.035, 0.33],
+            LampStyle::Bulkhead => [0.25, 0.1, 0.13],
+            LampStyle::Pendant => [0.22, 0.13, 0.22],
+            LampStyle::HighBay => [0.38, 0.13, 0.38],
+            LampStyle::Wall { .. } => [0.14, 0.15, 0.14],
+        }
+    }
+
+    /// How far (m, on the ground) the lamp lights someone well enough to matter: inside this
+    /// a player stands in its pool of light.
+    pub fn reach(&self) -> f32 {
+        match self.style {
+            LampStyle::Panel => 4.5,
+            LampStyle::Bulkhead => 5.0,
+            LampStyle::Pendant => 3.5,
+            LampStyle::HighBay => 7.0,
+            LampStyle::Wall { .. } => 6.0,
+        }
+    }
+}
+
+/// Where segment a→b is inside the rect `min..max`, as fractions (t0, t1) of the segment.
+fn segment_span(min: V2, max: V2, a: V2, b: V2) -> Option<(f32, f32)> {
+    let d = b - a;
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for (p, dp, lo, hi) in [(a.x, d.x, min.x, max.x), (a.y, d.y, min.y, max.y)] {
+        if dp.abs() < 1e-9 {
+            if p < lo || p > hi {
+                return None;
+            }
+        } else {
+            let (mut ta, mut tb) = ((lo - p) / dp, (hi - p) / dp);
+            if ta > tb {
+                std::mem::swap(&mut ta, &mut tb);
+            }
+            t0 = t0.max(ta);
+            t1 = t1.min(tb);
+            if t0 > t1 {
+                return None;
+            }
+        }
+    }
+    Some((t0, t1))
 }
 
 /// Fixture the renderer draws for a lamp.
@@ -575,6 +640,7 @@ impl Builder {
             cover: Vec::new(),
             decor: self.decor,
             smokes: Vec::new(),
+            dark_lamps: Vec::new(),
         };
         arena.cover = arena.compute_cover();
         arena
@@ -1004,6 +1070,47 @@ impl Arena {
         !self.blocks.iter().any(|blk| {
             (blk.kind != BlockKind::Low || crouched) && blk.intersects_segment(a, b)
         }) && !crate::grenade::smoke_blocks(&self.smokes, a, b)
+    }
+
+    /// Is lamp `id` still lit (not shot out this round)?
+    pub fn lamp_lit(&self, id: usize) -> bool {
+        id < self.decor.lamps.len() && !self.dark_lamps.contains(&id)
+    }
+
+    /// Lit lamps whose pool of light covers `p` (within [`Lamp::reach`], nothing solid between
+    /// the fixture and `p`), nearest first. Empty on maps without lamps.
+    pub fn lamps_lighting(&self, p: V2) -> Vec<usize> {
+        let mut out: Vec<(f32, usize)> = self
+            .decor
+            .lamps
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| self.lamp_lit(i))
+            .filter_map(|(i, l)| {
+                let (at, h) = l.fixture();
+                let d = at.dist(p);
+                (d <= l.reach() && self.clear_line_3d(at, h, p, 1.5)).then_some((d, i))
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        out.into_iter().map(|(_, i)| i).collect()
+    }
+
+    /// A straight line from (`a`, height `ha`) to (`b`, height `hb`) passes nothing solid:
+    /// blocks (from the floor to their height), door lintels, window lintels and smoke. For
+    /// shots at things off the floor (a lamp under the ceiling over a doorway's lintel).
+    pub fn clear_line_3d(&self, a: V2, ha: f32, b: V2, hb: f32) -> bool {
+        let h = |t: f32| ha + (hb - ha) * t;
+        let crosses = |min: V2, max: V2, lo: f32, hi: f32| {
+            segment_span(min, max, a, b).is_some_and(|(t0, t1)| {
+                let (h0, h1) = (h(t0), h(t1));
+                h0.min(h1) < hi && h0.max(h1) > lo
+            })
+        };
+        !self.blocks.iter().any(|blk| crosses(blk.center - blk.half, blk.center + blk.half, -1.0, blk.height))
+            && !self.decor.headers.iter().any(|hd| crosses(hd.min, hd.max, hd.bottom, hd.top))
+            && !self.decor.windows.iter().any(|w| crosses(w.min, w.max, w.top, w.wall_top))
+            && !crate::grenade::smoke_blocks(&self.smokes, a, b)
     }
 
     /// Damage fraction a bullet from a gun with `penetration` keeps from `a` to `b` through

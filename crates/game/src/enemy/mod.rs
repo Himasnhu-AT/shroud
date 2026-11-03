@@ -697,6 +697,10 @@ fn think_and_act(
             }
         }
         c.prefiring = act.prefire.is_some();
+        // Shooting out a lamp (doctrine): the gun comes up to the fixture.
+        if let Some(l) = act.light {
+            c.aim_at = Some(Vec3::new(l.pos.x, l.height, l.pos.y));
+        }
         if log_ai {
             info!(
                 "ai {e}: pos ({:.1},{:.1}) goal {:?} sees {} hp {:.0} path {} dest {:?} move ({:.2},{:.2}) fire {} seen_t {:.2} aim_off {:.3} gate {:.2} ammo {} reload {:.1} react {:.2}",
@@ -739,10 +743,23 @@ fn think_and_act(
             muzzle += tf.right() * (c.lean * posture::LEAN_M);
         }
         // Aimed fire pitches at the player; pre-fire at chest height on the spot.
-        let aim_pt = act.prefire.map_or(p_center, |pf| Vec3::new(pf.x, PREFIRE_AIM_Y, pf.y));
+        let aim_pt = match (act.light, act.prefire) {
+            (Some(l), _) => Vec3::new(l.pos.x, l.height, l.pos.y),
+            (None, Some(pf)) => Vec3::new(pf.x, PREFIRE_AIM_Y, pf.y),
+            (None, None) => p_center,
+        };
         let horiz = (aim_pt - muzzle).xz().length().max(0.1);
         let pitch = (aim_pt.y - muzzle.y).atan2(horiz) + act.shot_pitch_err;
-        let dir = Vec3::new(act.shot_dir.x * pitch.cos(), pitch.sin(), act.shot_dir.y * pitch.cos());
+        // A lamp is a small target close by: aim from the muzzle (not the body's centre, which
+        // is a hand's width off), keeping the mind's own aim error.
+        let shot_dir = match act.light {
+            Some(l) => {
+                let err = brain::math::angle_diff(act.shot_dir.angle(), (l.pos - pos).angle());
+                V2::from_angle(V2::new(aim_pt.x - muzzle.x, aim_pt.z - muzzle.z).angle() + err)
+            }
+            None => act.shot_dir,
+        };
+        let dir = Vec3::new(shot_dir.x * pitch.cos(), pitch.sin(), shot_dir.y * pitch.cos());
         if Dir3::new(dir).is_err() {
             continue;
         }
@@ -755,7 +772,7 @@ fn think_and_act(
         let cam = p_center + Vec3::Y * 0.6;
         for k in 0..spec.pellets {
             let d = if act.spread > 0.0 {
-                let yaw = act.shot_dir.angle() + brain::math::gauss(rng) * act.spread;
+                let yaw = shot_dir.angle() + brain::math::gauss(rng) * act.spread;
                 let p = pitch + brain::math::gauss(rng) * act.spread * 0.6;
                 Vec3::new(yaw.cos() * p.cos(), p.sin(), yaw.sin() * p.cos())
             } else {
