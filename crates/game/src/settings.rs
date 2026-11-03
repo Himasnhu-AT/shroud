@@ -3,8 +3,8 @@
 //!
 //! CONTRACT (shared by the AI, maps and UI streams): field names below are stable.
 //! - AI reads `difficulty` when spawning a squad (each round); maps read `map` when a new match
-//!   starts; the HUD reads the crosshair fields; callouts read `show_callouts`; weapons read
-//!   `primary` (the gun you start each round with, picked on the match setup screen).
+//!   starts; the HUD reads the crosshair fields; callouts read `show_callouts`. `primary` is kept
+//!   only so older settings files load; guns now come from the buy menu (`economy`).
 
 use bevy::prelude::*;
 use brain::arena::MapId;
@@ -23,7 +23,7 @@ pub struct ShroudSettings {
     pub crosshair_color: [f32; 3],
     pub crosshair_size: f32,
     pub show_callouts: bool,
-    /// Primary gun at round start (the Pistol sidearm is always carried).
+    /// Unused since the buy menu (kept so older settings files round-trip).
     pub primary: WeaponKind,
 }
 
@@ -71,7 +71,6 @@ fn two_decimals(v: f32) -> String {
 fn register_fields(app: &mut App) {
     let difficulties = Difficulty::ALL.iter().map(|d| (d.label(), d.blurb())).collect();
     let maps = MapId::ALL.iter().map(|m| (m.label(), m.blurb())).collect();
-    let guns = WeaponKind::PRIMARIES.iter().map(|k| (k.label(), crate::weapon::blurb(*k))).collect();
     app.register_setting(FieldDef {
         key: "difficulty",
         tab: "Gameplay",
@@ -90,16 +89,6 @@ fn register_fields(app: &mut App) {
         kind: FieldKind::Cards { options: maps },
         get: |w| index_of(&MapId::ALL, &s(w).map),
         set: |w, v| s_mut(w).map = pick(&MapId::ALL, v),
-    })
-    // Picked on the match-setup screen only (no settings tab).
-    .register_setting(FieldDef {
-        key: "primary",
-        tab: "",
-        label: "Primary",
-        hint: "",
-        kind: FieldKind::Cards { options: guns },
-        get: |w| index_of(&WeaponKind::PRIMARIES, &s(w).primary),
-        set: |w, v| s_mut(w).primary = pick(&WeaponKind::PRIMARIES, v),
     })
     .register_setting(FieldDef {
         key: "show_callouts",

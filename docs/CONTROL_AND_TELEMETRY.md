@@ -67,6 +67,11 @@ Shroud:
 | `player.reload` / `player.crouch` | `{on?}` | `{}` |
 | `player.god` | `{on}` | `{}` (soak tests) |
 | `enemy.list` / `enemy.freeze` / `enemy.kill` / `enemy.lean` | | |
+| `econ.state` | | money, loss streak, freeze/buy window, carried kit, next-round loadout, squad wallets + buy mode |
+| `econ.set_money` | `{money?, squad?}` | `econ.state` |
+| `buy` | `{item, anywhere?}` (gun name, `kevlar`, `helmet`) | `{bought, money}`; error if outside the buy window, owned or too poor |
+| `buy.menu` | `{open?}` | `{open}` (opens only when buying is possible) |
+| `round.freeze` | `{seconds, now?}` | freeze time for later rounds (and now); 0 by default in test runs |
 | `match.state`, `ai.brain`, `ai.evolve`, `ai.reset`, `ai.squad`, `ai.throw`, `ai.difficulty` | | |
 | `map.load {name}` / `map.info` | | |
 | `sim.run` | `{generations, seed}` | headless trainer fitness curve |
@@ -83,7 +88,7 @@ Settings keys for `ui.setting`: Shroud's `difficulty`, `map`, `show_callouts`, `
 | `movement` | teleport behind low cover, `player.crouch`, `enemy.list` | crouched player not visible to enemies; standing is |
 | `shooting` | look at frozen enemy, `player.fire {shots:5}` | hits > 0, enemy hp dropped by hits × 25 |
 | `enemies_fight_back` | god mode, unfreeze, step 20 s | player took damage; enemy goals include Attack/Flank/TakeCover |
-| `match_flow` | `enemy.kill` ×3 rounds | state goes Playing → Evolving → Debrief; generation +1 |
+| `match_flow` | `enemy.kill` ×3 rounds (first to 3) | state goes Playing → Evolving → Debrief; generation +1 |
 | `evolution_gets_harder` | play N scripted matches with a fixed scripted player, `ai.evolve` each | squad damage dealt / time-to-kill improves across generations (seed-averaged) |
 | `persistence` | evolve, quit, relaunch | `ai.brain.generation` survives restart |
 | `perf_soak` (manual/nightly) | god mode, `time.scale 4`, 30 min | no hangs; p99 frame time under budget (`perf.stats` + trace dashboard) |

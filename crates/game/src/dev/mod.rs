@@ -7,6 +7,8 @@
 mod ai_commands;
 #[cfg(feature = "dev")]
 mod commands;
+#[cfg(feature = "dev")]
+pub use commands::ControlDrive;
 
 use std::marker::PhantomData;
 

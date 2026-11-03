@@ -14,7 +14,7 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 | Phase | What | Status |
 |---|---|---|
 | 0 | Technique-only evolution + shared price table | done |
-| 1 | Match loop: 5 rounds, freeze time, economy, buy menu, simple menu | in progress |
+| 1 | Match loop: 5 rounds, freeze time, economy, buy menu, simple menu | done (player grenades not buyable yet) |
 | 2 | CS-style defusal maps (A/B sites, mid, spawns, buy zones) | in progress |
 | 3 | Guns + operator skins (CS feel, original designs) | in progress |
 | 4 | Bodycam optics (spec §4): post-process shader, muzzle flash light, auto-exposure | planned |
@@ -33,15 +33,16 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [ ] Docs: update `docs/EVOLUTION.md` / `docs/AI.md` §5 for fixed limits
 
 ### Phase 1: match loop
-- [ ] 5-round match: first to 3, max 5 rounds (`match_flow.rs`)
-- [ ] Freeze time at round start (~10 s): can buy and look, can't move or shoot
-- [ ] Economy: start $800, win $3250, loss $1400 + $500 per loss streak (cap $3400), kill rewards per gun
-- [ ] Buy menu (B, during freeze time / in buy zone): pistols, SMGs, rifles, heavy, armor, helmet, grenades
-- [ ] Keep weapons you survived with; lose them on death
-- [ ] Enemy economy: squad buys from the same prices (eco / force / full buy)
-- [ ] HUD: money, freeze countdown, buy hint
-- [ ] Main menu: Play → map select (cards) + difficulty → Start; primary-weapon picker removed
-- [ ] Tests: economy math, buy rules, round count
+- [x] 5-round match: first to 3, max 5 rounds (`match_flow.rs`)
+- [x] Freeze time at round start (8 s): can buy and look, can't move or shoot
+- [x] Economy: start $800, win $3250, loss $1400 + $500 per loss streak (cap $3400), kill rewards per gun
+- [x] Buy menu (B, during freeze time / in buy zone): pistols, SMGs & shotguns, rifles & snipers, armor, helmet
+- [ ] Player grenades in the buy menu (needs player throwing; enemy grenades exist)
+- [x] Keep weapons you survived with; lose them on death
+- [x] Enemy economy: squad buys from the same prices (eco / force / full buy)
+- [x] HUD: money, freeze countdown, buy hint
+- [x] Main menu: Play → map select (cards) + difficulty → Start; primary-weapon picker removed
+- [x] Tests: economy math, buy rules, round count
 
 ### Phase 2: maps
 - [ ] 2 new original defusal-style maps: attacker spawn, defender spawn, A and B sites, mid, long/short routes, connectors, chokes

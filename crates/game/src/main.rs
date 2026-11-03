@@ -12,6 +12,7 @@ mod armed;
 mod armor;
 mod audio;
 mod dev;
+mod economy;
 mod enemy;
 mod evolving;
 mod gfx;
