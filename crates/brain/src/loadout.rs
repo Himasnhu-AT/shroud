@@ -87,13 +87,14 @@ pub fn preferred(prefs: &[f32; PREF_COUNT]) -> WeaponKind {
 /// Most of each primary (in `PRIMARIES` order) a squad of `n` may field on a difficulty. Rifles
 /// are unlimited, so every member always gets a gun.
 /// Order: SMG, Kestrel, shotgun, Longbow, Shrike, Osprey. The Osprey (one-shot body kills)
-/// only shows up from Veteran, one per squad.
+/// only shows up from Veteran, one per squad. Long guns (Longbow + Osprey) together are capped by
+/// the Longbow's number, so a squad never parks more shooters on sightlines than before.
 pub fn caps(d: Difficulty, n: usize) -> [usize; PREF_COUNT] {
     match d {
         Difficulty::Recruit => [1, n, 0, 0, 0, 0],
         Difficulty::Regular => [1, n, 1, 1, 1, 0],
         Difficulty::Veteran => [2, n, 1, 1, 2, 1],
-        Difficulty::Elite => [2, n, 2, 1, 2, 1],
+        Difficulty::Elite => [2, n, 2, 2, 2, 1],
     }
 }
 
@@ -112,10 +113,13 @@ pub fn assign(prefs: &[[f32; PREF_COUNT]], caps: [usize; PREF_COUNT]) -> Vec<Wea
     }
     want.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     let mut left = caps;
+    let mut long_left = caps[3];
     let mut out: Vec<Option<WeaponKind>> = vec![None; n];
     for (_, m, k) in want {
-        if out[m].is_none() && left[k] > 0 {
+        let long = WeaponKind::PRIMARIES[k].long_gun();
+        if out[m].is_none() && left[k] > 0 && (!long || long_left > 0) {
             left[k] -= 1;
+            long_left -= usize::from(long);
             out[m] = Some(WeaponKind::PRIMARIES[k]);
         }
     }
@@ -390,6 +394,10 @@ mod tests {
         assert_eq!(v.iter().filter(|&&x| x == WeaponKind::BattleRifle).count(), 2);
         let g = assign(&snipers, caps(Difficulty::Regular, 4));
         assert!(!g.contains(&WeaponKind::Sniper));
+        // Long guns share the Longbow's cap: on Veteran the Osprey takes the only long slot.
+        assert!(!v.contains(&WeaponKind::Marksman));
+        let e = assign(&vec![[0.0, 0.1, 0.0, 0.8, 0.0, 0.9]; 6], caps(Difficulty::Elite, 6));
+        assert_eq!(e.iter().filter(|k| k.long_gun()).count(), 2);
     }
 
     #[test]
