@@ -703,7 +703,15 @@ impl BrainState {
         progress(1.0);
         EvolveSummary {
             generation: self.generation,
-            insights: self.player_model.insights_with_history(arena, Some(&report.telemetry), prev.as_ref(), &posts, self.squad_reaction_ms()),
+            insights: {
+                let mut v = self.player_model.insights_with_history(arena, Some(&report.telemetry), prev.as_ref(), &posts, self.squad_reaction_ms());
+                // The adaptive doctrine's line first ("They noticed you hold angles; ...").
+                if let Some(l) = crate::doctrine::debrief_line(&report.telemetry) {
+                    v.insert(0, l);
+                    v.truncate(4);
+                }
+                v
+            },
             card,
             deltas,
             sim_win_rate,

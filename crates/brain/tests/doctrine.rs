@@ -146,7 +146,7 @@ fn spec_check_6_holding_a_doorway_switches_to_jiggle_peek_and_flash() {
         coord.observe_player(&a, StyleTick { dt: DT, pos, vel: V2::ZERO, yaw });
         coord.tick(DT, &members, &a, &model);
         for c in coord.drain_tactic_changes() {
-            eprintln!("ai.tactic {{ from: {}, to: {}, reason: {} }} at {:.2} s (door at {door:?})", c.from.name(), c.to.name(), c.reason, c.t);
+            eprintln!("ai.tactic {{ from: {}, to: {}, reason: {} }} at {:.2} s (holding {pos:?}, door at {door:?})", c.from.name(), c.to.name(), c.reason, c.t);
             changes.push(c);
         }
     }

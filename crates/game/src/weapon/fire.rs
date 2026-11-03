@@ -66,7 +66,7 @@ impl Surface {
     }
 }
 
-pub use brain::weapons::{max_thickness, penetrable, penetration_mult};
+pub use brain::weapons::{penetrable, penetration_mult};
 
 /// The arena block containing world point `p` (blocks stand on y = 0).
 pub fn block_at(arena: &Arena, p: Vec3) -> Option<&Block> {

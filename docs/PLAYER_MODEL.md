@@ -15,6 +15,7 @@ telemetry (`game/src/telemetry.rs` → `MatchTelemetry`).
 | Camping ratio | share of time with speed < 0.5 m/s |
 | Crouch usage | share of time crouched while engaged |
 | Facing | per-zone histogram of where you look (8 sectors) |
+| Archetype time | seconds the squad countered each style (angle holder, entry fragger, reloader, headshot aimer); EMA share in `style`, a prior for the next round (docs/AI.md, adaptive doctrine) |
 | Accuracy / headshot rate | totals |
 
 ## Update rule
