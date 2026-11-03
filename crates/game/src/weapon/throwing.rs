@@ -60,6 +60,7 @@ impl ThrowStyle {
         }
     }
 
+    #[cfg_attr(not(feature = "dev"), allow(dead_code))]
     pub fn parse(s: &str) -> Option<ThrowStyle> {
         match s.trim().to_ascii_lowercase().as_str() {
             "over" | "overhand" | "far" => Some(ThrowStyle::Over),
