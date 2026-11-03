@@ -129,6 +129,34 @@ impl Block {
         }
         true
     }
+
+    /// Length (m) of segment a->b inside this box (0 if it misses).
+    pub fn segment_inside(&self, a: V2, b: V2) -> f32 {
+        let min = self.center - self.half;
+        let max = self.center + self.half;
+        let d = b - a;
+        let mut t0 = 0.0f32;
+        let mut t1 = 1.0f32;
+        for (p, dp, lo, hi) in [(a.x, d.x, min.x, max.x), (a.y, d.y, min.y, max.y)] {
+            if dp.abs() < 1e-9 {
+                if p < lo || p > hi {
+                    return 0.0;
+                }
+            } else {
+                let inv = 1.0 / dp;
+                let (mut ta, mut tb) = ((lo - p) * inv, (hi - p) * inv);
+                if ta > tb {
+                    std::mem::swap(&mut ta, &mut tb);
+                }
+                t0 = t0.max(ta);
+                t1 = t1.min(tb);
+                if t0 > t1 {
+                    return 0.0;
+                }
+            }
+        }
+        (t1 - t0).max(0.0) * d.len()
+    }
 }
 
 /// A named rectangle used to describe player habits in plain words.
@@ -975,6 +1003,28 @@ impl Arena {
         })
     }
 
+    /// Damage fraction a bullet from a gun with `penetration` keeps from `a` to `b` through
+    /// thin cover (the same rule as the game's bullets, `weapons::penetration_mult`): 1 in the
+    /// open, 0 when a wall or anything too thick is in the way. Low cover counts (a crouched
+    /// target behind a crate is shot through it).
+    pub fn penetration(&self, a: V2, b: V2, penetration: f32) -> f32 {
+        let mut keep = 1.0;
+        for blk in &self.blocks {
+            let thick = blk.segment_inside(a, b);
+            if thick <= 0.0 {
+                continue;
+            }
+            if !crate::weapons::penetrable(blk) {
+                return 0.0;
+            }
+            keep *= crate::weapons::penetration_mult(penetration, thick);
+            if keep <= 0.05 {
+                return 0.0;
+            }
+        }
+        keep
+    }
+
     pub fn zone_of(&self, p: V2) -> Option<&Zone> {
         self.zones
             .iter()
@@ -992,6 +1042,19 @@ impl Arena {
                 continue;
             }
             let d = p - b.center;
+            // Off a corner: a circle against the box (rounded corners), pushed out radially,
+            // so a body sliding past a door jamb rounds it instead of sticking on the square
+            // corner of the padded box (like the game's capsules).
+            let (ox, oz) = (d.x.abs() - b.half.x, d.y.abs() - b.half.y);
+            if ox > 0.0 && oz > 0.0 {
+                let r = V2::new(ox * d.x.signum(), oz * d.y.signum());
+                let l = r.len();
+                if l >= radius {
+                    continue;
+                }
+                p = p + r * ((radius - l) / l.max(1e-6));
+                continue;
+            }
             let px = b.half.x + radius - d.x.abs();
             let pz = b.half.y + radius - d.y.abs();
             if px < pz {

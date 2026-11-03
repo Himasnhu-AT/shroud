@@ -16,7 +16,8 @@ use brain::limits::Limits;
 use brain::math::V2;
 use brain::posture;
 use brain::mind::{Action, AllyInfo, EnemyMind, MindCtx, Observation};
-use brain::squad::{MemberView, SquadCoordinator, UtilityBudget, callsign};
+use brain::doctrine::StyleTick;
+use brain::squad::{MAG_OUT_RANGE, MemberDoctrine, MemberView, SquadCoordinator, UtilityBudget, callsign};
 use brain::utility::Goal;
 use brain::perception::{self, Heard, RELOAD_RANGE, Sound};
 use brain::sim::{CROUCH_SPEED, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
@@ -30,7 +31,8 @@ use engine::fps::FpsMotor;
 use crate::save::Brain;
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, Headless, not_paused};
-use crate::weapon::{Damage, Health, Hitbox, Rifle, ShotFired, WeaponSet};
+use crate::weapon::fire::{exit_distance, penetrable, penetration_mult, surface_at};
+use crate::weapon::{Damage, GunEvent, Health, Hitbox, Rifle, ShotFired, WeaponSet};
 use grenade::ThrowGrenade;
 use gun::{EnemyFx, GunLink};
 
@@ -70,7 +72,7 @@ impl Plugin for EnemyPlugin {
             .init_resource::<AiTimings>()
             .add_systems(
                 FixedUpdate,
-                (collect_inbox, start_ai_clock, think_and_act, stop_ai_clock, sync_pose).chain().in_set(EnemySet),
+                (collect_inbox, start_ai_clock, think_and_act, stop_ai_clock, sync_pose, log_doctrine).chain().in_set(EnemySet),
             )
             .add_systems(Update, enemy_deaths.after(WeaponSet).run_if(in_state(GameState::Playing)))
             .add_systems(Update, despawn_corpses.run_if(not_paused))
@@ -349,17 +351,50 @@ struct Inbox {
     /// (muzzle, direction, heard within m) of each player shot.
     player_shots: Vec<(Vec3, Vec3, f32)>,
     hits: Vec<(Entity, bool)>,
+    /// Aiming down sights when those shots went off.
+    ads: bool,
+    /// He started a reload this tick, with this share of the magazine left.
+    reload_started: Option<f32>,
+    /// His magazine came out (or a shell went in) this tick: the sound enemies rush on.
+    mag_out: bool,
 }
 
 fn collect_inbox(
     mut inbox: ResMut<Inbox>,
-    players: Query<Entity, With<Player>>,
+    players: Query<(Entity, Option<&Rifle>), With<Player>>,
     mut shots: MessageReader<ShotFired>,
     mut damage: MessageReader<Damage>,
+    mut guns: MessageReader<GunEvent>,
+    mut was_reloading: Local<bool>,
 ) {
-    let player = players.single().ok();
+    let (player, gun) = players.single().map_or((None, None), |(e, g)| (Some(e), g));
     inbox.player_shots = shots.read().filter(|s| Some(s.by) == player).map(|s| (s.origin, s.dir, s.loudness_m)).collect();
     inbox.hits = damage.read().filter(|d| Some(d.source) == player).map(|d| (d.target, d.headshot)).collect();
+    inbox.ads = gun.is_some_and(|g| g.ads > 0.5);
+    let reloading = gun.is_some_and(|g| g.reloading.is_some());
+    inbox.reload_started = (reloading && !*was_reloading).then(|| gun.map_or(0.0, |g| g.ammo as f32 / g.mag.max(1) as f32));
+    *was_reloading = reloading;
+    inbox.mag_out = guns.read().any(|g| matches!(g, GunEvent::MagOut { .. } | GunEvent::ShellIn));
+}
+
+/// Doctrine switches (`ai.tactic`): the session log gets from / to / reason, the trace gets
+/// the tactic indices, and the info log a line.
+fn log_doctrine(mut squad: ResMut<Squad>, dev: crate::dev::Dev) {
+    let Some(coord) = squad.coord.as_mut() else { return };
+    for c in coord.drain_tactic_changes() {
+        info!("ai.tactic {{ from: {}, to: {}, reason: {} }} at {:.1} s ({:?})", c.from.name(), c.to.name(), c.reason, c.t, c.active.labels());
+        dev.log("ai.tactic", || {
+            serde_json::json!({ "from": c.from.name(), "to": c.to.name(), "reason": c.reason, "t": c.t, "archetypes": c.active.labels() })
+        });
+        dev.trace(
+            "ai.tactic",
+            &[
+                ("from", crate::dev::Prop::Int(c.from.index() as i64)),
+                ("to", crate::dev::Prop::Int(c.to.index() as i64)),
+                ("t", crate::dev::Prop::Float(c.t as f64)),
+            ],
+        );
+    }
 }
 
 fn v2_dir3(d: V2) -> Vec3 {
@@ -499,8 +534,28 @@ fn think_and_act(
     for (slot, h) in heard_events.iter() {
         coord.hear(*slot, h, &arena.0);
     }
+    // Adaptive doctrine: profile how he plays (movement, holds, shots, reloads); a mag-out
+    // heard nearby can start a rush.
+    coord.observe_player(&arena.0, StyleTick { dt, pos: p_ground, vel: p_vel, yaw: p_facing });
+    for _ in player_shots {
+        coord.player_shot(inbox.ads);
+    }
+    for &(_, head) in hits {
+        coord.player_hit(head);
+    }
+    if let Some(frac) = inbox.reload_started {
+        coord.player_reload(frac);
+    }
+    if inbox.mag_out {
+        for (slot, v) in views.iter().enumerate().filter(|(_, v)| v.alive) {
+            if perception::hear(&arena.0, p_ground, v.pos, MAG_OUT_RANGE).is_some() {
+                coord.heard_mag_out(slot, p_ground);
+            }
+        }
+    }
     let squad_t = std::time::Instant::now();
     let orders = coord.tick(dt, &views, &arena.0, &brain.state.player_model).to_vec();
+    let doctrine: Vec<MemberDoctrine> = (0..views.len()).map(|i| coord.member_doctrine(i)).collect();
     timings.squad_ms = squad_t.elapsed().as_secs_f32() * 1000.0;
     // Always drain (a frozen squad's queued callouts would play stale later); speak if live.
     let calls = coord.drain_callouts();
@@ -608,6 +663,7 @@ fn think_and_act(
         };
         if let Ok(en) = slots.get(e) {
             mind.0.set_order(orders.get(en.slot).copied().flatten());
+            mind.0.set_doctrine(doctrine.get(en.slot).copied().unwrap_or_default());
         }
         let act: Action = if freeze.0 { Action::default() } else { mind.0.think(&obs, &cx) };
         *allies_buf = obs.allies;
@@ -699,14 +755,39 @@ fn think_and_act(
                 dir
             };
             let Ok(d3) = Dir3::new(d) else { continue };
-            let hit = spatial.cast_ray(muzzle, d3, range, true, &filter);
-            let on_player = hit.is_some_and(|h| h.entity == player);
+            // The same bullets as the player's: through thin cover (crates, drywall, low
+            // walls) if the gun penetrates, losing damage per metre (`weapon::fire`).
+            let (mut from, mut travelled, mut keep, mut on_player, mut stop) = (muzzle, 0.0f32, 1.0f32, false, None);
+            let mut through: Vec<Entity> = Vec::new();
+            for pass in 0..=2 {
+                let f = if through.is_empty() { filter.clone() } else { filter.clone().with_excluded_entities(through.iter().copied()) };
+                let Some(h) = spatial.cast_ray(from, d3, (range - travelled).max(0.0), true, &f) else { break };
+                travelled += h.distance;
+                stop = Some(travelled);
+                if h.entity == player {
+                    on_player = true;
+                    break;
+                }
+                let p = from + d * h.distance;
+                let (_, block) = surface_at(&arena.0, p, h.normal);
+                let Some(b) = block.filter(|b| pass < 2 && spec.penetration > 0.0 && penetrable(b)) else { break };
+                let thick = exit_distance(b, p + d * 0.01, d) + 0.01;
+                let k2 = penetration_mult(spec.penetration, thick);
+                if k2 <= 0.05 {
+                    break;
+                }
+                keep *= k2;
+                from = p + d * (thick + 0.02);
+                travelled += thick + 0.02;
+                through.push(h.entity);
+                stop = None;
+            }
             if on_player {
-                amount += brain::loadout::enemy_damage(kind, muzzle.distance(p_center), &limits);
+                amount += keep * brain::loadout::enemy_damage(kind, muzzle.distance(p_center), &limits);
             }
             if k < 3 {
                 // Tracer: stop where the bullet stops, but never near the player's eye.
-                let mut len = hit.map_or(60.0f32.min(range), |h| h.distance);
+                let mut len = stop.unwrap_or(60.0f32.min(range));
                 let clearance = if on_player { TRACER_CLEARANCE } else { TRACER_MISS_CLEARANCE };
                 if let Some(t) = ray_sphere_enter(muzzle, d, cam, clearance) {
                     len = len.min(t);
@@ -757,11 +838,16 @@ struct AiOut<'w> {
 }
 
 /// Round over: reward the open engagement window and keep the bandit for the next round/match.
-fn finish_round(mut squad: ResMut<Squad>, mut brain: ResMut<Brain>, players: Query<&Health, With<Player>>) {
+fn finish_round(mut squad: ResMut<Squad>, mut brain: ResMut<Brain>, players: Query<&Health, With<Player>>, mut telemetry: ResMut<crate::telemetry::Telemetry>) {
     let dead = players.single().is_ok_and(|h| h.is_dead());
     if let Some(c) = squad.coord.as_mut() {
         c.end_round(dead);
         brain.state.tactics = c.tactics.clone();
+        // How long each archetype was countered this round (the player model's style summary).
+        for (t, s) in telemetry.0.style_time.iter_mut().zip(c.doctrine.active_time) {
+            *t += s;
+        }
+        telemetry.0.style_play_s += c.doctrine.play_time;
     }
 }
 

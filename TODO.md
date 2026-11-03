@@ -18,7 +18,7 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 | 2 | CS-style defusal maps (A/B sites, mid, spawns, buy zones) | done (Sirocco, Gantry; Depot signs) |
 | 3 | Guns + operator skins (CS feel, original designs) | done (hands are placeholder blocks) |
 | 4 | Bodycam optics (spec §4): post-process shader, muzzle flash light, auto-exposure | planned |
-| 5 | Adaptive doctrine (spec §5): player archetypes → squad counters | planned |
+| 5 | Adaptive doctrine (spec §5): player archetypes → squad counters | done (lights not breakable: skipped) |
 | 6 | Bodycam handling (spec §2–3): free-aim deadzone, springs, wall compression, dutch roll | planned |
 | 7 | Realistic assets (spec §6): HDRI, 4K PBR, rigged arms | partly: CC0 realistic guns in; arms/bodies need user downloads |
 
@@ -75,12 +75,17 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
   peeking play the same in both styles
 
 ### Phase 5: adaptive doctrine (spec §5)
-- [ ] `PlayerStyleProfile`: speed EMA, angle-hold time, ADS ratio, headshot rate, early reloads
-  (extends the existing `brain::player_model`)
-- [ ] Archetype → counter: camper → jiggle-peek + flash + wallbang; rusher → off-angles + crouch;
-  reloader → rush on mag-out sound; headshot aimer → lean-peek + micro-strafe
-- [ ] Log state transitions (e.g. `AiTactic::JigglePeekAndFlash` after > 4 s holding a door)
-- [ ] These are technique counters, so they fit Phase 0's rule
+- [x] `PlayerStyleProfile` (`brain/src/doctrine.rs`): speed EMA, angle-hold time, ADS ratio, headshot
+  rate, early reloads, rapid room entries; 20 s / 60 s windows; per-match summary in the player model
+- [x] Archetypes with hysteresis (several at once) → `AiTactic`: camper → jiggle-peek + flash-first +
+  wallbang through thin cover; rusher → off-angle traps + crouch on contact; reloader → rush on the
+  mag-out sound; headshot aimer → lean-peeks from posts + micro-strafes
+- [x] Four evolvable doctrine genes (how hard each counter is used); old saves seed them
+- [x] `ai.tactic {from, to, reason}` log / trace / callout; F3 doctrine panel; `ai.doctrine`; debrief line
+- [x] Tests: `brain/tests/doctrine.rs` (spec check 6: holding a doorway > 4 s → `JigglePeekAndFlash`)
+- [x] In-game check: `scripts/doctrine-camper.json` (switch at 4.0 s, a member jiggles, two flashes)
+- [ ] Shoot out lights (lamps aren't breakable yet; worth it with Phase 4's auto-exposure)
+- [x] These are technique counters, so they fit Phase 0's rule
 
 ### Phase 6: bodycam handling (spec §2–3)
 - [x] Free-aim deadzone (18°×12°) that collapses on ADS (stiffness 14 hip / 35 ADS)
@@ -98,9 +103,12 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
   The user has to fetch these; licences must be checked per model (CC0/CC-BY only)
 
 ## Known issues
-- `brain` test `contact_encircles` (Depot, 6 enemies) sits near its 180° limit (178°); one run hit 182–184°.
-  Passes on reruns; worth a look if it starts failing.
-- Gantry's attacker spawn sits off-centre at (14, 33) to pass the encircle test; revisit for design.
+- Fixed: `contact_encircles` was never nondeterministic. Each commit gives the same number on every run
+  (514fd60: 182, ab8f41c: 184, 065b63b: 178 deg); a 3-seed mean on a cliff moved with unrelated changes
+  (gun loadouts). Cutoffs stalled on door jambs (sim collision now circle-vs-box), the NEAT back-off
+  slowed their run, they walked every door and were picked to throw mid-route. Depot x6 now 132 deg on
+  six seeds; `encircle_is_deterministic` guards it.
+- Fixed: Gantry's attacker spawn is back at (0, 32), behind the parked trailer (encircle 135/93 deg).
 
 ## Notes and conflicts
 - Spec §4.3 says "zero health/ammo on screen"; the CS2 loop needs money, timer and ammo. Plan: the

@@ -14,9 +14,13 @@
 //!   short pre-fire burst when he is due to reappear there.
 //! - **Breachers**: frags flush a player camping cover, flashbangs go in before a flank or entry.
 //! - **Callouts**: short ASCII text events for the UI.
+//! - **Adaptive doctrine** (`doctrine`): a rolling profile of the player's style picks a
+//!   counter-tactic (jiggle-peek + flash + wallbang, off-angle traps, reload rushes, lean +
+//!   stagger), each used as hard as the squad's doctrine genes say.
 
 use crate::arena::{Arena, BlockKind, GRID_HALF};
 use crate::bandit::{self, ArmScore, CTX_DIM, LiveCtx, TacticsLearner};
+use crate::doctrine::{self, Counters, DOCTRINE_GENES, Doctrine, PlayerStyleProfile, StyleTick, TacticChange};
 use crate::genome::Traits;
 use crate::grenade::{self, GrenadeKind};
 use crate::encircle::{self, Sector};
@@ -152,6 +156,16 @@ pub fn best_position(c: &PefCtx, w: &[f32; PEF_TERMS], min_sep: f32) -> Option<V
     best.or(best_sep).or(best_any).map(|b| b.1)
 }
 
+/// Within this range (m) of the threat, tactical routes pay `CLOSE_COST` per metre (fading out).
+pub const CLOSE_M: f32 = 7.0;
+pub const CLOSE_COST: f32 = 4.0;
+
+/// Extra cost per metre `d` m from the threat: steep next to him, zero from `CLOSE_M` out.
+pub fn close_cost(d: f32) -> f32 {
+    let k = (1.0 - d / CLOSE_M).max(0.0);
+    CLOSE_COST * k * k
+}
+
 /// Tactical A* extra cost per metre at `p` (use with `NavGrid::find_path_cost`): the PEF terms
 /// as penalties for moving through the threat's line of fire, his pre-aim and his strong range.
 pub fn tactical_cost<'a>(arena: &'a Arena, model: &'a PlayerModel, threat: V2, w: &'a [f32; PEF_TERMS]) -> impl Fn(V2) -> f32 + 'a {
@@ -171,6 +185,9 @@ pub fn tactical_cost<'a>(arena: &'a Arena, model: &'a PlayerModel, threat: V2, w
         } else {
             0.0
         };
+        // Never route through his feet: a path that brushes past him ends at the standoff,
+        // parked in front of his gun instead of round the far side.
+        let v = v + close_cost(d);
         cache.borrow_mut()[i] = v;
         v
     }
@@ -391,6 +408,14 @@ pub enum Role {
     Anchor,
     /// Throwing utility (winding up a frag or flashbang).
     Breacher,
+    /// Doctrine vs a reloader: rushing him on the mag-out sound.
+    Rusher,
+    /// Doctrine vs an angle holder: jiggle-peeking his angle to bait shots.
+    Jiggler,
+    /// Doctrine vs an angle holder: a suppressive burst through thin cover at his spot.
+    Suppressor,
+    /// Doctrine vs an entry fragger: holding an off-angle inside a door he will run through.
+    Trapper,
 }
 
 impl Role {
@@ -410,6 +435,10 @@ impl Role {
             Role::Cutoff => "cutoff",
             Role::Anchor => "anchor",
             Role::Breacher => "breacher",
+            Role::Rusher => "rusher",
+            Role::Jiggler => "jiggler",
+            Role::Suppressor => "suppressor",
+            Role::Trapper => "trapper",
         }
     }
 }
@@ -432,6 +461,37 @@ pub struct Order {
     /// Go through this waypoint first (a route that differs from the teammates'), then `dest`.
     pub via: Option<V2>,
 }
+
+/// A jiggle-peek: from `hide` (out of his sight), step `out` (~0.25 m, toward the peek side)
+/// and straight back, to bait a shot from the angle he holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Jiggle {
+    pub hide: V2,
+    pub out: V2,
+}
+
+/// What the doctrine asks of one member this tick (`SquadCoordinator::member_doctrine`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MemberDoctrine {
+    /// Squad-wide counter strengths (0 = off).
+    pub counters: Counters,
+    /// This member jiggle-peeks (its order is `Role::Jiggler`).
+    pub jiggle: Option<Jiggle>,
+}
+
+/// Step out this far (m) on a jiggle-peek.
+pub const JIGGLE_M: f32 = 0.25;
+/// A mag-out is heard this far (m) in the open: the clack carries further than the reload rustle.
+pub const MAG_OUT_RANGE: f32 = 14.0;
+/// A reload rush lasts this long (s) or until the rusher is this close (m).
+pub const RUSH_S: f32 = 3.0;
+pub const RUSH_DONE_M: f32 = 3.0;
+/// A wallbang burst lasts this long (s); the next one waits `WALLBANG_GAP_S` (shorter with a
+/// stronger counter).
+pub const WALLBANG_BURST_S: f32 = 0.7;
+pub const WALLBANG_GAP_S: f32 = 4.5;
+/// Wallbang only through cover that lets at least this share of the damage through.
+pub const WALLBANG_MIN: f32 = 0.15;
 
 /// The coordinator wants member `thrower` to release a grenade at `target` now.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -692,6 +752,26 @@ pub struct SquadCoordinator {
     /// Map size vs the 64 m maps (`search::map_scale`): big maps give staging and the
     /// encirclement proportionally longer, since everyone has further to walk.
     map_scale: f32,
+
+    // --- Adaptive doctrine (`doctrine`).
+    /// The player's style this round (fed by the caller: `observe_player`, `player_shot`...).
+    pub style: PlayerStyleProfile,
+    pub doctrine: Doctrine,
+    doctrine_ready: bool,
+    /// A mag-out heard: (where, when) and who heard it.
+    mag_out: Option<(V2, f32)>,
+    mag_listeners: Vec<usize>,
+    /// Reload rushers: (member, target, until).
+    pub rushers: Vec<(usize, V2, f32)>,
+    /// The jiggle-peeker and its peek, re-picked every few seconds.
+    pub jiggler: Option<(usize, Jiggle)>,
+    jiggle_t: f32,
+    /// Wallbang: (member, spot, until) and the time the next one may start.
+    pub wallbang: Option<(usize, V2, f32)>,
+    wallbang_next: f32,
+    /// Off-angle traps: (member, spot, door it watches).
+    pub traps: Vec<(usize, V2, V2)>,
+    traps_t: f32,
 }
 
 /// Stack and breach: the entry and its trader stack beside the door frame, utility goes in,
@@ -817,7 +897,80 @@ impl SquadCoordinator {
             breach_throw: None,
             breach_for: None,
             map_scale: search::map_scale(arena),
+            style: PlayerStyleProfile::default(),
+            doctrine: Doctrine::default(),
+            doctrine_ready: false,
+            mag_out: None,
+            mag_listeners: Vec::new(),
+            rushers: Vec::new(),
+            jiggler: None,
+            jiggle_t: 0.0,
+            wallbang: None,
+            wallbang_next: 0.0,
+            traps: Vec::new(),
+            traps_t: -99.0,
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Adaptive doctrine: inputs from the caller.
+
+    /// Feed the player's movement and look this tick (game: `enemy::think_and_act`; trainer:
+    /// the ghost). Call before `tick`.
+    pub fn observe_player(&mut self, arena: &Arena, t: StyleTick) {
+        self.style.tick(Some(arena), t);
+    }
+
+    /// He fired (once per trigger pull); `ads`: aiming down sights.
+    pub fn player_shot(&mut self, ads: bool) {
+        self.style.shot(ads);
+    }
+
+    /// One of his shots hit a member.
+    pub fn player_hit(&mut self, headshot: bool) {
+        self.style.hit(headshot);
+    }
+
+    /// He started a reload with `mag_frac` of his magazine left.
+    pub fn player_reload(&mut self, mag_frac: f32) {
+        self.style.reload(mag_frac);
+    }
+
+    /// Member `who` heard his magazine come out at `pos` (`MAG_OUT_RANGE`, see
+    /// `perception::hear`). With the reload counter on, the nearest one or two rush him.
+    pub fn heard_mag_out(&mut self, who: usize, pos: V2) {
+        if self.mag_out.is_none_or(|(_, t)| self.time - t > 0.5) {
+            self.mag_out = Some((pos, self.time));
+            self.mag_listeners.clear();
+        }
+        if !self.mag_listeners.contains(&who) {
+            self.mag_listeners.push(who);
+        }
+    }
+
+    /// Doctrine switches since the last call (log them: `ai.tactic`).
+    pub fn drain_tactic_changes(&mut self) -> Vec<TacticChange> {
+        self.doctrine.drain_changes()
+    }
+
+    /// What the doctrine wants from member `i` (call after `tick`, hand it to the mind).
+    pub fn member_doctrine(&self, i: usize) -> MemberDoctrine {
+        if !self.enabled {
+            return MemberDoctrine::default();
+        }
+        MemberDoctrine { counters: self.doctrine.counters(), jiggle: self.jiggler.filter(|j| j.0 == i).map(|j| j.1) }
+    }
+
+    /// The squad's doctrine genes: the mean over living members.
+    fn doctrine_genes(members: &[MemberView]) -> [f32; DOCTRINE_GENES] {
+        let alive: Vec<&MemberView> = members.iter().filter(|m| m.alive).collect();
+        let mut g = [0.5; DOCTRINE_GENES];
+        if !alive.is_empty() {
+            for (k, x) in g.iter_mut().enumerate() {
+                *x = alive.iter().map(|m| m.traits.doctrine[k].clamp(0.0, 1.0)).sum::<f32>() / alive.len() as f32;
+            }
+        }
+        g
     }
 
     /// Seed re-peek spots seen earlier in the match (e.g. from the duel log): (position, count).
@@ -1040,6 +1193,19 @@ impl SquadCoordinator {
         self.was_known = known || spotter.is_some_and(|s| members[s].last_seen < FRESH_CONTACT_S);
         self.track_peeks(dt, members, spotter);
 
+        // Adaptive doctrine: archetypes from the style profile, a counter-tactic per tick.
+        if !self.doctrine_ready {
+            self.doctrine = Doctrine::with_prior(&model.style);
+            self.doctrine_ready = true;
+        }
+        let genes = Self::doctrine_genes(members);
+        if let Some(change) = self.doctrine.update(&self.style, dt, genes)
+            && self.enabled
+            && let Some(s) = spotter
+        {
+            self.bark(s, change.to.callout().to_string(), true);
+        }
+
         // Barks every tick: man down, the minds' own.
         for i in 0..n {
             if self.prev_alive[i] && !members[i].alive {
@@ -1219,10 +1385,15 @@ impl SquadCoordinator {
         if self.play == Play::Free {
             self.anchor = None;
             self.pending_throw = None;
+            // A lone survivor still uses the doctrine (a reload rush, an off-angle).
+            if self.enabled {
+                self.plan_doctrine(members, arena);
+            }
             return;
         }
         self.plan_anchor(members, arena);
         self.plan_utility(members, arena);
+        self.plan_doctrine(members, arena);
         if self.episode.is_none() && self.force_play.is_none() && bandit::arm_of(self.play).is_some() {
             self.episode = Some(Episode {
                 arm: self.play,
@@ -1335,7 +1506,11 @@ impl SquadCoordinator {
             None => {
                 let camping = self.still_t >= CAMP_S;
                 let hugging = self.still_t >= 2.0 && classify_cover(arena, target, Self::centroid(members)).0 != CoverState::Exposed;
-                if self.frags_used < self.utility.frags && (camping || hugging) {
+                // Doctrine vs an angle holder: blind the angle first, then the frag.
+                let blind_first = self.doctrine.counters().jiggle > 0.0 && self.flash_wanted > 0.0 && self.flashes_used < self.utility.flashes;
+                if blind_first {
+                    GrenadeKind::Flash
+                } else if self.frags_used < self.utility.frags && (camping || hugging) {
                     GrenadeKind::Frag
                 } else if self.flashes_used < self.utility.flashes && self.flash_wanted > 0.0 {
                     GrenadeKind::Flash
@@ -1367,7 +1542,10 @@ impl SquadCoordinator {
                 continue;
             }
             let will = if frag { m.traits.aggression } else { m.traits.team_cohesion };
-            let score = 0.6 * will + 0.4 * (1.0 - d / grenade::THROW_MAX);
+            // A cutoff still running to its sector keeps running: stopping for the wind-up
+            // leaves that side of the ring open (someone already in place throws instead).
+            let en_route = self.orders.get(i).copied().flatten().is_some_and(|o| o.role == Role::Cutoff && o.goal == Goal::Flank);
+            let score = 0.6 * will + 0.4 * (1.0 - d / grenade::THROW_MAX) - if en_route { 0.35 } else { 0.0 };
             if best.is_none_or(|(b, _, _)| score > b) {
                 best = Some((score, i, aim));
             }
@@ -1377,6 +1555,141 @@ impl SquadCoordinator {
         self.force_throw = None;
         self.pending_throw = Some((ThrowOrder { thrower: i, kind, target: aim }, grenade::WINDUP_S));
         self.orders[i] = Some(Order { role: Role::Breacher, goal: Goal::Hold, dest: None, watch: Some(aim), threat: None, sticky: true, via: None, prefire: None });
+    }
+
+    /// Doctrine counters as orders (after the play, the anchor and utility): reload rushes,
+    /// jiggle-peeks, flashes and wallbangs on an angle holder, off-angle traps for a rusher.
+    fn plan_doctrine(&mut self, members: &[MemberView], arena: &Arena) {
+        let c = self.doctrine.counters();
+        let now = self.time;
+        let thrower = self.pending_throw.map(|(t, _)| t.thrower);
+        // Members other jobs already claim.
+        let busy_base: Vec<usize> = [self.lead, self.second, self.anchor, thrower].into_iter().flatten().collect();
+
+        // --- Reload punish: the nearest one or two who heard the mag-out sprint at him.
+        self.rushers.retain(|&(i, at, until)| now < until && members.get(i).is_some_and(|m| m.alive && m.pos.dist(at) > RUSH_DONE_M));
+        if let Some((at, t)) = self.mag_out.take()
+            && c.reload_rush > 0.0
+            && now - t < 1.0
+        {
+            let mut who: Vec<usize> = self.mag_listeners.iter().copied().filter(|&i| members.get(i).is_some_and(|m| m.alive) && !busy_base.contains(&i)).collect();
+            who.sort_by(|&a, &b| members[a].pos.dist(at).total_cmp(&members[b].pos.dist(at)).then(a.cmp(&b)));
+            let alive = members.iter().filter(|m| m.alive).count();
+            let n = if c.reload_rush >= 0.6 && alive >= 3 { 2 } else { 1 };
+            for &i in who.iter().take(n) {
+                if !self.rushers.iter().any(|r| r.0 == i) {
+                    self.rushers.push((i, at, now + RUSH_S));
+                }
+            }
+            if let Some(&i) = who.first() {
+                self.bark(i, "Mag out - rushing him!".into(), true);
+            }
+        }
+        self.mag_listeners.clear();
+        for &(i, at, _) in &self.rushers {
+            self.orders[i] = Some(Order { role: Role::Rusher, goal: Goal::Push, dest: Some(at), watch: Some(at), threat: None, sticky: true, via: None, prefire: None });
+        }
+        let mut busy = busy_base.clone();
+        busy.extend(self.rushers.iter().map(|r| r.0));
+
+        // --- Angle holder: flash the angle, jiggle-peek it, wallbang him through thin cover.
+        let known = self.board.age < 3.0;
+        let target = self.board.pos;
+        if c.jiggle > 0.0 && known {
+            // Flash sooner the stronger the counter (the utility budget and cooldown still rule).
+            if self.still_t >= CAMP_S * (1.3 - 0.8 * c.jiggle) && self.flashes_used < self.utility.flashes {
+                self.flash_wanted = self.flash_wanted.max(2.0);
+            }
+            self.jiggle_t -= RADIO_PERIOD_S;
+            let keep = self.jiggler.filter(|(i, j)| {
+                members.get(*i).is_some_and(|m| m.alive && m.pos.dist(j.hide) < 12.0) && !busy.contains(i) && self.jiggle_t > 0.0
+            });
+            self.jiggler = keep.or_else(|| {
+                self.jiggle_t = 3.0 + 3.0 * (1.0 - c.jiggle);
+                let mut best: Option<(f32, usize, Jiggle)> = None;
+                for (i, m) in members.iter().enumerate() {
+                    if !m.alive || busy.contains(&i) || !(5.0..32.0).contains(&m.pos.dist(target)) {
+                        continue;
+                    }
+                    let Some((walk, j)) = doctrine::jiggle_spot(arena, m.pos, target) else { continue };
+                    let s = -walk;
+                    if best.as_ref().is_none_or(|b| s > b.0) {
+                        best = Some((s, i, j));
+                    }
+                }
+                best.map(|(_, i, j)| (i, j))
+            });
+            if let Some((i, j)) = self.jiggler {
+                busy.push(i);
+                self.orders[i] =
+                    Some(Order { role: Role::Jiggler, goal: Goal::Hold, dest: Some(j.hide), watch: Some(target), threat: Some(target), sticky: true, via: None, prefire: None });
+            }
+            // Wallbang: someone with a gun that goes through what's between them and him.
+            self.wallbang = self.wallbang.filter(|w| now < w.2 && members.get(w.0).is_some_and(|m| m.alive));
+            if self.wallbang.is_none() && now >= self.wallbang_next && self.still_t >= 1.0 {
+                let pick = (0..members.len())
+                    .filter(|&i| members[i].alive && !busy.contains(&i) && members[i].last_seen > 0.5)
+                    .filter_map(|i| {
+                        let m = &members[i];
+                        let d = m.pos.dist(target);
+                        let pen = m.traits.weapon.spec().penetration;
+                        if !(4.0..30.0).contains(&d) || pen <= 0.0 || arena.line_of_sight(m.pos, false, target, false) {
+                            return None;
+                        }
+                        let keep = arena.penetration(m.pos, target, pen);
+                        (keep >= WALLBANG_MIN).then_some((keep - d / 100.0, i))
+                    })
+                    .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)));
+                if let Some((_, i)) = pick {
+                    self.wallbang = Some((i, target, now + WALLBANG_BURST_S));
+                    self.wallbang_next = now + WALLBANG_GAP_S * (1.4 - 0.8 * c.jiggle);
+                    self.bark(i, "Spraying through the wall".into(), false);
+                }
+            }
+            if let Some((i, at, _)) = self.wallbang {
+                busy.push(i);
+                self.orders[i] = Some(Order { role: Role::Suppressor, goal: Goal::Hold, dest: None, watch: Some(at), threat: None, sticky: true, via: None, prefire: Some(at) });
+            }
+        } else {
+            self.jiggler = None;
+            self.wallbang = None;
+        }
+
+        // --- Entry fragger: hold off-angles inside the doors he will run through.
+        if c.off_angle > 0.0 && self.board.age > 1.5 {
+            if now - self.traps_t > 3.0 {
+                self.traps_t = now;
+                let from = self.predicted(arena);
+                let doors = self.doors.get_or_insert_with(|| rooms::doorways(arena)).clone();
+                let want = if c.off_angle >= 0.6 { 2 } else { 1 };
+                let mut traps: Vec<(usize, V2, V2)> = Vec::new();
+                let mut cands: Vec<usize> = (0..members.len()).filter(|&i| members[i].alive && !busy.contains(&i) && members[i].last_seen > 2.0).collect();
+                cands.sort_by(|&a, &b| members[a].pos.dist(from).total_cmp(&members[b].pos.dist(from)).then(a.cmp(&b)));
+                for i in cands {
+                    if traps.len() >= want {
+                        break;
+                    }
+                    let m = members[i].pos;
+                    // A door between him and this member, close to the member.
+                    let door = doors
+                        .iter()
+                        .filter(|d| d.pos.dist(m) < 14.0 && d.pos.dist(from) < 30.0 && d.side(m) != d.side(from) && !traps.iter().any(|t| t.2 == d.pos))
+                        .min_by(|a, b| a.pos.dist(m).total_cmp(&b.pos.dist(m)));
+                    if let Some(d) = door
+                        && let Some(spot) = doctrine::off_angle_spot(arena, d, from, m)
+                    {
+                        traps.push((i, spot, d.pos));
+                    }
+                }
+                self.traps = traps;
+            }
+            self.traps.retain(|t| members.get(t.0).is_some_and(|m| m.alive && m.last_seen > 0.5) && !busy.contains(&t.0));
+            for &(i, spot, door) in &self.traps {
+                self.orders[i] = Some(Order { role: Role::Trapper, goal: Goal::Hold, dest: Some(spot), watch: Some(door), threat: None, sticky: false, via: None, prefire: None });
+            }
+        } else {
+            self.traps.clear();
+        }
     }
 
     fn plan_play(&mut self, play: Play, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {

@@ -230,7 +230,7 @@ pub fn gantry() -> Arena {
     b.finish(
         MapId::Gantry,
         zones,
-        V2::new(14.0, 33.0),
+        V2::new(0.0, 32.0),
         vec![
             V2::new(-5.0, -32.0),
             V2::new(0.0, -32.5),
