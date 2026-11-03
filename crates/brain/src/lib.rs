@@ -14,6 +14,7 @@ pub mod insights;
 pub mod ghost;
 pub mod limits;
 pub mod loadout;
+pub mod maps;
 pub mod math;
 pub mod mind;
 pub mod nav;

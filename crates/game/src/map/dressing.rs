@@ -12,7 +12,7 @@ use avian3d::prelude::*;
 use bevy::camera::visibility::VisibilityRange;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
-use brain::arena::{Arena, BlockKind, BuildingInfo, FloorSkin, LampStyle, MapId, Window};
+use brain::arena::{Arena, BlockKind, BuildingInfo, FloorSkin, LampStyle, MapId, Paint, SignMount, Window};
 use brain::building::{EXTERIOR_HALF, SILL_HEIGHT};
 use brain::math::V2;
 use engine::look::ReflectionProbe;
@@ -31,12 +31,13 @@ const PATCH_THICKNESS: f32 = 0.012;
 /// are added to it here.
 pub(crate) fn spawn(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette, mut walls: Batch) {
     floors(commands, arena, g, p);
+    paint_and_signs(commands, arena, g, p);
     lamps(commands, arena, g, p);
     let detail = g.quality != GraphicsQuality::Low;
     let mut frames = Batch::default();
     windows(commands, arena, g, p, &mut frames, &mut walls, detail);
     walls.spawn(commands, g, p, "Wall pieces", true);
-    if detail && matches!(arena.id, MapId::Office | MapId::Township) {
+    if detail && matches!(arena.id, MapId::Office | MapId::Township | MapId::Sirocco | MapId::Gantry) {
         door_frames(arena, g, p, &mut frames);
     }
     frames.spawn(commands, g, p, "Frames", false);
@@ -96,8 +97,9 @@ impl Batch {
 
 // ---------------------------------------------------------------- floors
 
-fn floor_key(f: FloorSkin) -> &'static str {
+pub(crate) fn floor_key(f: FloorSkin) -> &'static str {
     match f {
+        FloorSkin::Gravel => "gravel",
         FloorSkin::Asphalt => "asphalt",
         FloorSkin::Tiles => "tiles",
         FloorSkin::Pavement => "pavement",
@@ -110,7 +112,7 @@ fn floor_key(f: FloorSkin) -> &'static str {
 
 fn floors(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
     for (i, f) in arena.decor.floors.iter().enumerate() {
-        let (mat, tile) = p.mat(g, floor_key(f.skin));
+        let (mat, tile) = p.mat(g, &p.floor_patch_key(f.skin));
         let size = Vec3::new(f.max.x - f.min.x, PATCH_THICKNESS, f.max.y - f.min.y);
         let center = Vec3::new((f.min.x + f.max.x) * 0.5, PATCH_THICKNESS * 0.5, (f.min.y + f.max.y) * 0.5);
         commands.spawn((
@@ -122,6 +124,131 @@ fn floors(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) 
             NotShadowCaster,
         ));
     }
+}
+
+// ---------------------------------------------------------------- paint and signs
+
+/// Floor paint sits on the floor patches; sign strokes sit on the paint.
+const PAINT_Y: (f32, f32) = (PATCH_THICKNESS + 0.0006, PATCH_THICKNESS + 0.003);
+const FLOOR_SIGN_Y: (f32, f32) = (PATCH_THICKNESS + 0.0036, PATCH_THICKNESS + 0.006);
+
+fn paint_key(paint: Paint) -> &'static str {
+    match paint {
+        Paint::White => "paint_white",
+        Paint::Yellow => "paint_yellow",
+        Paint::Red => "paint_red",
+        Paint::Blue => "paint_blue",
+        Paint::Orange => "paint_orange",
+        Paint::Black => "paint_black",
+        Paint::Steel => "paint_steel",
+    }
+}
+
+fn register_paints(g: &mut Gfx, p: &mut Palette) {
+    let flat = |c: [f32; 3], rough: f32, metal: f32| StandardMaterial { base_color: Color::srgb(c[0], c[1], c[2]), perceptual_roughness: rough, metallic: metal, ..default() };
+    for (paint, c, rough, metal) in [
+        (Paint::White, [0.86, 0.85, 0.82], 0.75, 0.0),
+        (Paint::Yellow, [0.90, 0.68, 0.10], 0.7, 0.0),
+        (Paint::Red, [0.66, 0.12, 0.08], 0.7, 0.0),
+        (Paint::Blue, [0.10, 0.26, 0.58], 0.7, 0.0),
+        (Paint::Orange, [0.92, 0.42, 0.08], 0.7, 0.0),
+        (Paint::Black, [0.04, 0.04, 0.045], 0.7, 0.0),
+        (Paint::Steel, [0.30, 0.29, 0.28], 0.35, 0.9),
+    ] {
+        p.flat(g, paint_key(paint), || flat(c, rough, metal));
+    }
+}
+
+/// Strokes of a glyph in a cell 1 high, `(width, [(x0, y0, x1, y1)])`. Unknown characters
+/// draw nothing (a space).
+fn glyph(c: char) -> (f32, &'static [(f32, f32, f32, f32)]) {
+    match c {
+        'A' => (0.66, &[(0.0, 0.0, 0.33, 1.0), (0.33, 1.0, 0.66, 0.0), (0.14, 0.38, 0.52, 0.38)]),
+        'B' => (
+            0.6,
+            &[
+                (0.0, 0.0, 0.0, 1.0),
+                (0.0, 1.0, 0.42, 1.0),
+                (0.42, 1.0, 0.54, 0.88),
+                (0.54, 0.88, 0.54, 0.62),
+                (0.54, 0.62, 0.42, 0.5),
+                (0.0, 0.5, 0.46, 0.5),
+                (0.46, 0.5, 0.6, 0.38),
+                (0.6, 0.38, 0.6, 0.12),
+                (0.6, 0.12, 0.48, 0.0),
+                (0.48, 0.0, 0.0, 0.0),
+            ],
+        ),
+        'D' => (0.6, &[(0.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.38, 1.0), (0.38, 1.0, 0.6, 0.75), (0.6, 0.75, 0.6, 0.25), (0.6, 0.25, 0.38, 0.0), (0.38, 0.0, 0.0, 0.0)]),
+        'I' => (0.4, &[(0.2, 0.0, 0.2, 1.0), (0.0, 1.0, 0.4, 1.0), (0.0, 0.0, 0.4, 0.0)]),
+        'M' => (0.7, &[(0.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.35, 0.45), (0.35, 0.45, 0.7, 1.0), (0.7, 1.0, 0.7, 0.0)]),
+        'T' => (0.6, &[(0.0, 1.0, 0.6, 1.0), (0.3, 1.0, 0.3, 0.0)]),
+        '>' => (0.9, &[(0.0, 0.5, 0.86, 0.5), (0.9, 0.5, 0.52, 0.86), (0.9, 0.5, 0.52, 0.14)]),
+        '<' => (0.9, &[(0.04, 0.5, 0.9, 0.5), (0.0, 0.5, 0.38, 0.86), (0.0, 0.5, 0.38, 0.14)]),
+        '^' => (0.7, &[(0.35, 0.0, 0.35, 0.96), (0.35, 1.0, 0.0, 0.62), (0.35, 1.0, 0.7, 0.62)]),
+        _ => (0.5, &[]),
+    }
+}
+
+/// Painted floor markings and signs: merged into one mesh per paint colour, no shadows.
+fn paint_and_signs(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
+    if arena.decor.paint.is_empty() && arena.decor.signs.is_empty() {
+        return;
+    }
+    register_paints(g, p);
+    let mut batch = Batch::default();
+    for patch in &arena.decor.paint {
+        let (y0, y1) = PAINT_Y;
+        let size = Vec3::new(patch.max.x - patch.min.x, y1 - y0, patch.max.y - patch.min.y);
+        let at = Vec3::new((patch.min.x + patch.max.x) * 0.5, (y0 + y1) * 0.5, (patch.min.y + patch.max.y) * 0.5);
+        batch.add_shape(paint_key(patch.paint), Cuboid::from_length(1.0), Transform::from_translation(at).with_scale(size));
+    }
+    for s in &arena.decor.signs {
+        // Text frame: origin at the text centre, `right` along the text, `up` along the letters,
+        // `normal` out of the surface; `lift(d)` is a point d off the surface.
+        let (origin, right, up, normal, plate_d, stroke_d) = match s.mount {
+            SignMount::Wall { facing_x, facing_z } => {
+                let n = Vec3::new(facing_x as f32, 0.0, facing_z as f32);
+                (Vec3::new(s.pos.x, s.y, s.pos.y), Vec3::new(n.z, 0.0, -n.x), Vec3::Y, n, (0.006, 0.016), if s.plate.is_some() { (0.018, 0.026) } else { (0.006, 0.014) })
+            }
+            SignMount::Floor { up_x, up_z } => {
+                let u = Vec3::new(up_x as f32, 0.0, up_z as f32);
+                (Vec3::new(s.pos.x, 0.0, s.pos.y), Vec3::new(-u.z, 0.0, u.x), u, Vec3::Y, (0.0, 0.0), FLOOR_SIGN_Y)
+            }
+        };
+        let h = s.size;
+        let gap = 0.18;
+        let glyphs: Vec<_> = s.text.chars().map(glyph).collect();
+        let width: f32 = glyphs.iter().map(|(w, _)| w).sum::<f32>() + gap * glyphs.len().saturating_sub(1) as f32;
+        let thick = 0.15;
+        if let Some(plate) = s.plate {
+            let (d0, d1) = plate_d;
+            let (pw, ph) = ((width + 0.7) * h, h * 1.5);
+            let rot = Quat::from_mat3(&Mat3::from_cols(right, up, normal));
+            let at = origin + normal * ((d0 + d1) * 0.5);
+            batch.add_shape(paint_key(plate), Cuboid::from_length(1.0), Transform { translation: at, rotation: rot, scale: Vec3::new(pw, ph, d1 - d0) });
+        }
+        let (d0, d1) = stroke_d;
+        let mut x = -width * 0.5;
+        for (w, strokes) in glyphs {
+            for &(x0, y0, x1, y1) in strokes {
+                let a = right * ((x + x0) * h) + up * ((y0 - 0.5) * h);
+                let b = right * ((x + x1) * h) + up * ((y1 - 0.5) * h);
+                let along = b - a;
+                let len = along.length();
+                if len < 1e-4 {
+                    continue;
+                }
+                let dir = along / len;
+                let side = normal.cross(dir);
+                let rot = Quat::from_mat3(&Mat3::from_cols(dir, side, normal));
+                let centre = origin + (a + b) * 0.5 + normal * ((d0 + d1) * 0.5);
+                batch.add_shape(paint_key(s.paint), Cuboid::from_length(1.0), Transform { translation: centre, rotation: rot, scale: Vec3::new(len + thick * h, thick * h, d1 - d0) });
+            }
+            x += w + gap;
+        }
+    }
+    batch.spawn(commands, g, p, "Paint", false);
 }
 
 // ---------------------------------------------------------------- lamps

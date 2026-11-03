@@ -56,7 +56,7 @@ impl Plugin for MapPlugin {
             app.add_control_command(
                 "map.load",
                 "Switch map now (restarts the round)",
-                params(&[("name", "string", "Foundry | Depot | Office | Township")]),
+                params(&[("name", "string", "Sirocco | Gantry | Depot | Township | Office | Foundry")]),
                 map_load_command,
             )
             .add_control_command("map.info", "Current map", params(&[]), map_info_command);
@@ -237,8 +237,9 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
             Transform::from_translation(center),
         ));
         if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
-            // Township lintels are part of their wall: same material as the wall beside them.
-            let wall = (arena.id == MapId::Township).then(|| wall_beside(arena, min, max)).flatten();
+            // Lintels and arches on maps with buildings are part of their wall: same material
+            // as the wall beside them.
+            let wall = matches!(arena.id, MapId::Township | MapId::Sirocco | MapId::Gantry).then(|| wall_beside(arena, min, max)).flatten();
             match wall {
                 Some(k) => {
                     let key = p.block_key(k, &arena.blocks[k]);
@@ -302,7 +303,7 @@ fn parse_map(name: &str) -> Option<MapId> {
 #[cfg(feature = "dev")]
 fn map_load_command(world: &mut World, p: serde_json::Value) -> Result<serde_json::Value, String> {
     let name = p.get("name").and_then(serde_json::Value::as_str).ok_or("`name` (string) is required")?;
-    let id = parse_map(name).ok_or_else(|| format!("unknown map `{name}` (Foundry, Depot, Office, Township)"))?;
+    let id = parse_map(name).ok_or_else(|| format!("unknown map `{name}` (Sirocco, Gantry, Depot, Township, Office, Foundry)"))?;
     if let Some(mut s) = world.get_resource_mut::<ShroudSettings>() {
         s.map = id;
     }
@@ -335,6 +336,8 @@ mod tests {
         assert_eq!(parse_map("office"), Some(MapId::Office));
         assert_eq!(parse_map(" Depot "), Some(MapId::Depot));
         assert_eq!(parse_map("township"), Some(MapId::Township));
+        assert_eq!(parse_map("sirocco"), Some(MapId::Sirocco));
+        assert_eq!(parse_map("Gantry"), Some(MapId::Gantry));
         assert_eq!(parse_map("nuke"), None);
     }
 }
