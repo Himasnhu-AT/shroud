@@ -16,6 +16,9 @@ const SOUNDS: &[(&str, usize)] = &[
     ("smg_shot", 1),
     ("shotgun_shot", 1),
     ("marksman_shot", 1),
+    ("heavy_pistol_shot", 1),
+    ("battle_rifle_shot", 1),
+    ("sniper_shot", 1),
     ("mag_out", 1),
     ("mag_in", 1),
     ("chamber", 1),
@@ -50,6 +53,9 @@ fn shot_name(k: WeaponKind) -> &'static str {
         WeaponKind::Rifle => "rifle_shot",
         WeaponKind::Shotgun => "shotgun_shot",
         WeaponKind::Marksman => "marksman_shot",
+        WeaponKind::HeavyPistol => "heavy_pistol_shot",
+        WeaponKind::BattleRifle => "battle_rifle_shot",
+        WeaponKind::Sniper => "sniper_shot",
     }
 }
 
@@ -74,8 +80,13 @@ fn gun_sounds(
                     WeaponKind::Pistol => 0.8,
                     _ => 0.9,
                 };
-                play(shot_name(kind), Some("rifle_shot"), v);
-                if casings.len() < 4 && !matches!(kind, WeaponKind::Shotgun | WeaponKind::Marksman) {
+                let fallback = match kind {
+                    WeaponKind::HeavyPistol => "pistol_shot",
+                    WeaponKind::Sniper => "marksman_shot",
+                    _ => "rifle_shot",
+                };
+                play(shot_name(kind), Some(if sfx.has(fallback) { fallback } else { "rifle_shot" }), v);
+                if casings.len() < 4 && !matches!(kind, WeaponKind::Shotgun | WeaponKind::Marksman | WeaponKind::Sniper) {
                     casings.push(rand::random_range(0.35..0.55));
                 }
             }

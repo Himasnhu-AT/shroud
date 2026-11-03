@@ -56,7 +56,7 @@ pub struct PickupFocus {
 /// Shared pickup visuals: one scene handle per gun, one primitive mesh + material.
 #[derive(Resource)]
 pub struct PickupAssets {
-    scenes: [Option<Handle<bevy::world_serialization::WorldAsset>>; 5],
+    scenes: [Option<Handle<bevy::world_serialization::WorldAsset>>; WeaponKind::ALL.len()],
     mesh: Handle<Mesh>,
     mat: Handle<StandardMaterial>,
 }

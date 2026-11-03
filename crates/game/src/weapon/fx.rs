@@ -47,9 +47,9 @@ pub fn impact_effect(s: Surface) -> &'static str {
 fn muzzle_effect(k: WeaponKind) -> &'static str {
     match k {
         WeaponKind::Shotgun => "muzzle_shotgun",
-        WeaponKind::Marksman => "muzzle_marksman",
+        WeaponKind::Marksman | WeaponKind::Sniper => "muzzle_marksman",
         WeaponKind::Pistol | WeaponKind::Smg => "muzzle_light",
-        WeaponKind::Rifle => "muzzle_rifle",
+        WeaponKind::Rifle | WeaponKind::BattleRifle | WeaponKind::HeavyPistol => "muzzle_rifle",
     }
 }
 
@@ -268,7 +268,7 @@ fn shot_fx(
         }
         let at = Transform::from_translation(cam.transform_point(muzzle.0)).with_rotation(cam.rotation);
         vfx.play(muzzle_effect(s.kind), at);
-        if !matches!(s.kind, WeaponKind::Shotgun | WeaponKind::Marksman) {
+        if !matches!(s.kind, WeaponKind::Shotgun | WeaponKind::Marksman | WeaponKind::Sniper) {
             eject(s.kind);
         }
     }

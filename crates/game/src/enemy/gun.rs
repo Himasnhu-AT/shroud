@@ -1,12 +1,11 @@
 //! Enemy gun presentation: the gun in the mannequin's right hand (shaped per weapon kind) that
 //! points where the enemy aims, muzzle flashes, short tracers, a glint before an enemy opens
-//! fire and a team tint. (A dead enemy's gun becomes the arsenal's pickup, `weapon::pickups`.) Gameplay only reads
+//! fire. (Team colours and operator kit: `enemy::skin`.) (A dead enemy's gun becomes the arsenal's pickup, `weapon::pickups`.) Gameplay only reads
 //! [`muzzle_point`]; everything else here runs only with visuals.
 //!
 //! Cost: every flash, tracer, glint and muzzle light comes from a small fixed pool spawned once
 //! (shared meshes and materials, hidden when idle); nothing is spawned or allocated per shot.
 
-use std::collections::HashMap;
 use std::f32::consts::PI;
 
 use bevy::prelude::*;
@@ -52,7 +51,7 @@ pub struct GunLink {
 }
 
 #[derive(Component)]
-struct EnemyGun {
+pub(super) struct EnemyGun {
     owner: Entity,
     rot: Option<Quat>,
     /// The kind it is currently showing, and that model's entity.
@@ -127,7 +126,7 @@ impl Plugin for EnemyGunPlugin {
             .add_systems(Startup, setup.run_if(has_visuals))
             .add_systems(
                 Update,
-                (attach_guns, restyle_guns, tint_enemies, drop_guns, spawn_fx, tick_fx).run_if(has_visuals).run_if(resource_exists::<GunParts>),
+                (attach_guns, restyle_guns, drop_guns, spawn_fx, tick_fx).run_if(has_visuals).run_if(resource_exists::<GunParts>),
             );
         app.add_systems(
             PostUpdate,
@@ -277,50 +276,6 @@ fn aim_guns(time: Res<Time>, mut guns: Query<(&mut EnemyGun, &mut Transform, &Ch
         if *tf != local {
             *tf = local;
         }
-    }
-}
-
-/// Team colour: tint every enemy body material red with a little glow so they pop. One tinted
-/// material per source material, shared by every enemy.
-fn tint_enemies(
-    mut commands: Commands,
-    added: Query<(Entity, &MeshMaterial3d<StandardMaterial>), Added<MeshMaterial3d<StandardMaterial>>>,
-    parents: Query<&ChildOf>,
-    enemies: Query<(), With<Enemy>>,
-    guns: Query<(), With<EnemyGun>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cache: Local<HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>>,
-) {
-    for (e, mat) in &added {
-        if cache.values().any(|h| h.id() == mat.id()) {
-            continue;
-        }
-        let mut a = e;
-        let mut is_gun = false;
-        while let Ok(p) = parents.get(a) {
-            a = p.parent();
-            is_gun |= guns.contains(a);
-        }
-        if is_gun || owner_enemy(e, &parents, &enemies).is_none() {
-            continue;
-        }
-        let tinted = match cache.get(&mat.id()) {
-            Some(h) => h.clone(),
-            None => {
-                let Some(orig) = materials.get(&mat.0).cloned() else { continue };
-                let c = orig.base_color.to_linear();
-                let lum = (c.red + c.green + c.blue) / 3.0;
-                let tinted = materials.add(StandardMaterial {
-                    base_color: LinearRgba::rgb(0.08 + lum * 0.9, 0.012 + lum * 0.08, 0.01 + lum * 0.06).into(),
-                    emissive: LinearRgba::rgb(0.9, 0.06, 0.03),
-                    perceptual_roughness: 0.55,
-                    ..orig
-                });
-                cache.insert(mat.id(), tinted.clone());
-                tinted
-            }
-        };
-        commands.entity(e).insert(MeshMaterial3d(tinted));
     }
 }
 

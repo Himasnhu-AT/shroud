@@ -46,6 +46,9 @@ pub fn draw_time(kind: WeaponKind) -> f32 {
         WeaponKind::Rifle => 0.5,
         WeaponKind::Shotgun => 0.55,
         WeaponKind::Marksman => 0.65,
+        WeaponKind::HeavyPistol => 0.38,
+        WeaponKind::BattleRifle => 0.55,
+        WeaponKind::Sniper => 0.8,
     }
 }
 
@@ -54,7 +57,7 @@ pub fn draw_time(kind: WeaponKind) -> f32 {
 pub enum Optic {
     /// Kestrel: wide low-power optic, red dot in a ring.
     Reflex,
-    /// Longbow: magnified scope, black surround, hairline reticle.
+    /// Longbow / Osprey: magnified scope, black surround, hairline reticle.
     Scope,
 }
 
@@ -62,7 +65,7 @@ impl Optic {
     pub fn of(kind: WeaponKind) -> Option<Optic> {
         match kind {
             WeaponKind::Rifle => Some(Optic::Reflex),
-            WeaponKind::Marksman => Some(Optic::Scope),
+            WeaponKind::Marksman | WeaponKind::Sniper => Some(Optic::Scope),
             _ => None,
         }
     }

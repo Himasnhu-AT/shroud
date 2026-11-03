@@ -138,6 +138,45 @@ pub fn fit(kind: WeaponKind) -> Fit {
             1.3,
             Vec3::new(0.07, 0.1, 0.72),
         ),
+        WeaponKind::HeavyPistol => (
+            "models/weapons/pistol.glb",
+            0.46,
+            Vec3::new(0.0, -0.06, 0.15),
+            Vec3::new(0.0, 0.017, -0.238),
+            0.16,
+            Vec3::ZERO,
+            Vec3::new(0.16, -0.165, -0.34),
+            -0.36,
+            40.0,
+            1.0,
+            Vec3::new(0.055, 0.09, 0.26),
+        ),
+        WeaponKind::BattleRifle => (
+            "models/weapons/rifle.glb",
+            0.46,
+            Vec3::new(-0.045, -0.08, 1.0),
+            Vec3::new(-0.045, 0.03, 0.0),
+            0.15,
+            Vec3::new(-0.045, -0.0125, 0.695),
+            Vec3::new(0.2, -0.2, -0.28),
+            -0.32,
+            38.0,
+            1.1,
+            Vec3::new(0.07, 0.1, 0.62),
+        ),
+        WeaponKind::Sniper => (
+            "models/weapons/marksman.glb",
+            0.56,
+            Vec3::new(0.0, -0.06, 0.36),
+            Vec3::new(0.0, 0.05, -0.655),
+            0.1825,
+            Vec3::ZERO,
+            Vec3::new(0.2, -0.2, -0.28),
+            -0.24,
+            75.0,
+            1.5,
+            Vec3::new(0.075, 0.11, 0.85),
+        ),
     };
     Fit {
         path,
@@ -429,7 +468,7 @@ fn animate_viewmodel(
     } else {
         0.0
     };
-    let bolt = w.kind == WeaponKind::Marksman;
+    let bolt = matches!(w.kind, WeaponKind::Marksman | WeaponKind::Sniper);
     // Inspect: turn the gun to show its side.
     let insp = if w.inspect > 0.0 {
         let u = 1.0 - w.inspect / INSPECT_S;

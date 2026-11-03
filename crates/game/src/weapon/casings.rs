@@ -25,8 +25,11 @@ const REST_SPEED: f32 = 0.45;
 fn shape(kind: WeaponKind) -> (f32, f32, bool) {
     match kind {
         WeaponKind::Pistol | WeaponKind::Smg => (0.006, 0.024, false),
+        WeaponKind::HeavyPistol => (0.0072, 0.03, false),
         WeaponKind::Rifle => (0.0062, 0.048, false),
+        WeaponKind::BattleRifle => (0.0068, 0.05, false),
         WeaponKind::Marksman => (0.007, 0.058, false),
+        WeaponKind::Sniper => (0.0078, 0.07, false),
         WeaponKind::Shotgun => (0.0105, 0.065, true),
     }
 }
