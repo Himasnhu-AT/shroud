@@ -111,10 +111,28 @@ fn arsenal_over_the_control_port() {
     std::thread::sleep(Duration::from_millis(300));
     exec(&mut c, "enemy.freeze", json!({"on": true}));
 
-    // Default loadout: Kestrel rifle + pistol.
+    // Round 1 of a match: pistol only, $800, no freeze time in test runs.
+    let s = exec(&mut c, "weapon.state", json!({}));
+    assert_eq!(s["kind"], json!("Pistol"), "{s}");
+    assert_eq!(s["slots"][1]["kind"], json!("Pistol"), "{s}");
+    let e = exec(&mut c, "econ.state", json!({}));
+    assert_eq!(e["money"], json!(800), "{e}");
+    assert_eq!(e["freeze_left"], json!(0.0), "{e}");
+
+    // Buy menu rules: too poor for a rifle; with money it's bought, drawn and paid for.
+    let poor = c.call("engine.execute", json!({"command": "buy", "params": {"item": "rifle"}}));
+    assert!(poor.is_err(), "bought a rifle with $800: {poor:?}");
+    exec(&mut c, "econ.set_money", json!({"money": 5000}));
+    let bought = exec(&mut c, "buy", json!({"item": "rifle"}));
+    assert_eq!(bought["money"], json!(5000 - 2900), "{bought}");
+    let bought = exec(&mut c, "buy", json!({"item": "helmet"}));
+    assert_eq!(bought["money"], json!(5000 - 2900 - 1000), "{bought}");
     let s = exec(&mut c, "weapon.state", json!({}));
     assert_eq!(s["kind"], json!("Rifle"), "{s}");
-    assert_eq!(s["slots"][1]["kind"], json!("Pistol"), "{s}");
+    let e = exec(&mut c, "econ.state", json!({}));
+    assert_eq!(e["armor"]["helmet"], json!(true), "{e}");
+    let owned = c.call("engine.execute", json!({"command": "buy", "params": {"item": "rifle"}}));
+    assert!(owned.is_err(), "bought the rifle twice: {owned:?}");
 
     // Pump shotgun: one trigger pull per shot, one shell gone per shot.
     exec(&mut c, "weapon.give", json!({"kind": "shotgun"}));

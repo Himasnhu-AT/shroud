@@ -25,9 +25,15 @@ impl Plugin for StatePlugin {
 }
 
 /// Esc pauses and the cursor is captured only during a round; the evolving and debrief screens
-/// keep the pointer free and handle Esc themselves.
-fn rounds_only(state: Option<Res<State<GameState>>>, mut pause: ResMut<PauseAllowed>, mut cursor: ResMut<CaptureCursor>) {
-    let playing = state.is_some_and(|s| *s.get() == GameState::Playing);
+/// keep the pointer free and handle Esc themselves. The buy menu frees the pointer too, and Esc
+/// closes it instead of pausing.
+fn rounds_only(
+    state: Option<Res<State<GameState>>>,
+    buy: Option<Res<crate::economy::BuyMenu>>,
+    mut pause: ResMut<PauseAllowed>,
+    mut cursor: ResMut<CaptureCursor>,
+) {
+    let playing = state.is_some_and(|s| *s.get() == GameState::Playing) && !buy.is_some_and(|b| b.open);
     if pause.0 != playing {
         pause.0 = playing;
     }

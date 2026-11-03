@@ -5,6 +5,7 @@ pub mod arena;
 pub mod bandit;
 pub mod building;
 pub mod difficulty;
+pub mod economy;
 pub mod encircle;
 pub mod evolve;
 pub mod genome;

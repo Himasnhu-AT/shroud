@@ -11,7 +11,7 @@ use engine::settings::CoreSettings;
 
 use super::{Armed, GunEvent, WeaponKind, WeaponSet, approach, ease};
 use crate::player::{Player, PlayerIntent, PlayerSet};
-use crate::settings::ShroudSettings;
+use crate::economy::{BuyMenu, RoundLoadout};
 use crate::state::{GameState, has_visuals};
 
 /// Holster time before the next gun starts coming up.
@@ -25,7 +25,7 @@ pub(super) fn build(app: &mut App) {
     app.init_resource::<WeaponInput>()
         .init_resource::<WeaponOverride>()
         .add_systems(PostStartup, equip_player)
-        .add_systems(OnEnter(GameState::Playing), reset_loadout.after(crate::map::MapSet))
+        .add_systems(OnEnter(GameState::Playing), reset_loadout.after(crate::map::MapSet).after(crate::economy::start_round))
         .add_systems(
             Update,
             (
@@ -93,8 +93,14 @@ pub struct Arsenal {
 }
 
 impl Arsenal {
+    #[cfg(test)]
     pub fn new(primary: WeaponKind) -> Self {
         Self { slots: [Some(GunState::full(primary)), Some(GunState::full(WeaponKind::Pistol))], active: 0, last: 1 }
+    }
+
+    /// The gun in the active slot (the pistol if that slot is somehow empty).
+    pub fn active_gun(&self) -> GunState {
+        self.slots.get(self.active).copied().flatten().or(self.slots.iter().flatten().next().copied()).unwrap_or(GunState::full(WeaponKind::Pistol))
     }
 }
 
@@ -237,20 +243,21 @@ pub struct WeaponOverride {
     pub inspect: bool,
 }
 
-fn equip_player(mut commands: Commands, settings: Res<ShroudSettings>, players: Query<Entity, (With<Player>, Without<Weapon>)>) {
+fn equip_player(mut commands: Commands, loadout: Res<RoundLoadout>, players: Query<Entity, (With<Player>, Without<Weapon>)>) {
     for e in &players {
-        let a = Arsenal::new(settings.primary);
-        let mut w = Weapon::new(a.slots[0].unwrap_or(GunState::full(WeaponKind::Rifle)));
+        let a = loadout.arsenal();
+        let mut w = Weapon::new(a.active_gun());
         w.phase = Phase::Ready;
         commands.entity(e).insert((Armed(w.kind), w, a));
     }
 }
 
-/// Every round starts with the chosen primary + pistol, full ammo, primary drawn.
-pub fn reset_loadout(mut commands: Commands, settings: Res<ShroudSettings>, players: Query<Entity, With<Player>>) {
+/// Every round starts with what the player kept (`economy::RoundLoadout`: the guns they survived
+/// with, or the pistol alone), full ammo, the best gun drawn.
+pub fn reset_loadout(mut commands: Commands, loadout: Res<RoundLoadout>, players: Query<Entity, With<Player>>) {
     for e in &players {
-        let a = Arsenal::new(settings.primary);
-        let w = Weapon::new(a.slots[0].unwrap_or(GunState::full(WeaponKind::Rifle)));
+        let a = loadout.arsenal();
+        let w = Weapon::new(a.active_gun());
         commands.entity(e).insert((Armed(w.kind), w, a));
     }
 }
@@ -260,14 +267,19 @@ fn read_input(
     mouse: Option<Res<ButtonInput<MouseButton>>>,
     scroll: Option<Res<AccumulatedMouseScroll>>,
     captured: Res<CursorCaptured>,
+    buy: Res<BuyMenu>,
     mut input: ResMut<WeaponInput>,
 ) {
     let (Some(keys), Some(mouse)) = (keys, mouse) else { return };
     let live = captured.0;
+    // The buy menu owns the number keys while it is open.
+    let slots = !buy.open;
     let wheel = scroll.map_or(0.0, |s| s.delta.y);
     let new = WeaponInput {
         ads: live && mouse.pressed(MouseButton::Right),
-        select: if keys.just_pressed(KeyCode::Digit1) {
+        select: if !slots {
+            None
+        } else if keys.just_pressed(KeyCode::Digit1) {
             Some(0)
         } else if keys.just_pressed(KeyCode::Digit2) {
             Some(1)
