@@ -6,3 +6,9 @@
 .claude/worktrees/
 graft/.cache/
 /dist
+
+# Generated from Epic MetaHuman DNA (MetaHuman license, not CC0): see scripts/make-metahuman.sh
+/assets/models/metahuman/
+/scripts/metahuman/Saved/
+/scripts/metahuman/Intermediate/
+/scripts/metahuman/DerivedDataCache/

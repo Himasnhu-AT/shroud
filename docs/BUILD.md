@@ -16,7 +16,7 @@ memgate status          # running + queued jobs, free memory
 
 ## Cargo settings
 - `.cargo/config.toml`: **one shared target dir** for all git worktrees (build jobs and test threads come from memgate)
-  (`/Users/himanshu/codes/game/shroud/target`). Bevy is compiled once; parallel builds queue on cargo's lock.
+  (`/Users/himanshu/codes/game/engine/target`, the engine's: every game shares it). Bevy is compiled once; parallel builds queue on cargo's lock.
 - Profiles: deps at `opt-level = 3` without debug info; our crates at `opt-level = 1` with line tables only.
 - No `--release` builds unless needed (it doubles disk use).
 

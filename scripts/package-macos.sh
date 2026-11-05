@@ -5,7 +5,8 @@
 #   NOTARIZE=0 scripts/package-macos.sh # skip notarization (local test)
 #
 # Env: SIGN_ID (Developer ID Application identity), NOTARY_PROFILE (notarytool keychain profile),
-#      BUNDLE_ID, VERSION. Output: dist/Shroud-<version>.dmg
+#      BUNDLE_ID, VERSION. Output: dist/Shroud-<version>.dmg, and
+#      dist/shroud-<version>-macos-universal.zip (the stapled app, for itch.io / butler).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
@@ -17,6 +18,7 @@ BUILD="$(git rev-list --count HEAD)"
 NOTARIZE="${NOTARIZE:-1}"
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')"
 DIST="$ROOT/dist"; APP="$DIST/Shroud.app"; DMG="$DIST/Shroud-$VERSION.dmg"
+ZIP="$DIST/shroud-$VERSION-macos-universal.zip"
 export MACOSX_DEPLOYMENT_TARGET=12.0
 
 step() { printf '\n==> %s\n' "$*"; }
@@ -26,14 +28,16 @@ if cargo tree -p game --no-default-features -e normal | grep ashlar; then echo "
 
 step "Build release (no dev tooling) for arm64 and x86_64"
 for t in aarch64-apple-darwin x86_64-apple-darwin; do
-  memgate --profile release -- cargo build --release -p game --no-default-features --target "$t"
+  SMTP_USER= SMTP_PASS= memgate --profile release -- cargo build --release -p game --no-default-features --target "$t"
 done
 
 step "Assemble Shroud.app"
 rm -rf "$APP" "$DMG"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create -output "$APP/Contents/MacOS/shroud" \
   "$TARGET_DIR/aarch64-apple-darwin/release/shroud" "$TARGET_DIR/x86_64-apple-darwin/release/shroud"
-rsync -a --exclude '.DS_Store' --exclude '*.md' assets/ "$APP/Contents/Resources/assets/"
+# models/metahuman is Epic content generated locally (MetaHuman license): never shipped; the
+# game falls back to the CC0 mannequin enemy and hands.
+rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' assets/ "$APP/Contents/Resources/assets/"
 cp assets/CREDITS.md "$APP/Contents/Resources/CREDITS.md"
 sed -e "s/__BUNDLE_ID__/$BUNDLE_ID/" -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" packaging/Info.plist > "$APP/Contents/Info.plist"
 [ -f packaging/AppIcon.icns ] && cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -46,7 +50,7 @@ codesign --verify --strict --deep --verbose=2 "$APP"
 
 step "Make DMG"
 STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-cp packaging/README-friends.txt "$STAGE/Read me first.txt"
+sed 's|__DATA_DIR__|~/Library/Application Support/shroud|' packaging/README.txt >"$STAGE/Read me first.txt"
 hdiutil create -volname "Shroud" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
@@ -60,4 +64,7 @@ if [ "$NOTARIZE" = "1" ]; then
   spctl -a -t open --context context:primary-signature -vv "$DMG"
   spctl -a -t exec -vv "$APP"
 fi
-step "Done: $DMG ($(du -h "$DMG" | cut -f1))"
+step "Zip the app for itch.io"
+rm -f "$ZIP"
+( cd "$DIST" && ditto -c -k --keepParent Shroud.app "$ZIP" )
+step "Done: $DMG ($(du -h "$DMG" | cut -f1)), $ZIP ($(du -h "$ZIP" | cut -f1))"

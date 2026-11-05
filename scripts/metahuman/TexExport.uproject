@@ -1,0 +1,2 @@
+{ "FileVersion": 3, "EngineAssociation": "5.8", "Category": "", "Description": "",
+  "Plugins": [ {"Name": "PythonScriptPlugin", "Enabled": true}, {"Name": "MetaHuman", "Enabled": true}, {"Name": "MetaHumanCharacter", "Enabled": true} ] }

@@ -20,6 +20,7 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `models/props/crate-medium.glb` | Blaster Kit 2.1 (`crate-medium`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/props/crate-small.glb` | Blaster Kit 2.1 (`crate-small`) | Kenney (kenney.nl) | https://kenney.nl/assets/blaster-kit | CC0 1.0 |
 | `models/enemy.glb` | Universal Animation Library [Standard] (`Unreal-Godot/UAL1_Standard.glb`, unmodified) | Quaternius (quaternius.com) | https://quaternius.itch.io/universal-animation-library · https://quaternius.com/packs/universalanimationlibrary.html | CC0 1.0 |
+| `models/ual2/UAL2_Standard.glb` | Universal Animation Library 2 [Standard] (`Unreal-Godot/UAL2_Standard.glb`, unmodified; clips baked onto the MetaHuman enemy) | Quaternius (quaternius.com) | https://quaternius.com/packs/universalanimationlibrary2.html · https://opengameart.org/content/universal-animation-library-2 | CC0 1.0 |
 | `textures/floor/*` | Concrete047A (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete047A | CC0 1.0 |
 | `textures/wall/*` | Concrete034 (1K JPG: Color, NormalGL, Roughness) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Concrete034 | CC0 1.0 |
 | `textures/tall/*` | PaintedMetal006 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedMetal006 | CC0 1.0 |
@@ -114,3 +115,5 @@ Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back t
 |---|---|---|---|---|
 | `fonts/Barlow-Medium.ttf`, `fonts/Barlow-SemiBold.ttf` | Barlow | Jeremy Tribby (The Barlow Project Authors) | https://fonts.google.com/specimen/Barlow | OFL 1.1 |
 | `fonts/BarlowCondensed-SemiBold.ttf`, `fonts/BarlowCondensed-Bold.ttf` | Barlow Condensed | Jeremy Tribby (The Barlow Project Authors) | https://fonts.google.com/specimen/Barlow+Condensed | OFL 1.1 |
+
+Not CC0, not committed: `models/metahuman/` is generated locally by `scripts/make-metahuman.sh` from Epic's MetaHuman DNA files (UE 5.8 install or MetaHuman Creator export) under the MetaHuman license. The game falls back to `models/enemy.glb` when it is missing.

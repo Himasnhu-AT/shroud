@@ -24,7 +24,7 @@ use brain::sim::{CROUCH_SPEED, SPRINT, VISION_HALF_ANGLE, VISION_RANGE, WALK};
 pub use brain::loadout::{GunState, Role};
 
 use crate::armed::Armed;
-use crate::assets::{AssetsDir, ENEMY_MODEL};
+use crate::assets::{AssetsDir, enemy_model, enemy_model_scale, load_enemy};
 use crate::map::{ArenaRes, to_ground, to_world};
 use crate::player::{Player, collide_and_slide};
 use engine::fps::FpsMotor;
@@ -228,10 +228,12 @@ pub fn spawn_squad(
     }
     squad.dead_reports.clear();
     squad.coord = None;
+    let model_path = enemy_model(&assets_dir);
+    let model_scale = enemy_model_scale(model_path);
     let model = match (&asset_server, headless.0) {
-        (Some(server), false) if assets_dir.has(ENEMY_MODEL) => Some(server.load::<bevy::world_serialization::WorldAsset>(
-            bevy::gltf::GltfAssetLabel::Scene(0).from_asset(ENEMY_MODEL),
-        )),
+        (Some(server), false) if assets_dir.has(model_path) => {
+            Some(load_enemy::<bevy::world_serialization::WorldAsset>(server, model_path, Some(bevy::gltf::GltfAssetLabel::Scene(0))))
+        }
         _ => None,
     };
     let visuals = match (headless.0, meshes, materials) {
@@ -340,7 +342,7 @@ pub fn spawn_squad(
                 // Its lean roll changes on the fixed tick: ease it too.
                 TransformInterpolation,
                 bevy::world_serialization::WorldAssetRoot(scene.clone()),
-                Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+                Transform::from_rotation(Quat::from_rotation_y(std::f32::consts::PI)).with_scale(Vec3::splat(model_scale)),
                 ChildOf(root),
             ));
         }

@@ -17,6 +17,10 @@
 //! placed in the character's frame from the bones' pose a few frames after the scene spawns
 //! (idle), then parented to the bone so they follow the animation.
 //! Missing model: enemies stay primitives and none of this runs.
+//!
+//! MetaHuman enemy (`models/metahuman/enemy_mh.glb`, when generated): its body mesh takes the
+//! fatigues (a full-body uniform), the head, eyes and teeth keep their own materials. Its bones
+//! run along X rather than Y, so limb gear is placed along each bone's direction to its child.
 
 use std::collections::HashMap;
 
@@ -27,9 +31,10 @@ use bevy::prelude::*;
 use super::Enemy;
 use crate::state::has_visuals;
 
-/// Bones the kit hangs on (Quaternius UAL names).
-const HEAD: &str = "Head";
-const CHEST: &str = "spine_03";
+/// Bones the kit hangs on (Quaternius UAL names; MetaHuman: `head`, chest `spine_05`).
+const HEADS: [&str; 2] = ["Head", "head"];
+/// Chest bones, best last: a MetaHuman has spine_03 too, but lower down.
+const CHESTS: [&str; 2] = ["spine_03", "spine_05"];
 const HANDS: [&str; 2] = ["hand_l", "hand_r"];
 const CALVES: [&str; 2] = ["calf_l", "calf_r"];
 const ARM_L: &str = "upperarm_l";
@@ -85,6 +90,8 @@ fn looks() -> [Look; 3] {
 #[derive(Resource)]
 struct Kit {
     fatigues: [Handle<StandardMaterial>; 3],
+    /// Same fabric at the MetaHuman body's UV scale (one 0..1 map for the whole body).
+    fatigues_mh: [Handle<StandardMaterial>; 3],
     base: [Handle<StandardMaterial>; 3],
     gear: [Handle<StandardMaterial>; 3],
     helmet_mat: [Handle<StandardMaterial>; 3],
@@ -105,6 +112,8 @@ struct Rig {
     hands: [Option<Entity>; 2],
     calves: [Option<Entity>; 2],
     arm: Option<Entity>,
+    /// Rank in [`CHESTS`] of the chest found so far.
+    chest_rank: usize,
     frames: u8,
 }
 
@@ -142,6 +151,7 @@ fn mat(materials: &mut Assets<StandardMaterial>, c: Color, rough: f32) -> Handle
 /// UV repeats of the ripstop weave across the mannequin's texture atlas (a fine weave, not a
 /// pattern you notice at range).
 const FABRIC_REPEAT: f32 = 4.0;
+const FABRIC_REPEAT_MH: f32 = 14.0;
 
 fn setup(
     mut commands: Commands,
@@ -168,6 +178,10 @@ fn setup(
             None => mat(&mut materials, l[i].fatigues, 0.85),
         }
     });
+    let fatigues_mh = std::array::from_fn(|i| {
+        let m = materials.get(&fatigues[i]).cloned().unwrap_or_default();
+        materials.add(StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(FABRIC_REPEAT_MH)), ..m })
+    });
     let base = std::array::from_fn(|i| mat(&mut materials, l[i].base, 0.8));
     let gear = std::array::from_fn(|i| mat(&mut materials, l[i].gear, 0.75));
     let helmet_mat = std::array::from_fn(|i| mat(&mut materials, l[i].helmet, 0.6));
@@ -182,6 +196,7 @@ fn setup(
     let vest = std::array::from_fn(|i| meshes.add(vest_mesh(l[i].pack)));
     commands.insert_resource(Kit {
         fatigues,
+        fatigues_mh,
         base,
         gear,
         helmet_mat,
@@ -310,8 +325,14 @@ fn find_bones(
     for (e, name) in &names {
         let n = name.as_str();
         let slot = |r: &mut Rig| match n {
-            HEAD => r.head = Some(e),
-            CHEST => r.chest = Some(e),
+            _ if HEADS.contains(&n) => r.head = Some(e),
+            _ if CHESTS.contains(&n) => {
+                let rank = CHESTS.iter().position(|c| *c == n).unwrap_or(0) + 1;
+                if rank > r.chest_rank {
+                    r.chest = Some(e);
+                    r.chest_rank = rank;
+                }
+            }
             ARM_L => r.arm = Some(e),
             _ => {
                 if let Some(i) = HANDS.iter().position(|h| *h == n) {
@@ -321,7 +342,7 @@ fn find_bones(
                 }
             }
         };
-        if n != HEAD && n != CHEST && n != ARM_L && !HANDS.contains(&n) && !CALVES.contains(&n) {
+        if !HEADS.contains(&n) && !CHESTS.contains(&n) && n != ARM_L && !HANDS.contains(&n) && !CALVES.contains(&n) {
             continue;
         }
         let Some(root) = owner(e, &parents, &enemies) else { continue };
@@ -343,7 +364,31 @@ fn dress(
     kit: Res<Kit>,
     mut rigs: Query<(Entity, &Enemy, &mut Rig, &GlobalTransform), Without<Dressed>>,
     globals: Query<&GlobalTransform>,
+    children: Query<&Children>,
+    locals: Query<&Transform>,
 ) {
+    // A bone's direction and length in its own space: towards its farthest child (UAL bones run
+    // along +Y, MetaHuman bones along ±X).
+    let axis = |bone: Entity| -> (Vec3, f32) {
+        let far = children
+            .get(bone)
+            .ok()
+            .and_then(|c| c.iter().filter_map(|c| locals.get(c).ok().map(|t| t.translation)).max_by(|a, b| a.length().total_cmp(&b.length())));
+        match far {
+            Some(t) if t.length() > 1e-4 => (t.normalize(), t.length()),
+            _ => (Vec3::Y, 0.0),
+        }
+    };
+    // Along the bone: `along` metres from its origin (or `frac` of its length when it has one),
+    // a unit mesh's +Y on the bone's axis.
+    let on_bone = |bone: Entity, along: f32, frac: Option<f32>, scale: Vec3| -> Transform {
+        let (dir, len) = axis(bone);
+        let d = match frac {
+            Some(f) if len > 0.0 => f * len,
+            _ => along,
+        };
+        Transform::from_translation(dir * d).with_rotation(Quat::from_rotation_arc(Vec3::Y, dir)).with_scale(scale)
+    };
     for (e, enemy, mut rig, root) in &mut rigs {
         let (Some(head), Some(chest)) = (rig.head, rig.chest) else { continue };
         rig.frames = rig.frames.saturating_add(1);
@@ -362,21 +407,23 @@ fn dress(
         let mut put = |bone: Entity, tf: Transform, mesh: &Handle<Mesh>, mat: &Handle<StandardMaterial>| {
             commands.spawn((Name::new("kit"), Gear, Mesh3d(mesh.clone()), MeshMaterial3d(mat.clone()), tf, ChildOf(bone)));
         };
-        if let Some(tf) = upright(head, Vec3::new(0.0, 0.1, 0.005)) {
+        // The MetaHuman's head bone sits lower in the skull than the mannequin's.
+        let helmet_y = if rig.chest_rank == CHESTS.len() { 0.07 } else { 0.1 };
+        if let Some(tf) = upright(head, Vec3::new(0.0, helmet_y, 0.005)) {
             put(head, tf, &kit.helmet, &kit.helmet_mat[v]);
         }
         if let Some(tf) = upright(chest, Vec3::new(0.0, 0.02, -0.01)) {
             put(chest, tf, &kit.vest[v], &kit.gear[v]);
         }
-        // Limbs in bone space: the bones run along +Y.
+        // Limbs along their bones (boots near the ankle: 0.86 of the calf).
         for hand in rig.hands.into_iter().flatten() {
-            put(hand, Transform::from_xyz(0.0, 0.05, 0.0).with_scale(Vec3::new(0.05, 0.075, 0.05)), &kit.glove, &kit.black);
+            put(hand, on_bone(hand, 0.05, None, Vec3::new(0.05, 0.075, 0.05)), &kit.glove, &kit.black);
         }
         for calf in rig.calves.into_iter().flatten() {
-            put(calf, Transform::from_xyz(0.0, 0.37, 0.0).with_scale(Vec3::new(0.066, 0.13, 0.066)), &kit.boot, &kit.black);
+            put(calf, on_bone(calf, 0.37, Some(0.86), Vec3::new(0.066, 0.13, 0.066)), &kit.boot, &kit.black);
         }
         if let Some(arm) = rig.arm {
-            put(arm, Transform::from_xyz(0.0, 0.12, 0.0).with_scale(Vec3::new(0.062, 0.06, 0.062)), &kit.band, &kit.accent);
+            put(arm, on_bone(arm, 0.12, None, Vec3::new(0.062, 0.06, 0.062)), &kit.band, &kit.accent);
         }
         commands.entity(e).insert(Dressed);
     }
@@ -391,9 +438,17 @@ fn recolour(
     parents: Query<&ChildOf>,
     enemies: Query<&Enemy>,
     guns: Query<(), With<super::gun::EnemyGun>>,
+    names: Query<&Name>,
     materials: Res<Assets<StandardMaterial>>,
 ) {
     for (e, m) in &added {
+        // MetaHuman parts by mesh name (on the entity or its node).
+        let named = |prefix: &str| {
+            names.get(e).is_ok_and(|n| n.as_str().starts_with(prefix))
+                || parents.get(e).ok().and_then(|p| names.get(p.parent()).ok()).is_some_and(|n| n.as_str().starts_with(prefix))
+        };
+        let mh_body = named("body_lod") || named("combined_lod");
+        let mh_other = ["head_lod", "teeth_lod", "eyeLeft_lod", "eyeRight_lod", "eyelashes_lod"].iter().any(|p| named(p));
         let mut a = e;
         let mut enemy = None;
         let mut gun = false;
@@ -406,7 +461,13 @@ fn recolour(
             }
         }
         let Some(v) = enemy else { continue };
-        if gun || kit.fatigues.contains(&m.0) || kit.base.contains(&m.0) {
+        if gun || mh_other || kit.fatigues.contains(&m.0) || kit.fatigues_mh.contains(&m.0) || kit.base.contains(&m.0) {
+            continue;
+        }
+        if mh_body {
+            if m.0 != kit.fatigues_mh[v] {
+                commands.entity(e).insert(MeshMaterial3d(kit.fatigues_mh[v].clone()));
+            }
             continue;
         }
         // M_Main is the light (orange) body, M_Joints the darker segments.

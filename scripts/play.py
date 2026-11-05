@@ -30,7 +30,7 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # Build *this* checkout and snapshot the binary right away: the shared target dir means
     # another worktree's build can overwrite target/debug/shroud at any moment.
-    src = args[args.index("--exe") + 1] if "--exe" in args else "/Users/himanshu/codes/game/shroud/target/debug/shroud"
+    src = args[args.index("--exe") + 1] if "--exe" in args else "/Users/himanshu/codes/game/engine/target/debug/shroud"
     if "--no-build" not in args and "--exe" not in args:
         subprocess.run(["memgate", "--", "cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
     exe = os.path.join(out, "shroud")

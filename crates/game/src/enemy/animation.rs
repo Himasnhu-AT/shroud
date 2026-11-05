@@ -24,7 +24,7 @@ use bevy::prelude::*;
 use engine::anim::{AnimGraphDef, AnimLayer, AnimState, AnimSystems, AnimateScene, Animator, BoneMask, Cond, LookAt, Motion, ParamValue, Skeleton, Transition};
 
 use super::{Enemy, EnemyCombat, ModelRoot};
-use crate::assets::{AssetsDir, ENEMY_MODEL};
+use crate::assets::{AssetsDir, enemy_model, load_enemy};
 use crate::state::has_visuals;
 
 /// Clip names per role; the first one found wins (later ones are fallbacks).
@@ -148,8 +148,9 @@ impl Plugin for EnemyAnimationPlugin {
 }
 
 fn load(mut commands: Commands, dir: Res<AssetsDir>, server: Res<AssetServer>) {
-    if dir.has(ENEMY_MODEL) {
-        commands.insert_resource(EnemyAnims { gltf: server.load(ENEMY_MODEL), def: None, failed: false });
+    let model = enemy_model(&dir);
+    if dir.has(model) {
+        commands.insert_resource(EnemyAnims { gltf: load_enemy(&server, model, None), def: None, failed: false });
     }
 }
 

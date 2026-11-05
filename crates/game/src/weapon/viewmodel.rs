@@ -332,6 +332,7 @@ pub fn spawn_gun_model(commands: &mut Commands, server: &AssetServer, dir: &Asse
 /// shared primitives (no rigged arm asset yet: see TODO.md, Phase 7). Children of each gun so
 /// they follow every gun animation. Rounded forearms, gloved fingers wrapped round the grip and
 /// the support hand, a field watch on the left wrist.
+#[derive(Clone)]
 struct HandKit {
     tube: Handle<Mesh>,
     ball: Handle<Mesh>,
@@ -470,6 +471,56 @@ fn spawn_hands(commands: &mut Commands, k: &HandKit, f: &Fit, gun: Entity) {
     }
 }
 
+/// MetaHuman hands for the first-person view (`models/metahuman/hands_mh.glb`, made by
+/// `scripts/make-metahuman.sh`; Epic content, so optional). Each mesh sits in its grip frame:
+/// origin at the palm centre, +Y hand forward (wrist → middle knuckle), +X the palm normal
+/// (towards what it holds).
+pub const MH_HANDS: &str = "models/metahuman/hands_mh.glb";
+
+struct MhHands {
+    right: Handle<Mesh>,
+    left: Handle<Mesh>,
+    skin: Handle<StandardMaterial>,
+}
+
+/// Grip frame → gun space: the hand points from `wrist` to `palm`, palm facing `palm_normal`.
+fn grip_rot(palm_normal: Vec3, wrist: Vec3, palm: Vec3) -> Quat {
+    let y = (palm - wrist).normalize();
+    let x = (palm_normal - y * palm_normal.dot(y)).normalize();
+    Quat::from_mat3(&Mat3::from_cols(x, y, x.cross(y)))
+}
+
+fn spawn_mh_hands(commands: &mut Commands, k: &HandKit, mh: &MhHands, f: &Fit, gun: Entity) {
+    let sc = if f.pistol { 0.75 } else { 1.0 };
+    let put = |commands: &mut Commands, mesh: &Handle<Mesh>, at: Vec3, rot: Quat, scale: f32| {
+        commands.spawn((
+            Name::new("arm"),
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(mh.skin.clone()),
+            Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::splat(scale)),
+            ChildOf(gun),
+        ));
+    };
+    // Bare wrists: the forearm's glove cuff becomes skin.
+    let bare = HandKit { glove: mh.skin.clone(), ..k.clone() };
+    // Firing hand: palm on the right of the grip facing it, the hand rising from the wrist.
+    let (palm, wrist) = (Vec3::new(0.026, -0.03, 0.012) * sc, Vec3::new(0.022, -0.06, 0.05) * sc);
+    put(commands, &mh.right, palm, grip_rot(-Vec3::X, wrist, palm), sc);
+    arm(commands, &bare, gun, wrist, Vec3::new(0.2, -0.36, 0.36), None);
+    let s = f.support;
+    if f.pistol {
+        // Cupping the firing hand from the left.
+        let (palm, wrist) = (s + Vec3::new(-0.018, -0.004, 0.0), s + Vec3::new(-0.02, -0.04, 0.04));
+        put(commands, &mh.left, palm, grip_rot(Vec3::X, wrist, palm), sc);
+        arm(commands, &bare, gun, wrist, s + Vec3::new(-0.24, -0.36, 0.3), Some(Vec3::new(-1.0, 0.6, 0.0)));
+    } else {
+        // Palm up under the handguard, reaching forward.
+        let (palm, wrist) = (s + Vec3::new(0.0, -0.04, 0.006), s + Vec3::new(-0.01, -0.05, 0.05));
+        put(commands, &mh.left, palm, grip_rot(Vec3::Y, wrist, palm), 1.0);
+        arm(commands, &bare, gun, wrist, s + Vec3::new(-0.22, -0.34, 0.36), Some(Vec3::new(-1.0, 0.5, 0.0)));
+    }
+}
+
 /// The combat shirt sleeves in the ripstop fabric set (coyote), if it is there.
 pub fn sleeve_fabric(server: &AssetServer, dir: &AssetsDir, pending: &mut crate::gfx::PendingMips) -> Option<StandardMaterial> {
     let tint = crate::enemy::skin::fabric_tint(Color::srgb(0.34, 0.29, 0.21));
@@ -596,6 +647,11 @@ fn spawn_viewmodel(
     if let Some(m) = pending.and_then(|mut p| sleeve_fabric(&asset_server, &assets_dir, &mut p)) {
         hands.sleeve = materials.add(m);
     }
+    let mh = assets_dir.has(MH_HANDS).then(|| MhHands {
+        right: asset_server.load(bevy::gltf::GltfAssetLabel::Primitive { mesh: 0, primitive: 0 }.from_asset(MH_HANDS)),
+        left: asset_server.load(bevy::gltf::GltfAssetLabel::Primitive { mesh: 1, primitive: 0 }.from_asset(MH_HANDS)),
+        skin: materials.add(StandardMaterial { base_color: Color::srgb(0.76, 0.58, 0.48), perceptual_roughness: 0.5, reflectance: 0.35, ..default() }),
+    });
     // Primitive fallback, shared by every gun that has no model file.
     let mut prim: Option<(Handle<StandardMaterial>, Handle<StandardMaterial>)> = None;
     for kind in WeaponKind::ALL {
@@ -603,7 +659,10 @@ fn spawn_viewmodel(
         let gun = commands
             .spawn((Name::new(format!("Gun {kind:?}")), GunModel(kind), Transform::default(), Visibility::Hidden, ChildOf(pivot)))
             .id();
-        spawn_hands(&mut commands, &hands, &f, gun);
+        match &mh {
+            Some(mh) => spawn_mh_hands(&mut commands, &hands, mh, &f, gun),
+            None => spawn_hands(&mut commands, &hands, &f, gun),
+        }
         if assets_dir.has(f.path) {
             let tf = Transform::from_translation(f.offset).with_rotation(Quat::from_rotation_y(f.yaw)).with_scale(Vec3::splat(f.scale));
             spawn_gun_model(&mut commands, &asset_server, &assets_dir, kind, tf, gun);
