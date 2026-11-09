@@ -412,6 +412,7 @@ fn pay_round(
     mut squad: ResMut<SquadEconomy>,
     mut menu: ResMut<BuyMenu>,
     grenades: Res<PlayerGrenades>,
+    bomb: Res<crate::bomb::Bomb>,
     player: Query<(&Health, &Arsenal, &Weapon, Option<&Armor>), With<Player>>,
     enemies: Query<(&Enemy, &EnemyCombat, Option<&Armor>)>,
     dev: Dev,
@@ -422,7 +423,7 @@ fn pay_round(
     }
     phase.paid = true;
     menu.open = false;
-    let gained = wallet.0.round_end(won);
+    let gained = wallet.0.round_end(won) + wallet.0.earn(econ::planted_round_bonus(bomb.was_planted(), won));
     // Player: survive = keep the kit (ammo is refilled next round); die = pistol only.
     *loadout = match player.single() {
         Ok((hp, a, w, armor)) if !hp.is_dead() => {

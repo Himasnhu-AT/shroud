@@ -41,6 +41,17 @@ pub const ABSORB: f32 = 0.5;
 /// Share with a helmet on (it also covers headshots; without one a headshot skips the vest).
 pub const ABSORB_HELMET: f32 = 0.6;
 
+/// Paid to the player for planting the bomb (CS: $300 to the planter).
+pub const PLANT_BONUS: u32 = 300;
+/// Extra loss pay when the bomb was planted but the round was lost (CS: +$800 to the attackers).
+pub const PLANTED_LOSS_BONUS: u32 = 800;
+
+/// The objective bonus on top of the round pay: [`PLANTED_LOSS_BONUS`] when the player planted
+/// and still lost (the plant itself paid [`PLANT_BONUS`] at the time).
+pub fn planted_round_bonus(planted: bool, won: bool) -> u32 {
+    if planted && !won { PLANTED_LOSS_BONUS } else { 0 }
+}
+
 /// Loss bonus after `streak` losses in a row (0 = the last round was won).
 pub fn loss_bonus(streak: u32) -> u32 {
     if streak == 0 { 0 } else { (LOSS_BASE + LOSS_STEP * (streak - 1)).min(LOSS_MAX) }
@@ -406,6 +417,13 @@ pub fn rank_primaries(drafted: WeaponKind, prefs: &[f32], allowed: &[WeaponKind]
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn planting_pays_a_loss_bonus() {
+        assert_eq!(super::planted_round_bonus(true, false), super::PLANTED_LOSS_BONUS);
+        assert_eq!(super::planted_round_bonus(true, true), 0);
+        assert_eq!(super::planted_round_bonus(false, false), 0);
+    }
+
     use super::*;
 
     #[test]

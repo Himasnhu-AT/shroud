@@ -16,9 +16,81 @@ use crate::ui::hud::{HudInfo, RoundClock};
 use crate::weapon::{Health, WeaponSet};
 
 pub use brain::economy::{MAX_ROUNDS, ROUNDS_TO_WIN};
-/// Round time limit (s). Time up: the side with more of its health left wins — the player's
-/// HP share against the squad's total remaining HP share; a tie goes to the squad (they held).
-pub const ROUND_TIME_S: f32 = 150.0;
+/// Round time limit (s, CS's 1:55). Time up before a plant: the squad (defenders) wins. After a
+/// plant the clock no longer matters (`round_outcome`).
+pub const ROUND_TIME_S: f32 = 115.0;
+
+/// Why a round ended (bomb defusal rules, `brain::objective`; the player attacks).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoundEnd {
+    /// The whole squad is dead.
+    SquadWiped,
+    /// The player died before planting.
+    PlayerKilled,
+    /// The clock ran out before a plant.
+    TimeUp,
+    /// The planted bomb went off.
+    Exploded,
+    /// The squad defused it.
+    Defused,
+}
+
+impl RoundEnd {
+    pub fn player_won(self) -> bool {
+        matches!(self, RoundEnd::SquadWiped | RoundEnd::Exploded)
+    }
+    /// One line for the round-over banner.
+    pub fn reason(self) -> &'static str {
+        match self {
+            RoundEnd::SquadWiped => "Squad eliminated \u{2014} you win",
+            RoundEnd::PlayerKilled => "You were killed \u{2014} defenders win",
+            RoundEnd::TimeUp => "Time ran out \u{2014} defenders win",
+            RoundEnd::Exploded => "Bomb exploded \u{2014} you win",
+            RoundEnd::Defused => "Bomb defused \u{2014} defenders win",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            RoundEnd::SquadWiped => "squad_wiped",
+            RoundEnd::PlayerKilled => "player_killed",
+            RoundEnd::TimeUp => "time_up",
+            RoundEnd::Exploded => "exploded",
+            RoundEnd::Defused => "defused",
+        }
+    }
+}
+
+/// What `round_outcome` looks at this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RoundFacts {
+    pub player_dead: bool,
+    pub squad_alive: usize,
+    pub time_up: bool,
+    pub bomb: crate::bomb::BombPhase,
+}
+
+/// The round rules (`brain::objective`): before a plant the squad wiped wins it for the player,
+/// his death or the clock for the squad; after a plant only the bomb (or the squad wiped) ends
+/// it, whatever the clock and whether he is still alive. `None` = play on.
+pub fn round_outcome(f: RoundFacts) -> Option<RoundEnd> {
+    use crate::bomb::BombPhase;
+    match f.bomb {
+        BombPhase::Exploded => Some(RoundEnd::Exploded),
+        BombPhase::Defused => Some(RoundEnd::Defused),
+        BombPhase::Planted => (f.squad_alive == 0).then_some(RoundEnd::SquadWiped),
+        BombPhase::Carried => {
+            if f.player_dead {
+                Some(RoundEnd::PlayerKilled)
+            } else if f.squad_alive == 0 {
+                Some(RoundEnd::SquadWiped)
+            } else if f.time_up {
+                Some(RoundEnd::TimeUp)
+            } else {
+                None
+            }
+        }
+    }
+}
 
 /// The round time limit in force (s); `None` = no limit. Headless runs (tests, tools) have none,
 /// so long scripted rounds aren't cut short; `match.time_limit` sets it over the control port.
@@ -46,6 +118,8 @@ pub struct MatchFlow {
     pub last_round: Option<bool>,
     /// The current (or just finished) round was decided by the clock.
     pub timed_out: bool,
+    /// Why the current (just finished) round ended.
+    pub end: Option<RoundEnd>,
     started: bool,
 }
 
@@ -99,6 +173,7 @@ pub(crate) fn begin_round(mut flow: ResMut<MatchFlow>, mut telemetry: ResMut<Tel
     flow.round += 1;
     flow.round_over = None;
     flow.timed_out = false;
+    flow.end = None;
     info!("match {} round {}", flow.match_no, flow.round);
 }
 
@@ -115,6 +190,7 @@ pub(crate) fn check_round_end(
     clock: Res<RoundClock>,
     limit: Res<RoundLimit>,
     headless: Res<crate::state::Headless>,
+    bomb: Res<crate::bomb::Bomb>,
     players: Query<(&Health, &Transform), With<Player>>,
     enemies: Query<(&EnemyCombat, &Health), With<Enemy>>,
     mut telemetry: ResMut<Telemetry>,
@@ -124,41 +200,38 @@ pub(crate) fn check_round_end(
         return;
     }
     let Ok((php, ptf)) = players.single() else { return };
-    let alive = enemies.iter().filter(|(c, _)| !c.dead).count();
     let player_dead = php.is_dead();
-    let time_up = !headless.0 && limit.0.is_some_and(|l| clock.0 >= l);
-    if !player_dead && alive > 0 && !time_up {
-        return;
-    }
-    let player_won = if !player_dead && alive > 0 {
-        // Time up: compare what each side has left.
-        let squad_hp: f32 = enemies.iter().filter(|(c, _)| !c.dead).map(|(_, h)| h.hp.max(0.0)).sum();
-        let squad_max = (squad.size.max(alive) as f32 * crate::enemy::ENEMY_HP).max(1.0);
-        flow.timed_out = true;
-        php.hp / php.max.max(1.0) > squad_hp / squad_max
-    } else {
-        !player_dead
+    let facts = RoundFacts {
+        player_dead,
+        squad_alive: enemies.iter().filter(|(c, _)| !c.dead).count(),
+        time_up: !headless.0 && limit.0.is_some_and(|l| clock.0 >= l),
+        bomb: bomb.phase,
     };
+    let Some(end) = round_outcome(facts) else { return };
+    let player_won = end.player_won();
+    flow.end = Some(end);
+    flow.timed_out = end == RoundEnd::TimeUp;
+    if player_dead {
+        telemetry.0.death(to_ground(ptf.translation));
+    }
     flow.last_round = Some(player_won);
     if player_won {
         flow.player_rounds += 1;
     } else {
         flow.enemy_rounds += 1;
-        if player_dead {
-            telemetry.0.death(to_ground(ptf.translation));
-        }
     }
     for r in squad.dead_reports.iter().chain(enemies.iter().filter(|(c, _)| !c.dead).map(|(c, _)| &c.report)) {
         merge(&mut flow.enemies, r);
     }
     flow.round_over = Some((ROUND_END_PAUSE, player_won));
-    if !player_won {
+    if player_dead {
         dev.trace("player.died", &[("round", Prop::Int(flow.round as i64))]);
     }
     dev.trace(
         "round.end",
-        &[("round", Prop::Int(flow.round as i64)), ("player_won", Prop::Bool(player_won)), ("timed_out", Prop::Bool(flow.timed_out))],
+        &[("round", Prop::Int(flow.round as i64)), ("player_won", Prop::Bool(player_won)), ("timed_out", Prop::Bool(flow.timed_out)), ("bomb", Prop::Bool(bomb.was_planted()))],
     );
+    info!("round {} over: {}", flow.round, end.label());
     // The round-over banner is drawn by `ui::hud`.
 }
 
@@ -213,3 +286,40 @@ fn update_hud(
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bomb::BombPhase;
+
+    fn facts(player_dead: bool, squad_alive: usize, time_up: bool, bomb: BombPhase) -> RoundFacts {
+        RoundFacts { player_dead, squad_alive, time_up, bomb }
+    }
+
+    #[test]
+    fn before_the_plant() {
+        assert_eq!(round_outcome(facts(false, 3, false, BombPhase::Carried)), None);
+        assert_eq!(round_outcome(facts(false, 0, false, BombPhase::Carried)), Some(RoundEnd::SquadWiped));
+        assert_eq!(round_outcome(facts(true, 2, false, BombPhase::Carried)), Some(RoundEnd::PlayerKilled));
+        // The clock: defenders win, whatever the health left.
+        assert_eq!(round_outcome(facts(false, 2, true, BombPhase::Carried)), Some(RoundEnd::TimeUp));
+        // Trading the last enemy for your life is still a loss before the plant.
+        assert_eq!(round_outcome(facts(true, 0, false, BombPhase::Carried)), Some(RoundEnd::PlayerKilled));
+    }
+
+    #[test]
+    fn after_the_plant_only_the_bomb_or_a_wipe_ends_it() {
+        // Dead player, clock out: the bomb is still ticking.
+        assert_eq!(round_outcome(facts(true, 2, true, BombPhase::Planted)), None);
+        assert_eq!(round_outcome(facts(false, 2, true, BombPhase::Planted)), None);
+        assert_eq!(round_outcome(facts(true, 0, false, BombPhase::Planted)), Some(RoundEnd::SquadWiped));
+        assert_eq!(round_outcome(facts(true, 2, false, BombPhase::Exploded)), Some(RoundEnd::Exploded));
+        assert_eq!(round_outcome(facts(false, 1, false, BombPhase::Defused)), Some(RoundEnd::Defused));
+    }
+
+    #[test]
+    fn winners() {
+        assert!(RoundEnd::Exploded.player_won() && RoundEnd::SquadWiped.player_won());
+        assert!(!RoundEnd::Defused.player_won() && !RoundEnd::TimeUp.player_won() && !RoundEnd::PlayerKilled.player_won());
+    }
+}

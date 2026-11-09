@@ -175,3 +175,64 @@ fn arsenal_over_the_control_port() {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
+
+/// Polls `command` until `done` holds (or panics after `secs`).
+fn wait_for(c: &mut Client, command: &str, secs: u64, done: impl Fn(&Value) -> bool) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    loop {
+        let v = exec(c, command, json!({}));
+        if done(&v) {
+            return v;
+        }
+        assert!(Instant::now() < deadline, "{command}: still {v}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn bomb_hold_plant_then_explosion_wins_and_defuse_loses() {
+    // Arrange
+    let (_game, port, key_file) = launch();
+    let mut c = Client::connect(port, key_file.parent().expect("key dir")).expect("connect");
+    c.set_timeout(Duration::from_secs(30));
+    exec(&mut c, "game.start", json!({}));
+    std::thread::sleep(Duration::from_millis(300));
+    exec(&mut c, "enemy.freeze", json!({"on": true}));
+    exec(&mut c, "player.god", json!({"on": true}));
+
+    // Round 1: the player carries the bomb; holding E in site A plants it.
+    let s = exec(&mut c, "bomb.state", json!({}));
+    assert_eq!(s["phase"], json!("carried"), "{s}");
+    assert_eq!(s["sites"].as_array().map(Vec::len), Some(2), "{s}");
+    exec(&mut c, "bomb.plant", json!({"site": "A", "plant": false}));
+    let s = wait_for(&mut c, "bomb.state", 5, |s| s["can_plant"] == json!(true));
+    assert_eq!(s["in_site"], json!("A"), "{s}");
+    exec(&mut c, "weapon.interact", json!({"on": true}));
+    let s = wait_for(&mut c, "bomb.state", 8, |s| s["phase"] == json!("planted"));
+    exec(&mut c, "weapon.interact", json!({"on": false}));
+    assert_eq!(s["site"], json!("A"), "{s}");
+    assert!(s["fuse_left"].as_f64().expect("fuse") > 30.0, "{s}");
+
+    // Round 2: an instant plant with a short fuse goes off; the player wins the round.
+    exec(&mut c, "game.start", json!({}));
+    wait_for(&mut c, "bomb.state", 5, |s| s["phase"] == json!("carried"));
+    exec(&mut c, "bomb.plant", json!({"site": "B", "fuse": 1.5}));
+    wait_for(&mut c, "bomb.state", 6, |s| s["phase"] == json!("exploded"));
+    let m = wait_for(&mut c, "match.state", 3, |m| !m["round_over"].is_null());
+    assert_eq!(m["round_over"]["player_won"], json!(true), "{m}");
+    assert_eq!(m["end"], json!("exploded"), "{m}");
+
+    // Round 3: a defender on the bomb defuses it; the squad wins.
+    let round = m["round"].as_u64().expect("round");
+    wait_for(&mut c, "match.state", 6, |m| m["round"].as_u64() == Some(round + 1) && m["round_over"].is_null());
+    exec(&mut c, "bomb.plant", json!({"site": "A", "fuse": 30}));
+    wait_for(&mut c, "bomb.state", 5, |s| s["phase"] == json!("planted"));
+    exec(&mut c, "bomb.defuse", json!({}));
+    let s = wait_for(&mut c, "bomb.state", 5, |s| s["defuse"].as_f64().unwrap_or(0.0) > 0.05);
+    assert!(!s["defuser"].is_null(), "{s}");
+    wait_for(&mut c, "bomb.state", 12, |s| s["phase"] == json!("defused"));
+    let m = wait_for(&mut c, "match.state", 3, |m| !m["round_over"].is_null());
+    assert_eq!(m["round_over"]["player_won"], json!(false), "{m}");
+    assert_eq!(m["end"], json!("defused"), "{m}");
+    exec(&mut c, "game.quit", json!({}));
+}
