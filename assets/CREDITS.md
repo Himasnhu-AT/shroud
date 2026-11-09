@@ -84,6 +84,7 @@ Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
 | `audio/kill_confirm.ogg` | Interface Sounds `confirmation_004` | Kenney | https://kenney.nl/assets/interface-sounds |
 | `audio/player_hurt.ogg` | Impact Sounds `impactPunch_heavy_000` | Kenney | https://kenney.nl/assets/impact-sounds |
 | `audio/heartbeat.ogg` | Synthesized with ffmpeg | this project | n/a |
+| `audio/bomb_beep.ogg`, `bomb_plant.ogg`, `bomb_defuse.ogg`, `bomb_explode.ogg` | Synthesized with sox (sines, noise, sweeps) | this project | n/a |
 | `audio/step_0..4.ogg` | Impact Sounds `footstep_concrete_000..004` | Kenney | https://kenney.nl/assets/impact-sounds |
 | `audio/reload_start.ogg`, `reload_end.ogg` | "Gun reload sounds" `assaultriflereload1` split in two | SpringySpringo (OpenGameArt) | https://opengameart.org/content/gun-reload-sounds |
 | `audio/empty_click.ogg` | Impact Sounds `impactMetal_light_002` | Kenney | https://kenney.nl/assets/impact-sounds |

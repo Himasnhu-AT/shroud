@@ -101,7 +101,7 @@ fn build_dev(app: &mut App) {
     app.insert_resource(PerfOverlayKey(KeyCode::F2))
         .perf_span(FixedUpdate, EnemySet, "ai")
         .perf_span(Update, WeaponSet, "weapons")
-        .declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset"])
+        .declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset", "bomb.planted", "bomb.defused", "bomb.exploded"])
         .add_systems(Update, watch_events);
     commands::register(app);
     ai_commands::register(app);

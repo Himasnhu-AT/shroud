@@ -62,6 +62,11 @@ const SOUNDS: &[(&str, usize)] = &[
     // Optional: enemy grenades (`enemy/grenade.rs`; frags fall back to `impact`).
     ("frag_explode", 1),
     ("flashbang", 1),
+    // The bomb (`bomb.rs`): keypad while planting, beeps, the defuse kit, the blast.
+    ("bomb_plant", 1),
+    ("bomb_beep", 1),
+    ("bomb_defuse", 1),
+    ("bomb_explode", 1),
 ];
 
 #[derive(Component)]
@@ -89,6 +94,7 @@ impl Plugin for AudioPlugin {
                     heartbeat,
                     round_stingers,
                     radio_clicks,
+                    bomb_sounds,
                 )
                     .after(WeaponSet)
                     .run_if(in_state(GameState::Playing)),
@@ -346,6 +352,21 @@ fn round_stingers(
 fn radio_clicks(mut commands: Commands, sfx: Res<Sfx>, master: Res<Volumes>, mut msgs: MessageReader<crate::enemy::Callout>) {
     if msgs.read().count() > 0 {
         play(&mut commands, &sfx, &master, "radio_click", 0.35, None);
+    }
+}
+
+/// The bomb, heard where it is: beeps (louder as the fuse runs out), the defuse starting (the
+/// player hears a defender on it, as in CS) and the blast. The keypad while planting is his own.
+fn bomb_sounds(mut commands: Commands, sfx: Res<Sfx>, master: Res<Volumes>, mut events: MessageReader<crate::bomb::BombEvent>) {
+    use crate::bomb::BombEvent as B;
+    for ev in events.read() {
+        match *ev {
+            B::PlantStart => play(&mut commands, &sfx, &master, "bomb_plant", 0.7, None),
+            B::Planted { at, .. } => play(&mut commands, &sfx, &master, "bomb_beep", 1.0, Some(at)),
+            B::Beep { at, urgency } => play(&mut commands, &sfx, &master, "bomb_beep", 0.55 + 0.4 * urgency, Some(at)),
+            B::DefuseStart { at } | B::Defused { at } => play(&mut commands, &sfx, &master, "bomb_defuse", 1.0, Some(at)),
+            B::Exploded { at } => play(&mut commands, &sfx, &master, "bomb_explode", 1.0, Some(at)),
+        }
     }
 }
 

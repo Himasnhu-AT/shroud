@@ -10,6 +10,7 @@
 mod assets;
 mod armed;
 mod armor;
+mod bomb;
 mod audio;
 mod bodycam;
 mod dev;
@@ -57,6 +58,6 @@ fn main() {
             ui::UiPlugin,
             bodycam::BodycamPlugin,
         ))
-        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
+        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
         .run();
 }

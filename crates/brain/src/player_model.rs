@@ -273,6 +273,9 @@ pub struct MatchTelemetry {
     pub style_time: [f32; crate::doctrine::DOCTRINE_GENES],
     #[serde(default)]
     pub style_play_s: f32,
+    /// Bombs planted per site (`Arena::sites` order: A, B).
+    #[serde(default)]
+    pub plant_sites: [f32; 2],
     #[serde(default)]
     last_route: Option<usize>,
 }
@@ -305,6 +308,7 @@ impl Default for MatchTelemetry {
             rounds: 0,
             style_time: [0.0; crate::doctrine::DOCTRINE_GENES],
             style_play_s: 0.0,
+            plant_sites: [0.0; 2],
             last_route: None,
         }
     }
@@ -357,6 +361,12 @@ impl MatchTelemetry {
     /// Periodic sample of where the player is looking (ground-plane angle).
     pub fn look(&mut self, facing: f32) {
         self.facing[sector_of(facing)] += 1.0;
+    }
+    /// The player planted the bomb on site `site` (0 = A, 1 = B).
+    pub fn plant(&mut self, site: usize) {
+        if let Some(n) = self.plant_sites.get_mut(site) {
+            *n += 1.0;
+        }
     }
     pub fn death(&mut self, pos: V2) {
         self.death_spots[heat_idx(pos)] += 1.0;

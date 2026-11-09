@@ -76,7 +76,10 @@ struct ScoreText(bool);
 #[derive(Component)]
 struct RoundText;
 #[derive(Component)]
-struct TimerText;
+pub(crate) struct TimerText;
+/// Replaces the round timer once the bomb is planted (`ui::bomb_hud` shows and pulses it).
+#[derive(Component)]
+pub(crate) struct BombTimerIcon;
 #[derive(Component)]
 struct GenText;
 #[derive(Component)]
@@ -89,7 +92,7 @@ struct HitMarkerUi;
 #[derive(Component)]
 pub struct KillFeed;
 #[derive(Component)]
-struct RoundStartBanner;
+pub(crate) struct RoundStartBanner;
 
 /// A crosshair (HUD or the settings preview), styled from [`ShroudSettings`].
 #[derive(Component)]
@@ -117,7 +120,7 @@ struct FadeBase {
 
 const BAR_W: f32 = 300.0;
 
-fn hud_root() -> impl Bundle {
+pub(crate) fn hud_root() -> impl Bundle {
     (DespawnOnExit(GameState::Playing), HideWhenPaused, fullscreen(), Pickable::IGNORE)
 }
 
@@ -246,6 +249,22 @@ fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<S
                 .with_children(|mid| {
                     mid.spawn((RoundText, text("ROUND 1", label(SIZE_TINY + 1.0), TEXT_MUTED)));
                     mid.spawn((TimerText, text("0:00", display(34.0), TEXT)));
+                    // After the plant: no clock, a pulsing red bomb (like CS, no exact fuse).
+                    mid.spawn((
+                        BombTimerIcon,
+                        Node { display: Display::None, height: px(41), align_items: AlignItems::Center, column_gap: px(10), ..default() },
+                        UiTransform::IDENTITY,
+                        Pickable::IGNORE,
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Node { width: px(16), height: px(16), border_radius: BorderRadius::all(px(3)), ..default() },
+                            UiTransform::from_rotation(Rot2::degrees(45.0)),
+                            BackgroundColor(ENEMY),
+                            Pickable::IGNORE,
+                        ));
+                        b.spawn(text("BOMB", display(34.0), ENEMY));
+                    });
                 });
                 score_box(row, false);
             });
@@ -508,7 +527,7 @@ fn update_pips(
     }
 }
 
-fn banner_root(c: &mut Commands, life: Option<f32>, top_pct: f32) -> Entity {
+pub(crate) fn banner_root(c: &mut Commands, life: Option<f32>, top_pct: f32) -> Entity {
     let band = Color::srgba(0.02, 0.03, 0.05, 0.72);
     c.spawn((
         DespawnOnExit(GameState::Playing),
@@ -586,6 +605,9 @@ fn round_over_banner(
     let sub = if match_over { "The squad is studying what you did" } else { "Next round starting" };
     let root = banner_root(&mut commands, None, 22.0);
     commands.entity(root).with_children(|b| {
+        if let Some(end) = flow.end {
+            b.spawn(text(end.reason().to_uppercase(), label(SIZE_LABEL + 4.0), color));
+        }
         b.spawn((text(title, display(104.0), color), TextShadow::default()));
         b.spawn((Node { align_items: AlignItems::Center, column_gap: px(GAP_L), ..default() }, Pickable::IGNORE)).with_children(|r| {
             r.spawn(text("YOU", label(SIZE_LABEL + 2.0), TEXT_MUTED));

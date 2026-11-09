@@ -248,6 +248,7 @@ fn match_state(world: &mut World, _: Value) -> Result<Value, String> {
         "player_rounds": f.player_rounds,
         "enemy_rounds": f.enemy_rounds,
         "round_over": f.round_over.map(|(_, won)| json!({ "player_won": won })),
+        "end": f.end.map(|e| e.label()),
         "last_result": f.last_result.map(|(w, p, e)| json!({ "player_won": w, "player_rounds": p, "enemy_rounds": e })),
     }))
 }
