@@ -36,6 +36,9 @@ use rand::Rng;
 use std::cell::RefCell;
 use std::f32::consts::{PI, TAU};
 
+mod bomb;
+pub use bomb::{Duty, SiteState, save_spot, site_dist as bomb_site_dist};
+
 // ---------------------------------------------------------------------------------------------
 // Position evaluation functions.
 
@@ -367,6 +370,11 @@ pub enum Play {
     Search,
     /// Player known: the spotter keeps shooting, the rest take his exits from distinct sides.
     Encircle,
+    /// Bomb defusal, before a plant, player unknown: anchors hold the sites, a rotator holds
+    /// mid; they rotate on info (`bomb`).
+    Setup,
+    /// Bomb defusal, bomb planted: converge on the site, one defuses, the rest cover (or save).
+    Retake,
 }
 
 impl Play {
@@ -382,6 +390,8 @@ impl Play {
             Play::Sweep => "sweep",
             Play::Search => "search",
             Play::Encircle => "encircle",
+            Play::Setup => "site setup",
+            Play::Retake => "retake",
         }
     }
 }
@@ -418,6 +428,16 @@ pub enum Role {
     Trapper,
     /// Doctrine vs an angle holder: shooting out the lamp that lights him, from out of his sight.
     Lights,
+    /// Bomb defusal: holding an angle on a bomb site before the plant.
+    SiteHold,
+    /// Bomb defusal: between the sites (mid), first to rotate.
+    Rotator,
+    /// Bomb defusal: retaking the site after the plant (clearing an angle on the bomb).
+    Retaker,
+    /// Bomb defusal: going to (or on) the bomb to defuse it.
+    Defuser,
+    /// Bomb defusal: no time to defuse, getting out of the blast.
+    Saving,
 }
 
 impl Role {
@@ -442,6 +462,11 @@ impl Role {
             Role::Suppressor => "suppressor",
             Role::Trapper => "trapper",
             Role::Lights => "lights",
+            Role::SiteHold => "site hold",
+            Role::Rotator => "rotator",
+            Role::Retaker => "retaker",
+            Role::Defuser => "defuser",
+            Role::Saving => "saving",
         }
     }
 }
@@ -802,6 +827,10 @@ pub struct SquadCoordinator {
     pub bomb: Option<crate::objective::PlantedBomb>,
     /// The member assigned to defuse it.
     pub defuser: Option<usize>,
+    /// Bomb defusal mode (on once the game calls `set_bomb`): the squad plays the sites.
+    pub objective: bool,
+    /// Objective state (pre-plant setup, rotations, retake, save): `bomb.rs`.
+    pub site: bomb::SiteState,
 }
 
 /// Stack and breach: the entry and its trader stack beside the door frame, utility goes in,
@@ -945,6 +974,8 @@ impl SquadCoordinator {
             traps_t: -99.0,
             bomb: None,
             defuser: None,
+            objective: false,
+            site: bomb::SiteState::default(),
         }
     }
 
@@ -952,7 +983,9 @@ impl SquadCoordinator {
     // Bomb objective (CONTRACT with the game: `set_bomb` each frame, `wants_defuse` per member).
 
     /// The game reports the planted bomb (None before a plant / after it's resolved).
+    /// Calling it at all switches the squad to bomb defusal (`objective`).
     pub fn set_bomb(&mut self, bomb: Option<crate::objective::PlantedBomb>) {
+        self.objective = true;
         if bomb.is_none() {
             self.defuser = None;
         }
@@ -962,7 +995,7 @@ impl SquadCoordinator {
     /// Member `i` is trying to defuse right now (the game ticks the defuse while this holds and
     /// it stands within `objective::DEFUSE_REACH` of the bomb).
     pub fn wants_defuse(&self, i: usize) -> bool {
-        self.bomb.is_some() && self.defuser == Some(i)
+        self.bomb.is_some() && self.defuser == Some(i) && !self.site.saving
     }
 
     // ---------------------------------------------------------------------------------------
@@ -1377,10 +1410,19 @@ impl SquadCoordinator {
 
     fn choose_play(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel) -> Play {
         let alive = members.iter().filter(|m| m.alive).count();
+        // Bomb planted: the objective comes first, even for a lone survivor or an
+        // uncoordinated squad (someone has to defuse it).
+        if self.objective && self.bomb.is_some() && alive > 0 && self.force_play.is_none() {
+            return Play::Retake;
+        }
         if !self.enabled || alive == 0 {
             return Play::Free;
         }
         let known = self.board.age < KNOWN_S;
+        // Before the plant, with him unknown: hold the sites instead of hunting him.
+        if self.objective && !known && arena.sites.len() >= 2 && self.force_play.is_none() {
+            return Play::Setup;
+        }
         if alive == 1 && self.force_play.is_none() {
             // A lone survivor still searches with the squad's belief.
             return if known { Play::Free } else { Play::Search };
@@ -1421,6 +1463,17 @@ impl SquadCoordinator {
 
     fn plan(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
         let play = self.choose_play(members, arena, model);
+        // Bomb defusal: track rotations; in a fight before the plant one anchor keeps the
+        // other site (he could be faking), so the play runs without it.
+        let held = self.objective_update(play, members, arena, model);
+        let masked: Vec<MemberView>;
+        let members = match held {
+            Some(k) => {
+                masked = members.iter().enumerate().map(|(i, m)| if i == k { MemberView { alive: false, ..*m } } else { *m }).collect();
+                &masked[..]
+            }
+            None => members,
+        };
         // Engagement windows: score the bandit's choice when the play changes or the window ends.
         let expired = self.episode.is_some_and(|e| self.time - e.t > EPISODE_S);
         if play != self.play || expired {
@@ -1436,6 +1489,15 @@ impl SquadCoordinator {
                     *o = *b;
                 }
             }
+        }
+        if let Some(k) = held {
+            self.orders[k] = self.site_hold_order(k);
+        }
+        if matches!(self.play, Play::Setup | Play::Retake) {
+            // The objective owns the orders (no anchors, grenades or doctrine roles on top).
+            self.anchor = None;
+            self.pending_throw = None;
+            return;
         }
         if self.play == Play::Free {
             self.anchor = None;
@@ -1830,6 +1892,8 @@ impl SquadCoordinator {
         match play {
             Play::Search => return self.plan_search(members, arena, full, changed),
             Play::Encircle => return self.plan_encircle(members, arena, full, changed),
+            Play::Setup => return self.plan_setup(members, arena, changed),
+            Play::Retake => return self.plan_retake(members, arena, changed),
             _ => {}
         }
         let target = match play {
@@ -1844,7 +1908,7 @@ impl SquadCoordinator {
         let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false, via: None, prefire: None };
 
         match play {
-            Play::Free | Play::Search | Play::Encircle => {}
+            Play::Free | Play::Search | Play::Encircle | Play::Setup | Play::Retake => {}
             Play::Crossfire => {
                 if full || changed {
                     self.assign_positions(&by_dist, members, arena, model, target, None);

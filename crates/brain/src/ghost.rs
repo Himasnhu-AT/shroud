@@ -204,6 +204,9 @@ pub struct Ghost {
     strafe_dir: f32,
     strafe_t: f32,
     strafing: bool,
+    /// Bomb defusal (`sim::run_round_objective`): roam toward this spot (a site to plant on,
+    /// then the planted bomb) instead of his heatmap.
+    pub(crate) plant_goal: Option<V2>,
 }
 
 const MIDS: [f32; 6] = [3.0, 7.5, 12.5, 17.5, 25.0, 32.0];
@@ -252,6 +255,7 @@ impl Ghost {
             strafe_dir: 1.0,
             strafe_t: 0.0,
             strafing: false,
+            plant_goal: None,
         }
     }
 
@@ -355,6 +359,10 @@ impl Ghost {
     }
 
     fn pick_dest(&mut self, model: &PlayerModel, arena: &Arena) -> V2 {
+        if let Some(g) = self.plant_goal {
+            let j = V2::new(self.rng.random::<f32>() - 0.5, self.rng.random::<f32>() - 0.5) * 5.0;
+            return arena.nav.nearest_walkable(g + j);
+        }
         // Half the time follow a learned route transition, otherwise sample the heatmap.
         let from = route_idx(self.body.pos);
         let w = ROUTE_W * ROUTE_W;

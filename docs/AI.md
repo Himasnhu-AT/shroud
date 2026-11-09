@@ -230,3 +230,39 @@ and damage stay fixed by difficulty (`limits.rs`).
   `enemy.list` has `doctrine` and `jiggling`. Check: `scripts/doctrine-camper.json`
   (Veteran, Sirocco, player holds a doorway): switch at 4.0 s, a jiggler, two flashes.
 - Tests: `crates/brain/tests/doctrine.rs` (detection, spec check 6, each counter, saves).
+
+## Bomb defusal (squad defends the sites)
+
+`brain::squad::bomb` (rules in `brain::objective`). The game calling `set_bomb` (every frame,
+`None` before the plant) switches the coordinator to defusal (`SquadCoordinator::objective`).
+Technique only: no gene, no aim or reaction change.
+
+- **Setup** (`Play::Setup`, before the plant while he is unknown, replacing the split search):
+  anchors split between A and B (2 → 1/1, 3 → 2/1, 4+ → a rotator in mid plus a split), the
+  site he plants on more (`PlayerModel::record_plant` / `plant_share`) and spends time near
+  getting the extra anchor. Members go to the site they are closer to by path. Each anchor
+  holds an attacker entry (where the path from his spawn, or from the other site, reaches the
+  site) from a spot with a line on it: near his preferred range, cover, hidden crouched, inside
+  the site, off his usual pre-aim, on his death spots; spots are matched to members for the
+  shortest total walk. Orders are sticky holds (they shoot from there if he appears).
+- **Rotations**: info (a sighting or a sound) within 10 m of one site and well away from the
+  other sends the rotator and all but one of the other site's anchors ("Rotating A"). The last
+  anchor goes only once he has been seen at that site for 3 s (a fake doesn't empty the other
+  site). In contact before the plant the usual plays run, but that anchor stays out of them
+  and keeps its site. A fresh noise in mid is checked by the rotator; stale info (25 s) sends
+  everyone back to their setup.
+- **Retake** (`Play::Retake`, once planted, even for a lone survivor): "Bomb's down at A";
+  everyone takes a distinct approach sector around the bomb (the encirclement's staging cells,
+  out of the bomb's sight, with diverse via routes), then clears the angle from the peek
+  cell. The defuser is the nearest by path, not in a fight, healthy (re-picked when he dies);
+  it goes to the bomb and stands still on it ("Defusing, cover me") while
+  `wants_defuse(i)`. It waits at a staging cell while he is known to be watching the bomb,
+  unless the fuse is short (less than travel + `DEFUSE_S` + 4 s: "No time - sticking it").
+  If travel + `DEFUSE_S` (+1 s) can't beat the fuse, everyone saves: out of `BLAST_MAX_M`
+  + 3 m by the shortest path, away from him ("No time, saving").
+- **Trainer**: `sim::run_round_objective` (ghost heads for a site by his plant history, plants
+  with no defender in view, hangs near the bomb; the squad defuses; outcome per the rules).
+  `EvolveConfig::objective_share` (0.5) of evolution rounds are defusal rounds.
+- Tests: `crates/brain/tests/objective.rs` (both sites held and spots reached on every map,
+  stacking by plant history, unopposed defuse, save, defuser re-pick, waiting while watched,
+  fake-proof rotation, sim outcomes).
