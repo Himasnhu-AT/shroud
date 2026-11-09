@@ -105,6 +105,13 @@ pub fn foundry() -> Arena {
         .low(-38.4, -26.0, -37.2, -23.0, Cabinet) // tool lockers
         .low(-20.5, -38.6, -17.0, -37.8, Desk) // control desk
         .emit(&mut b);
+    // Steel columns and the overhead crane's runway girders.
+    for (x, z) in [(-32.5, -30.5), (-22.5, -30.5), (-32.5, -19.0), (-22.5, -19.0)] {
+        b.tall(x - 0.3, z - 0.3, x + 0.3, z + 0.3, 7.9, Cabinet);
+    }
+    for z in [-30.5, -19.0] {
+        bridge(&mut b, -38.6, z - 0.3, -14.4, z + 0.3, 7.0);
+    }
     b.site('A', -35.0, -31.0, -19.0, -16.0);
 
     // ------------------------------------------------------------------ the boiler house (A short)
@@ -135,6 +142,8 @@ pub fn foundry() -> Arena {
     b.low(5.0, -8.0, 6.2, -6.8, Barrel);
     b.low(-2.0, -12.0, 2.0, -11.4, Sandbag);
     b.low(-7.6, -4.0, -6.4, -2.8, Crate);
+    b.low(5.0, 2.0, 7.4, 3.2, Container); // ingot stack
+    b.low(-4.6, 19.0, -3.4, 20.2, Crate);
     bridge(&mut b, -9.0, -7.0, 9.0, -5.4, 5.0); // conveyor across mid
     // Mid doors: the defenders' end of mid, a beam over the gap.
     b.tall(-14.0, -18.0, -1.6, -16.6, 5.0, Concrete);
@@ -195,6 +204,8 @@ pub fn foundry() -> Arena {
     b.low(16.0, -21.0, 17.6, -18.6, Cabinet); // forklift
     b.low(20.0, -18.0, 23.0, -17.4, Sandbag);
     b.low(37.4, -34.6, 38.6, -33.4, Crate);
+    b.low(31.0, -33.0, 32.2, -31.8, Crate); // pallets
+    b.low(18.0, -25.0, 19.2, -23.8, Crate);
     b.site('B', 18.0, -31.0, 37.0, -17.0);
 
     // ------------------------------------------------------------------ lamps
