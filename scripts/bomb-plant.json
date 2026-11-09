@@ -16,9 +16,9 @@
   {"sleep": 0.2},
   {"shot": "planted_banner"},
   {"cmd": "bomb.state"},
-  {"cmd": "player.move", "params": {"forward": -1, "ms": 350}},
+  {"cmd": "player.move", "params": {"forward": -1, "ms": 200}},
   {"cmd": "player.crouch", "params": {"on": true}},
-  {"cmd": "player.look", "params": {"pitch": -1.0}},
+  {"cmd": "player.look", "params": {"pitch": -1.2}},
   {"sleep": 0.8},
   {"shot": "bomb_close"},
   {"cmd": "player.crouch", "params": {"on": false}},
@@ -42,7 +42,7 @@
   {"shot": "explosion_2"},
   {"sleep": 0.5},
   {"shot": "explosion_3"},
-  {"sleep": 1.5},
+  {"sleep": 0.6},
   {"shot": "explosion_smoke"},
   {"cmd": "match.state"}
 ]

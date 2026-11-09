@@ -46,6 +46,7 @@ pub enum BombPhase {
     Defused,
 }
 
+#[cfg_attr(not(feature = "dev"), allow(dead_code))]
 impl BombPhase {
     pub fn label(self) -> &'static str {
         match self {
@@ -86,6 +87,8 @@ pub struct Bomb {
     pub led: f32,
     /// Dev: plant instantly on the next frame, with this fuse (s).
     pub(crate) request: Option<f32>,
+    /// Dev: move this enemy here on the next fixed tick (before the AI moves it).
+    pub(crate) teleport: Option<(Entity, Vec3)>,
 }
 
 impl Default for Bomb {
@@ -106,6 +109,7 @@ impl Default for Bomb {
             next_beep: 0.0,
             led: 0.0,
             request: None,
+            teleport: None,
         }
     }
 }
@@ -162,6 +166,7 @@ impl Plugin for BombPlugin {
         app.init_resource::<Bomb>()
             .add_message::<BombEvent>()
             .add_systems(Startup, init_assets.run_if(has_visuals))
+            .add_systems(FixedUpdate, apply_teleport.before(crate::enemy::EnemySet))
             .add_systems(OnEnter(GameState::Playing), reset_bomb.after(crate::match_flow::begin_round).after(crate::enemy::spawn_squad))
             .add_systems(
                 Update,
@@ -176,6 +181,17 @@ impl Plugin for BombPlugin {
             );
         #[cfg(feature = "dev")]
         commands::register(app);
+    }
+}
+
+/// Dev teleports of an enemy (`bomb.defuse`): done on the fixed tick so the AI and the
+/// transform easing see the new spot as where it stands.
+fn apply_teleport(mut bomb: ResMut<Bomb>, mut q: Query<&mut Transform, With<Enemy>>) {
+    let Some((e, at)) = bomb.teleport else { return };
+    bomb.teleport = None;
+    if let Ok(mut tf) = q.get_mut(e) {
+        tf.translation.x = at.x;
+        tf.translation.z = at.z;
     }
 }
 
@@ -259,6 +275,7 @@ fn feet_of(tf: &Transform, motor: &FpsMotor, ctl: &FpsController) -> Vec3 {
 struct PlantOut<'w> {
     wallet: ResMut<'w, PlayerWallet>,
     telemetry: ResMut<'w, Telemetry>,
+    brain: ResMut<'w, crate::save::Brain>,
     events: MessageWriter<'w, BombEvent>,
     assets: Option<Res<'w, BombAssets>>,
     dev: Dev<'w>,
@@ -281,6 +298,8 @@ impl PlantOut<'_> {
         };
         self.wallet.0.earn(brain::economy::PLANT_BONUS);
         self.telemetry.0.plant(site);
+        // The squad learns which site he favours.
+        self.brain.state.player_model.record_plant(site);
         self.events.write(BombEvent::Planted { at: pos, site: letter });
         self.dev.trace("bomb.planted", &[("site", Prop::Int(site as i64))]);
         info!("bomb planted on {letter} at ({:.1}, {:.1})", pos.x, pos.z);
@@ -322,13 +341,9 @@ fn tick_bomb(
         events.write(BombEvent::Beep { at, urgency: 1.0 - (bomb.fuse_left / FUSE_S).clamp(0.0, 1.0) });
     }
     // Defuse: the coordinator's defuser (or the dev's), alive and on the bomb.
+    // The dev's forced defuser goes on even while the squad would save.
     let forced = bomb.forced_defuser;
-    let wants = squad.coord.as_mut().and_then(|c| {
-        if let Some(f) = forced {
-            c.defuser = Some(f);
-        }
-        c.defuser.filter(|&i| c.wants_defuse(i))
-    });
+    let wants = forced.or_else(|| squad.coord.as_ref().and_then(|c| c.defuser.filter(|&i| c.wants_defuse(i))));
     let on_it = wants.filter(|&slot| {
         enemies.iter().any(|(_, e, tf, c)| e.slot == slot && !c.dead && to_ground(tf.translation).dist(to_ground(at)) <= DEFUSE_REACH)
     });
@@ -419,7 +434,6 @@ fn init_assets(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mat
         base_color: Color::srgba(0.95, 0.72, 0.12, 0.55),
         perceptual_roughness: 0.95,
         alpha_mode: AlphaMode::Blend,
-        depth_bias: 50.0,
         ..default()
     });
     commands.insert_resource(BombAssets {
@@ -793,10 +807,7 @@ mod commands {
         if p.get("teleport").and_then(Value::as_bool).unwrap_or(true) {
             let ground = brain::math::V2::new(b.pos.x + 0.7, b.pos.z);
             let at = to_world(ground, 0.0);
-            if let Some(mut tf) = world.get_mut::<Transform>(e) {
-                tf.translation.x = at.x;
-                tf.translation.z = at.z;
-            }
+            world.resource_mut::<Bomb>().teleport = Some((e, at));
         }
         world.resource_mut::<Bomb>().forced_defuser = Some(slot);
         Ok(json!({"member": slot}))
