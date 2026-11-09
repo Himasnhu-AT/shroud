@@ -110,9 +110,10 @@ fn spawn(mut commands: Commands) {
         ))
         .with_child((
             DefuseWarning,
-            text("DEFUSING", label(SIZE_LABEL), ENEMY),
+            text("DEFUSING", label(SIZE_LABEL), Color::WHITE),
             Node { padding: UiRect::axes(px(10), px(3)), ..default() },
-            BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.55)),
+            // White on a solid red badge: red text on the dark panel was unreadable.
+            BackgroundColor(Color::srgba(0.72, 0.1, 0.1, 0.9)),
             Visibility::Hidden,
         ));
 
@@ -201,7 +202,7 @@ fn update(
         let on = planted && bomb.defuser.is_some();
         show(&mut v, on);
         if on {
-            c.0 = ENEMY.with_alpha(0.65 + 0.35 * (time.elapsed_secs() * 6.0).sin().abs());
+            c.0 = Color::WHITE.with_alpha(0.7 + 0.3 * (time.elapsed_secs() * 6.0).sin().abs());
         }
     }
     for mut v in &mut vis.p3() {
