@@ -53,7 +53,7 @@ fn halving_with_crn_picks_planted_better_squad() {
 /// With common random numbers two identical squads get identical scores, whatever the threads.
 #[test]
 fn common_random_numbers_are_deterministic() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let b = BrainState::new(21);
     let limits = Limits::for_generation(1);
     let plan = Halving { base_rounds: 2, rungs: 2 };
@@ -86,7 +86,7 @@ fn small_cfg() -> TrainerConfig {
 
 #[test]
 fn trainer_resumes_from_checkpoint_bit_for_bit() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let cfg = small_cfg();
     let mut straight = Trainer::new(BrainState::new(4));
     for _ in 0..4 {
@@ -151,7 +151,7 @@ fn background_trainer_cancels_promptly_and_merges() {
 /// Sim-vs-real is logged for the deployed squad after each real match.
 #[test]
 fn history_logs_sim_vs_real() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let cfg = EvolveConfig { budget: Duration::from_secs(600), max_neat_generations: 1, ..Default::default() };
     let mut s = BrainState::new(8);
     s.evolve(&MatchReport::default(), &a, &cfg, |_| {});

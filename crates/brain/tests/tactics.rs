@@ -60,7 +60,7 @@ fn squad_pos() -> Vec<V2> {
 
 #[test]
 fn repeated_peeks_get_an_anchor_that_prefires() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let spot = V2::new(7.0, 13.0);
     let pos = squad_pos();
     for p in &pos {
@@ -87,7 +87,7 @@ fn repeated_peeks_get_an_anchor_that_prefires() {
 
 #[test]
 fn single_peeks_do_not_prefire() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let spot = V2::new(7.0, 13.0);
     let pos = squad_pos();
     let mut coord = SquadCoordinator::new(&a, pos.len());
@@ -99,7 +99,7 @@ fn single_peeks_do_not_prefire() {
 
 #[test]
 fn mind_prefires_only_at_the_spot_with_spread() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Difficulty::Regular.limits(0) };
     let spot = V2::new(7.0, 13.0);
@@ -136,7 +136,7 @@ fn mind_prefires_only_at_the_spot_with_spread() {
 
 #[test]
 fn camping_player_gets_fragged_and_called_out() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     // Camping behind the low crates south of the tower, in the south yard.
     let camp = V2::new(7.0, 11.9);
     let pos = squad_pos();
@@ -153,7 +153,7 @@ fn camping_player_gets_fragged_and_called_out() {
 
 #[test]
 fn no_utility_budget_no_throws() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let camp = V2::new(7.0, 11.9);
     let pos = squad_pos();
     let mut coord = SquadCoordinator::new(&a, pos.len());
@@ -164,7 +164,7 @@ fn no_utility_budget_no_throws() {
 
 #[test]
 fn forced_flashbang_is_thrown() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let p = V2::new(7.0, 13.0);
     let pos = squad_pos();
     let mut coord = SquadCoordinator::new(&a, pos.len());
@@ -177,7 +177,7 @@ fn forced_flashbang_is_thrown() {
 
 #[test]
 fn bandit_learns_from_engagement_windows() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let pos = squad_pos();
     let p = V2::new(7.0, 13.0);
     let mut coord = SquadCoordinator::new(&a, pos.len());
@@ -234,7 +234,7 @@ fn six_minds_from_a_five_slot_squad() {
 
 #[test]
 fn attack_tokens_respect_max_attackers() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let pos = vec![V2::new(10.0, -5.0), V2::new(12.0, -8.0), V2::new(16.0, -2.0), V2::new(9.0, -9.0), V2::new(14.0, -10.0), V2::new(18.0, -6.0)];
     let mut coord = SquadCoordinator::new(&a, pos.len());
     coord.max_tokens = 2;

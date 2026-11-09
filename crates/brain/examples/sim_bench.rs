@@ -11,7 +11,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let matches: u32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(10);
     let seed: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
-    let arena = Arena::foundry();
+    let arena = Arena::yard();
     let mut brain = BrainState::new(seed);
     let cfg = EvolveConfig::default();
 

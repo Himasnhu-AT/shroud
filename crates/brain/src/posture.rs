@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn leans_past_a_corner() {
-        let a = Arena::foundry();
+        let a = Arena::yard();
         // Tower is ±4 m around the origin. Standing at its south face, near the east edge,
         // looking at a point north-east past the corner.
         let pos = V2::new(3.6, 4.8);
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn low_cover_detected() {
-        let a = Arena::foundry();
+        let a = Arena::yard();
         // Low crates at (7, 10) half 1.2: stand just south of them, player further north.
         assert!(low_cover_toward(&a, V2::new(7.0, 11.9), V2::new(7.0, 0.0 - 6.0)));
         assert!(!low_cover_toward(&a, V2::new(0.0, 20.0), V2::new(0.0, 28.0)));

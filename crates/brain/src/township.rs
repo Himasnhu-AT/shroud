@@ -8,7 +8,7 @@
 //! with a fuel canopy give medium ranges; the interiors are close quarters. The player
 //! spawns south behind the bus; the squad holds the north end.
 
-use crate::arena::{Arena, BuildingUse, Builder, FloorSkin, LampStyle, MapId, Skin};
+use crate::arena::{Arena, BuildingUse, Builder, FloorSkin, LampStyle, MapId, Paint, Skin};
 use crate::building::{Building, Opening, Side, STOREY};
 use crate::math::V2;
 
@@ -135,6 +135,11 @@ pub fn township() -> Arena {
     b.low(9.0, -8.2, 16.0, -7.8, Brick);
     b.low(18.0, -8.2, 23.0, -7.8, Brick);
     b.low(27.0, -11.0, 28.2, -9.8, Crate);
+    // B site dressing: a pallet of boxed office kit (default plant cover), drums by the wall.
+    b.tall(19.0, -24.0, 21.4, -21.6, 2.2, Crate);
+    b.low(21.4, -22.8, 22.6, -21.6, Crate);
+    b.low(11.0, -12.0, 11.8, -11.2, Barrel);
+    b.low(11.8, -12.0, 12.6, -11.2, Barrel);
 
     // The east lot: parked cars and a dumpster.
     b.low(37.0, -36.0, 38.9, -31.6, Car);
@@ -314,6 +319,26 @@ pub fn township() -> Arena {
     ] {
         b.floor(x0, z0, x1, z1, FloorSkin::Sidewalk);
     }
+
+    // ------------------------------------------------------------------ bomb sites
+    // A: the loading yard by the warehouse (north-west). B: the office courtyard (north-east).
+    // The squad spawns on north Main Street between them; the player south behind the bus.
+    b.site('A', -43.0, -27.0, -25.0, -9.0);
+    b.site('B', 10.5, -29.0, 23.5, -9.0);
+    b.sign_wall("A", -30.0, -28.0, 4.2, 2.0, (0, 1), Paint::White, Some(Paint::Red));
+    b.sign_wall("A", -14.5, -30.0, 2.2, 1.2, (0, 1), Paint::White, Some(Paint::Red));
+    b.sign_floor("A", -33.0, -25.0, 3.0, (0, -1), Paint::Red);
+    b.sign_wall("B", 18.0, -30.0, 3.0, 1.0, (0, 1), Paint::White, Some(Paint::Blue));
+    b.sign_wall("B", 24.0, -22.0, 2.8, 1.2, (-1, 0), Paint::White, Some(Paint::Blue));
+    b.sign_floor("B", 17.0, -18.0, 3.0, (0, -1), Paint::Blue);
+    // Directions from spawn (on the bus) and at the crossroads.
+    b.sign_wall("< A", -2.0, 34.6, 1.8, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
+    b.sign_wall("B >", 2.0, 34.6, 1.8, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
+    b.sign_floor("< A", -9.0, 2.0, 1.2, (0, -1), Paint::Yellow);
+    b.sign_floor("B >", 9.0, 2.0, 1.2, (0, -1), Paint::Yellow);
+    // Spawn borders: attackers orange, defenders blue.
+    b.outline(-6.0, 36.0, 6.0, 43.8, 0.25, Paint::Orange);
+    b.outline(-7.0, -43.8, 7.0, -34.0, 0.25, Paint::Blue);
 
     let zones = vec![
         crate::arena::zone("the crossroads", -7.0, -6.0, 7.0, 6.0),

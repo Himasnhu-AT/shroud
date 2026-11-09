@@ -312,7 +312,7 @@ fn sim_run(world: &mut World, p: Value) -> Result<Value, String> {
 
 /// The map being played (falls back to Foundry outside a match).
 fn current_arena(world: &World) -> Arena {
-    world.get_resource::<ArenaRes>().map_or_else(Arena::foundry, |a| Arena::build(a.0.id))
+    world.get_resource::<ArenaRes>().map_or_else(|| Arena::build(brain::arena::MapId::Foundry), |a| Arena::build(a.0.id))
 }
 
 /// The adaptive doctrine: tactic, why, archetypes, counter strengths, the live style profile

@@ -222,7 +222,7 @@ mod tests {
         assert!(s.blocks(V2::new(0.5, 0.0), V2::new(8.0, 0.0)), "from inside");
         s.age = SMOKE_S;
         assert!(s.done() && !s.blocks(a, b), "gone");
-        let mut arena = Arena::foundry();
+        let mut arena = Arena::yard();
         let (p, q) = (V2::new(-10.0, 18.0), V2::new(-10.0, 28.0));
         assert!(arena.line_of_sight(p, false, q, false));
         arena.smokes.push(SmokeCloud { at: V2::new(-10.0, 23.0), age: 5.0 });
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn landing_stops_at_tall_cover() {
-        let a = Arena::foundry();
+        let a = Arena::yard();
         // Through the center tower (tall, ±4 m): lands short of it.
         let l = landing(&a, V2::new(0.0, -12.0), V2::new(0.0, 12.0));
         assert!(l.y < -3.9, "{l:?}");

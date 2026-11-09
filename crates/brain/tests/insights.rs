@@ -77,7 +77,7 @@ fn is_planted(kind: &InsightKind) -> bool {
 }
 
 fn run(seed: u64, planted: bool) -> Vec<(InsightKind, String)> {
-    let arena = Arena::foundry();
+    let arena = Arena::yard();
     let mut rng = rng_from_seed(seed);
     let mut m = PlayerModel::default();
     for _ in 0..6 {
@@ -140,7 +140,7 @@ fn beta_numerics() {
 
 #[test]
 fn card_is_ascii_and_complete() {
-    let arena = Arena::foundry();
+    let arena = Arena::yard();
     let mut rng = rng_from_seed(3);
     let mut before = PlayerModel::default();
     for _ in 0..4 {
@@ -167,7 +167,7 @@ fn card_is_ascii_and_complete() {
 
 #[test]
 fn old_saves_still_load() {
-    let arena = Arena::foundry();
+    let arena = Arena::yard();
     let mut s = BrainState::new(7);
     s.history.push(MatchSummary {
         generation: 1,

@@ -38,7 +38,7 @@ pub(crate) fn spawn(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut
     let mut frames = Batch::default();
     windows(commands, arena, g, p, &mut frames, &mut walls, detail);
     walls.spawn(commands, g, p, "Wall pieces", true);
-    if detail && matches!(arena.id, MapId::Office | MapId::Township | MapId::Sirocco | MapId::Gantry) {
+    if detail && matches!(arena.id, MapId::Office | MapId::Township | MapId::Sirocco | MapId::Gantry | MapId::Foundry) {
         door_frames(arena, g, p, &mut frames);
     }
     frames.spawn(commands, g, p, "Frames", false);

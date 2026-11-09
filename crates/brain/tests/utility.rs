@@ -36,7 +36,7 @@ fn base() -> Observation {
 
 #[test]
 fn flash_blinds_the_enemy() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     assert!(a.line_of_sight(ME, false, HIM, false));
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
@@ -60,7 +60,7 @@ fn flash_blinds_the_enemy() {
 
 #[test]
 fn smoke_hides_the_player_from_the_arena_los() {
-    let mut a = Arena::foundry();
+    let mut a = Arena::yard();
     a.smokes.push(SmokeCloud { at: V2::new(-10.0, 23.0), age: 4.0 });
     assert!(!a.line_of_sight(ME, false, HIM, false));
     a.smokes[0].age = grenade::SMOKE_S;

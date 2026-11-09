@@ -196,3 +196,33 @@ fn a_sim_round_plays_out_on_every_map() {
         assert!(damage > 0.0, "{:?}: nobody ever got shot", a.id);
     }
 }
+
+#[test]
+fn every_map_has_two_reachable_plantable_sites() {
+    for a in maps() {
+        // Arrange: walkable cells, and which of them the player and each defender spawn reach.
+        let letters: Vec<char> = a.sites.iter().map(|s| s.letter).collect();
+        assert_eq!(letters, vec!['A', 'B'], "{:?}: sites should be exactly A then B", a.id);
+        assert!(a.enemy_spawns.len() >= 6, "{:?}: Elite fields 6 enemies", a.id);
+        let from_player = reachable(&a, a.player_spawn);
+        let from_enemies: Vec<Vec<bool>> = a.enemy_spawns.iter().map(|s| reachable(&a, *s)).collect();
+        let cells: Vec<usize> = (0..a.nav.walkable.len()).filter(|&i| a.nav.walkable[i]).collect();
+        for s in &a.sites {
+            // Act: the site's walkable floor.
+            let floor: Vec<usize> = cells.iter().copied().filter(|&i| s.contains(a.nav.center(i))).collect();
+            // Assert: room to plant, reachable from both sides, inside the map, on the defenders' half.
+            assert!(floor.len() >= 40, "{:?}: site {} has only {} m² of walkable floor", a.id, s.letter, floor.len());
+            assert!(floor.iter().any(|&i| from_player[i]), "{:?}: site {} unreachable from the player spawn", a.id, s.letter);
+            for (k, r) in from_enemies.iter().enumerate() {
+                assert!(floor.iter().any(|&i| r[i]), "{:?}: site {} unreachable from enemy spawn {k}", a.id, s.letter);
+            }
+            assert!(!s.contains(a.player_spawn), "{:?}: the player spawns on site {}", a.id, s.letter);
+            let lim = a.half() - WALL_THICKNESS + 1e-3;
+            assert!(s.min.x >= -lim && s.max.x <= lim && s.min.y >= -lim && s.max.y <= lim, "{:?}: site {} pokes out of the map", a.id, s.letter);
+            assert!(s.center().y < 0.0, "{:?}: site {} is on the attackers' (south) side", a.id, s.letter);
+        }
+        let (sa, sb) = (a.sites[0], a.sites[1]);
+        assert!(overlap(sa.min, sa.max, sb.min, sb.max) < 1e-4, "{:?}: sites overlap", a.id);
+        assert!(sa.center().dist(sb.center()) > 20.0, "{:?}: sites A and B too close", a.id);
+    }
+}

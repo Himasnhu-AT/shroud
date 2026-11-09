@@ -79,7 +79,7 @@ fn old_genomes_without_weapon_genes_load() {
 
 #[test]
 fn sidearm_takes_over_a_dry_primary_mid_fight() {
-    let a = Arena::build(MapId::Foundry);
+    let a = Arena::yard();
     let b = BrainState::new(5);
     let limits = Limits::for_generation(5);
     let mut m = b.squad_minds_for(1, 1, &limits).remove(0);

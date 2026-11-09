@@ -112,6 +112,14 @@ fn recipe(key: &str) -> Spec {
         "siding_rust" => spec("container", [0.66, 0.38, 0.26], [0.48, 0.26, 0.17], 0.6, 2.4),
         "gravel" => spec("roof_gravel", [0.86, 0.83, 0.80], [0.40, 0.38, 0.36], 1.0, 2.0),
         "crane_paint" => spec("tall", [1.0, 0.74, 0.16], [0.82, 0.58, 0.10], 0.5, 2.0),
+        // Foundry: oxide-red and soot-grey cladding, smoke-stained brick, dark steel.
+        "foundry_siding" => spec("container", [0.58, 0.30, 0.22], [0.42, 0.22, 0.16], 0.6, 2.4),
+        "foundry_siding_b" => spec("container", [0.44, 0.45, 0.46], [0.30, 0.31, 0.32], 0.6, 2.4),
+        "foundry_brick" => spec("brick", [0.82, 0.70, 0.64], [0.40, 0.27, 0.22], 0.95, 0.9),
+        "foundry_concrete" => spec("concrete_4k", [0.80, 0.78, 0.75], [0.48, 0.47, 0.45], 0.9, 3.0),
+        "foundry_outer" => spec("concrete_4k", [0.66, 0.64, 0.62], [0.38, 0.37, 0.36], 0.9, 3.5),
+        "foundry_steel" => spec("tall", [0.30, 0.30, 0.32], [0.16, 0.16, 0.17], 0.5, 2.0),
+        "foundry_ladle" => spec("tall", [0.24, 0.22, 0.21], [0.13, 0.12, 0.11], 0.55, 1.5),
         _ => spec("", [1.0, 1.0, 1.0], [0.6, 0.6, 0.6], 0.9, 2.0),
     }
 }
@@ -251,6 +259,7 @@ impl Palette {
             MapId::Township => "canopy",
             MapId::Sirocco => "roof_terracotta",
             MapId::Gantry => "crane_paint",
+            MapId::Foundry => "foundry_steel",
             _ => "roof_depot",
         };
         self.mat(g, key)
@@ -279,7 +288,9 @@ impl Palette {
     pub fn facade_key(&self, bi: usize, skin: Skin) -> String {
         match skin {
             Skin::Plaster => format!("plaster{}", self.variant.get(bi).copied().unwrap_or(0) % 4),
+            Skin::Siding if self.id == MapId::Foundry => if bi.is_multiple_of(2) { "foundry_siding" } else { "foundry_siding_b" }.into(),
             Skin::Siding => if bi.is_multiple_of(2) { "siding" } else { "siding_b" }.into(),
+            Skin::Brick if self.id == MapId::Foundry => "foundry_brick".into(),
             Skin::Brick => "brick".into(),
             Skin::Concrete if self.id == MapId::Township => "town_concrete".into(),
             Skin::Concrete if self.id == MapId::Gantry => "harbor_concrete".into(),
@@ -304,6 +315,8 @@ impl Palette {
             Skin::Concrete if self.id == MapId::Township => "town_concrete".into(),
             Skin::Concrete if self.id == MapId::Gantry && b.kind == BlockKind::Wall => "harbor_wall".into(),
             Skin::Concrete if self.id == MapId::Gantry => "harbor_concrete".into(),
+            Skin::Concrete if self.id == MapId::Foundry && b.kind == BlockKind::Wall => "foundry_outer".into(),
+            Skin::Concrete if self.id == MapId::Foundry => "foundry_concrete".into(),
             Skin::Concrete => "concrete".into(),
             Skin::Stucco if self.id == MapId::Sirocco && b.kind == BlockKind::Wall => "sirocco_outer".into(),
             // Low garden walls take the creamy tone; houses cycle through all three.
@@ -314,6 +327,8 @@ impl Palette {
             Skin::Container => format!("container{}", i % 4),
             Skin::Crate => "crate".into(),
             Skin::Barrel if self.id == MapId::Office => "planter".into(),
+            // Foundry: tall drums are ladles and the boiler (dark, heat-stained steel).
+            Skin::Barrel if self.id == MapId::Foundry && b.kind == BlockKind::Tall => "foundry_ladle".into(),
             Skin::Barrel => "barrel".into(),
             Skin::Sandbag => "sandbag".into(),
             Skin::Drywall if b.kind == BlockKind::Wall => "drywall_outer".into(),
@@ -323,9 +338,11 @@ impl Palette {
             Skin::Cabinet if is_crane(b) => "crane_paint".into(),
             Skin::Cabinet => "cabinet".into(),
             Skin::Brick if b.kind == BlockKind::Wall => "town_wall".into(),
+            Skin::Brick if self.id == MapId::Foundry => "foundry_brick".into(),
             Skin::Brick => "brick".into(),
             Skin::Plaster => "plaster3".into(),
             Skin::Siding if self.id == MapId::Gantry => if i.is_multiple_of(2) { "siding_teal" } else { "siding_rust" }.into(),
+            Skin::Siding if self.id == MapId::Foundry => if i.is_multiple_of(2) { "foundry_siding" } else { "foundry_siding_b" }.into(),
             Skin::Siding => "siding".into(),
             // Cars and dumpsters get their own meshes; the box material is a fallback.
             Skin::Car => "cabinet".into(),
@@ -335,6 +352,11 @@ impl Palette {
             Skin::Planter => "planter".into(),
         }
     }
+}
+
+/// Foundry's furnace: the big square concrete block in the casting hall.
+fn is_furnace(id: MapId, b: &Block) -> bool {
+    id == MapId::Foundry && b.kind == BlockKind::Tall && b.half.x > 2.5 && (b.half.x - b.half.y).abs() < 0.01 && (b.height - 6.0).abs() < 0.01
 }
 
 /// Tall steel posts (crane legs): painted, not a rack or a cabinet.
@@ -414,6 +436,12 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         }
         // Steel drums: rolling hoops, rolled rims and a lid with bungs.
         (Skin::Barrel, _) if p.id != MapId::Office => super::props::barrel(commands, e, barrel_radius(b), size.y, &mat, g, p),
+        // Foundry's furnace: a glowing charging door on its south face and a hot hearth line.
+        (Skin::Concrete, BlockKind::Tall) if is_furnace(p.id, b) => {
+            let m = p.glow(g, "furnace_glow", LinearRgba::new(9.0, 2.6, 0.35, 0.0));
+            child_box(commands, e, p.cube(g), m.clone(), Vec3::new(0.0, -size.y * 0.5 + 1.1, size.z * 0.5 + 0.01), Vec3::new(size.x * 0.45, 1.1, 0.02));
+            child_box(commands, e, p.cube(g), m, Vec3::new(size.x * 0.5 + 0.01, -size.y * 0.5 + 0.12, 0.0), Vec3::new(0.02, 0.12, size.z * 0.6));
+        }
         // A big square planter is a fountain: water on top.
         (Skin::Planter, _) if b.half.x.min(b.half.y) > 0.9 => {
             let m = p.flat(g, "water", || StandardMaterial { base_color: Color::srgb(0.05, 0.12, 0.14), perceptual_roughness: 0.03, reflectance: 0.9, ..default() });
@@ -570,14 +598,31 @@ pub fn look_of(id: MapId) -> Look {
     };
     let neutral = GradingLook { post_saturation: 1.05, midtones: GradeSection { contrast: 1.04, ..GradeSection::default() }, ..GradingLook::default() };
     match id {
+        // A hazy steelworks evening: a low amber sun from the south-west through smoke, long
+        // shadows down the lanes, a brown-grey haze.
         MapId::Foundry => Look {
-            name: "foundry".into(),
-            sun: sun_towards(Vec3::new(-30.0, 22.0, 26.0), SunLook { illuminance: 110_000.0, color: Rgb::new(1.0, 0.93, 0.84), ..arena_sun }),
-            ambient: AmbientLook { color: Rgb::new(0.7, 0.78, 0.95), brightness: 800.0, env_intensity: 1.0 },
-            fog: fog([0.58, 0.62, 0.70], 30.0, fog_end(id)),
-            exposure: ExposureLook { ev100: 13.0, ..ExposureLook::default() },
+            name: "foundry_evening".into(),
+            sun: SunLook {
+                azimuth_deg: 235.0,
+                elevation_deg: 26.0,
+                illuminance: 70_000.0,
+                color: Rgb::new(1.0, 0.80, 0.58),
+                ..arena_sun
+            },
+            sky: SkyLook {
+                mode: SkyMode::Gradient,
+                zenith: Rgb::new(0.22, 0.30, 0.46),
+                horizon: Rgb::new(0.86, 0.70, 0.54),
+                ground: Rgb::new(0.26, 0.24, 0.22),
+                brightness: 5200.0,
+                sun_glow: 0.9,
+                ..SkyLook::default()
+            },
+            ambient: AmbientLook { color: Rgb::new(0.86, 0.82, 0.80), brightness: 950.0, env_intensity: 1.0 },
+            fog: FogLook { sun_color: Rgb::new(1.0, 0.72, 0.45), sun_amount: 0.4, ..fog([0.60, 0.56, 0.52], 35.0, fog_end(id)) },
+            exposure: ExposureLook { ev100: 12.6, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: neutral,
+            grading: GradingLook { temperature: 0.03, ..neutral },
             ..base
         },
         // High, hot desert sun behind the attackers; dusty warm haze.

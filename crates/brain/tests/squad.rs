@@ -16,7 +16,7 @@ struct Frame {
 
 /// Minimal kinematic world: a stationary, harmless player; the squad runs `play`.
 fn run_play(play: Play, player: V2, secs: f32, seed: u64) -> (Vec<Frame>, Vec<Callout>) {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let mut minds: Vec<EnemyMind> = BrainState::new(seed).squad_minds(seed);
@@ -151,7 +151,7 @@ fn pin_and_flank_calls_a_sector() {
 /// Coordinated squads beat the same squads playing solo, against the same ghost.
 #[test]
 fn coordinated_beats_uncoordinated() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let limits = Limits::for_generation(0);
     let (mut on, mut off) = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0));
@@ -180,7 +180,7 @@ fn coordinated_beats_uncoordinated() {
 
 #[test]
 fn squad_rounds_are_deterministic() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let s = BrainState::new(9);
     for seed in [1, 2, 3] {
