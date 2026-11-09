@@ -75,6 +75,9 @@ fn difficulty_and_grenades() {
 
     exec(&mut c, "game.start", json!({}));
     std::thread::sleep(Duration::from_millis(300));
+    // Sirocco: the spots below are its mid doors, in plain view of the defender spawn.
+    exec(&mut c, "map.load", json!({"name": "Sirocco"}));
+    std::thread::sleep(Duration::from_millis(300));
     // Elite from the next round: end this one.
     let d = exec(&mut c, "ai.difficulty", json!({"level": "elite"}));
     assert_eq!(d["squad_size"], json!(6), "{d}");
@@ -96,9 +99,11 @@ fn difficulty_and_grenades() {
 
     // Stand in front of the squad (god mode), let them see him, then force a frag.
     exec(&mut c, "player.god", json!({"on": true}));
-    exec(&mut c, "player.teleport", json!({"x": 0, "z": -16}));
-    exec(&mut c, "player.look", json!({"at": [0, 1.2, -28]}));
-    std::thread::sleep(Duration::from_millis(600));
+    // Far enough up mid that the squad can't crowd him before the frag (they never frag a
+    // spot a teammate stands near), close enough to throw.
+    exec(&mut c, "player.teleport", json!({"x": 0, "z": -4}));
+    exec(&mut c, "player.look", json!({"at": [0, 1.2, -32]}));
+    std::thread::sleep(Duration::from_millis(300));
     exec(&mut c, "ai.throw", json!({"kind": "frag"}));
     let s = wait_for(&mut c, 4.0, |s| s["utility"]["frags_used"].as_u64() >= Some(1));
     assert!(s["utility"]["frags_used"].as_u64() >= Some(1), "frag thrown: {s}");
