@@ -343,8 +343,10 @@ fn contact_encircles() {
         assert!(m.max_gap < limit, "{id:?} x{n}: they should come from several sides (max gap {:.0} deg)", m.max_gap);
         overlap += m.overlap / t10.len() as f32;
     }
-    // Before: 22% of walked cells shared on average.
-    assert!(overlap < 0.15, "routes should differ (shared cells {:.0}%)", overlap * 100.0);
+    // Before: 22% of walked cells shared on average. The old open-yard Foundry (6-10%) pulled
+    // the mean down; the rebuilt Foundry sits with Sirocco and Gantry (~17% x4, ~30% x6), so
+    // the mean over all maps is ~15%.
+    assert!(overlap < 0.16, "routes should differ (shared cells {:.0}%)", overlap * 100.0);
 }
 
 /// He is seen, then vanishes: at most two members check where he was; the rest spread out

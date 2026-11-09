@@ -330,7 +330,7 @@ pub fn township() -> Arena {
     b.sign_floor("A", -33.0, -25.0, 3.0, (0, -1), Paint::Red);
     b.sign_wall("B", 18.0, -30.0, 3.0, 1.0, (0, 1), Paint::White, Some(Paint::Blue));
     b.sign_wall("B", 24.0, -22.0, 2.8, 1.2, (-1, 0), Paint::White, Some(Paint::Blue));
-    b.sign_floor("B", 17.0, -18.0, 3.0, (0, -1), Paint::Blue);
+    b.sign_floor("B", 17.0, -12.0, 3.0, (0, -1), Paint::Blue);
     // Directions from spawn (on the bus) and at the crossroads.
     b.sign_wall("< A", -2.0, 34.6, 1.8, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
     b.sign_wall("B >", 2.0, 34.6, 1.8, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));

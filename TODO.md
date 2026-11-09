@@ -71,7 +71,8 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [ ] Known issue: on the new Foundry the x4 squad encircles the lower-mid hideout from one side
   (max gap ~170-185 deg vs 118-135 on Sirocco/Gantry; `squad_spread::contact_encircles` allows 185
   for Foundry x4 only). Close-range spread needs AI tuning. `search_spreads_out` no longer compares
-  Foundry with its old-yard coverage baseline (that map is gone; Foundry is graded on spread only)
+  Foundry with its old-yard coverage baseline (that map is gone; Foundry is graded on spread only);
+  the mean shared-route cells limit went 15% → 16% (the yard pulled the mean down)
 
 ### Phase 3: guns + skins
 - [x] More guns: Warden heavy pistol (700), Shrike battle rifle (2700, the attacker rifle), Osprey

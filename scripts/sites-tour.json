@@ -130,17 +130,17 @@
  {
   "cmd": "player.teleport",
   "params": {
-   "x": 0,
-   "z": -9
+   "x": -20.5,
+   "z": -12.5
   }
  },
  {
   "cmd": "player.look",
   "params": {
    "at": [
-    0,
+    -28,
     1.5,
-    -20
+    -17
    ]
   }
  },
@@ -148,22 +148,22 @@
   "sleep": 2.5
  },
  {
-  "shot": "o05_b_break_room"
+  "shot": "o05_b_records_room"
  },
  {
   "cmd": "player.teleport",
   "params": {
    "x": -17,
-   "z": -14
+   "z": -16
   }
  },
  {
   "cmd": "player.look",
   "params": {
    "at": [
-    0,
+    -28,
     1.5,
-    -18
+    -16
    ]
   }
  },
@@ -171,7 +171,7 @@
   "sleep": 2.5
  },
  {
-  "shot": "o06_b_from_corridor"
+  "shot": "o06_b_from_west_corridor"
  },
  {
   "cmd": "map.load",
