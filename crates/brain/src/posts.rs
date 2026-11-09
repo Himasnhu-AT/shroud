@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn posts_hide_and_peek() {
-        let a = Arena::foundry();
+        let a = Arena::yard();
         let player = V2::new(0.0, 20.0);
         let me = V2::new(7.0, 13.0);
         let p = pick(&a, me, player, &[], None).expect("a post near the crates");

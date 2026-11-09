@@ -7,7 +7,7 @@ use crate::nav::NavGrid;
 /// Height of low cover: you can shoot over it standing, hide behind it crouched.
 pub const LOW_COVER_HEIGHT: f32 = 1.1;
 pub const TALL_HEIGHT: f32 = 3.6;
-/// Default half extent of a map (Foundry, Depot, Office are 64 m squares). Each map has its
+/// Default half extent of a map (Depot, Office and the test yard are 64 m squares). Each map has its
 /// own size: use [`Arena::half`]. Outer walls are centred on ±half, inner faces at
 /// ±(half - WALL_THICKNESS).
 pub const ARENA_HALF: f32 = 32.0;
@@ -179,11 +179,13 @@ pub struct CoverPoint {
 /// which the player-model heat grids cover) and has at least 6 enemy spawns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum MapId {
+    /// Defusal layout in a steelworks: A in the casting hall, B at the loading docks, a
+    /// ladle-car mid between the boiler house and the scale house.
     #[default]
     Foundry,
-    /// Three-lane, medium-range outdoor map (Dust 2-like).
+    /// Three-lane, medium-range outdoor defusal map.
     Depot,
-    /// Tight indoor close-quarters map (Office / Shoot House-like).
+    /// Tight indoor close-quarters defusal map: A in the server room, B in the records room.
     Office,
     /// A 90 m town block: streets, alleys, a courtyard and eight enterable buildings.
     Township,
@@ -210,10 +212,10 @@ impl MapId {
     }
     pub fn blurb(self) -> &'static str {
         match self {
-            MapId::Foundry => "Open industrial yard around a central tower.",
+            MapId::Foundry => "Bomb sites in a steelworks. A in the casting hall, B at the loading docks, a ladle car on the rails down mid.",
             MapId::Depot => "Three lanes, long sightlines, one contested middle.",
-            MapId::Office => "Tight corridors and rooms. Every corner is a fight.",
-            MapId::Township => "A town block on a clear late afternoon: long streets, alleys, houses with windows.",
+            MapId::Office => "Bomb sites in an office floor. A in the server room, B in the records room; tight corridors, every corner a fight.",
+            MapId::Township => "Bomb sites in a town block on a late afternoon. A in the warehouse loading yard, B in the office courtyard; long streets, alleys, houses with windows.",
             MapId::Sirocco => "Bomb sites in a whitewashed hill town. Long A, a house and an alley off mid, a roofed B tunnel.",
             MapId::Gantry => "Bomb sites in a harbour rail yard. A inside the warehouse, trains across mid, B out on the quay.",
         }
@@ -645,9 +647,7 @@ impl Builder {
                 }
             }
         }
-        if self.sites.is_empty() {
-            self.sites = fallback_sites(id);
-        }
+        debug_assert!(self.sites.len() == 2, "{id:?}: a map declares sites A and B (`site()` or zones \"A site\" / \"B site\")");
         let mut arena = Arena {
             id,
             half: self.half,
@@ -667,17 +667,6 @@ impl Builder {
     }
 }
 
-/// Sites for maps that don't declare any (until they get a real defusal layout).
-fn fallback_sites(id: MapId) -> Vec<crate::objective::BombSite> {
-    use crate::objective::BombSite;
-    match id {
-        MapId::Foundry => vec![BombSite::new('A', -31.0, -31.0, -15.0, -15.0), BombSite::new('B', 15.0, -31.0, 31.0, -15.0)],
-        MapId::Office => vec![BombSite::new('A', -31.0, -31.0, -13.0, -22.5), BombSite::new('B', 19.5, -21.5, 31.0, -11.5)],
-        MapId::Township => vec![BombSite::new('A', -23.0, -29.0, -8.0, -7.0), BombSite::new('B', 11.0, -29.0, 33.0, -7.0)],
-        _ => Vec::new(),
-    }
-}
-
 pub(crate) fn zone(name: &'static str, x0: f32, z0: f32, x1: f32, z1: f32) -> Zone {
     Zone { name, min: V2::new(x0, z0), max: V2::new(x1, z1) }
 }
@@ -686,7 +675,7 @@ impl Arena {
     /// Build the given map.
     pub fn build(id: MapId) -> Self {
         match id {
-            MapId::Foundry => Arena::foundry(),
+            MapId::Foundry => crate::maps::foundry::foundry(),
             MapId::Depot => Arena::depot(),
             MapId::Office => Arena::office(),
             MapId::Township => crate::township::township(),
@@ -701,8 +690,10 @@ impl Arena {
         self.half
     }
 
-    /// The original arena: "Foundry", an open mirror-symmetric yard.
-    pub fn foundry() -> Self {
+    /// The original open, mirror-symmetric yard (Foundry before it became a defusal map).
+    /// Not in the menu: a fixed, simple arena for AI tests and benches, whose coordinates the
+    /// tests rely on. Its id is `MapId::Foundry` only because every arena needs one.
+    pub fn yard() -> Self {
         use BlockKind::*;
         let h = ARENA_HALF;
         let t = WALL_THICKNESS;
@@ -747,7 +738,9 @@ impl Arena {
             zone("the inner west side", -14.0, -8.0, -8.0, 8.0),
             zone("the inner east side", 8.0, -8.0, 14.0, 8.0),
         ];
-        let b = Builder { half: ARENA_HALF, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead, sites: Vec::new() };
+        let mut b = Builder { half: ARENA_HALF, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead, sites: Vec::new() };
+        b.site('A', -31.0, -31.0, -15.0, -15.0);
+        b.site('B', 15.0, -31.0, 31.0, -15.0);
         b.finish(
             MapId::Foundry,
             zones,
@@ -854,7 +847,14 @@ impl Arena {
         b.sign_wall("MID", 0.0, 22.4, 2.0, 0.6, (0, 1), Paint::Black, Some(Paint::White));
         b.sign_floor("A ^", -26.0, 2.0, 1.2, (0, -1), Paint::Yellow);
         b.sign_floor("B ^", 28.5, 14.0, 1.2, (0, -1), Paint::Yellow);
+        b.sign_floor("A", -20.0, -24.0, 3.0, (0, -1), Paint::Red);
+        b.sign_floor("B", 24.0, -16.0, 3.0, (0, -1), Paint::Blue);
+        // Spawn borders: attackers orange, defenders blue.
         b.outline(-16.0, 23.4, 16.0, 31.0, 0.25, Paint::Orange);
+        b.outline(-11.0, -30.6, 11.0, -23.6, 0.25, Paint::Blue);
+        // Plant zones: the crate-and-container yards at the end of long A and the B tunnels.
+        b.site('A', -30.0, -28.0, -15.0, -11.0);
+        b.site('B', 15.0, -28.0, 30.0, -10.0);
         let zones = vec![
             zone("A site", -32.0, -32.0, -13.5, -7.5),
             zone("B site", 13.5, -32.0, 32.0, -6.0),
@@ -911,7 +911,7 @@ impl Arena {
         b.wall_z(0.0, -31.0, -19.0 - t, &[], h, Drywall);
         b.wall_z(11.0, -31.0, -19.0 - t, &[-25.0], h, Drywall);
         // --- East rooms.
-        b.wall_z(-11.0, 19.0 + t, 31.0, &[], h, Drywall);
+        b.wall_z(-11.0, 19.0 + t, 31.0, &[27.0], h, Drywall); // kitchen door into the server room (A)
         b.wall_z(0.0, 19.0 + t, 31.0, &[25.0], h, Drywall);
         b.wall_z(11.0, 19.0 + t, 31.0, &[27.0], h, Drywall);
         // --- Centre: break room | cubicles | reception.
@@ -940,6 +940,10 @@ impl Arena {
         }
         b.low(-6.0, -22.0 + t, 6.0, -21.0, Desk); // counter along the north wall
         b.tall(11.0, -22.0 + t, 12.4, -21.0, 2.0, Cabinet); // vending machine
+        // A delivery of boxed kit stacked in the corners.
+        b.tall(12.6, -22.0 + t, 14.6, -19.85, 2.0, Crate);
+        b.low(-15.0 + t, -22.0 + t, -13.65, -20.65, Crate);
+        b.low(-15.0 + t, -20.65, -13.65, -19.45, Crate);
         // Reception.
         b.low(-3.0, 15.0, 3.0, 16.0, Desk);
         b.low(-14.4, 20.4, -13.6, 21.2, Barrel); // planters
@@ -949,9 +953,13 @@ impl Arena {
         b.tall(-16.2, 9.5, -15.0 - t, 10.5, 2.0, Cabinet);
         b.tall(15.0 + t, -9.5, 16.2, -8.5, 2.0, Cabinet);
         b.tall(17.8, 8.5, 19.0 - t, 9.5, 2.0, Cabinet);
-        // West rooms: records (shelves), office, copy room, manager's office.
+        // West rooms: records (shelves; B site), office, copy room, manager's office.
         b.tall(-28.0, -19.0, -22.0, -18.4, 2.2, Cabinet);
         b.tall(-28.0, -15.0, -22.0, -14.4, 2.2, Cabinet);
+        // B site dressing: archive boxes (default plant cover) and a shredder bin.
+        b.tall(-31.0, -13.4, -29.4, -11.15, 2.0, Crate);
+        b.low(-29.4, -12.35, -28.2, -11.15, Crate);
+        b.low(-20.35, -21.85, -19.15, -20.65, Barrel);
         b.low(-28.0, -8.0, -25.6, -7.2, Desk);
         b.low(-24.0, -4.0, -21.6, -3.2, Desk);
         b.low(-31.0, 4.0, -29.8, 6.0, Cabinet);
@@ -962,6 +970,10 @@ impl Arena {
         for z in [-18.0, -14.5] {
             b.tall(22.0, z - 0.4, 29.0, z + 0.4, 2.2, Cabinet);
         }
+        // A site dressing: shipping crates for new racks (default plant cover), a cable drum.
+        b.low(29.6, -21.85, 31.0, -20.45, Crate);
+        b.low(29.6, -20.45, 31.0, -19.05, Crate);
+        b.low(19.15, -12.6, 20.35, -11.4, Barrel);
         b.low(30.0, -9.0, 31.0, -2.0, Desk);
         b.low(23.0, -6.5, 27.0, -4.5, Desk);
         b.tall(22.0, 2.0, 24.0, 4.0, 2.0, Crate);
@@ -1025,6 +1037,26 @@ impl Arena {
         b.floor(19.0, -11.0, 31.0, 0.0, FloorSkin::Tiles);
         b.floor(-19.0, -22.0, -15.0, 22.0, FloorSkin::Tiles);
         b.floor(15.0, -22.0, 19.0, 22.0, FloorSkin::Tiles);
+        // --- Bomb sites on the flanks: A is the server room (east), B the records room (west).
+        //     The squad spawns in the back offices behind both; the player in the lobby.
+        b.site('A', 19.15, -21.85, 31.0, -11.15);
+        b.site('B', -31.0, -21.85, -19.15, -11.15);
+        b.sign_wall("A", 21.0, -21.85, 2.0, 1.3, (0, 1), Paint::White, Some(Paint::Red));
+        b.sign_wall("A", 18.85, -13.0, 2.0, 1.1, (-1, 0), Paint::White, Some(Paint::Red));
+        b.sign_wall("A", 23.5, -10.85, 2.0, 1.1, (0, 1), Paint::White, Some(Paint::Red));
+        b.sign_floor("A", 25.0, -12.6, 2.0, (0, -1), Paint::Red);
+        b.sign_wall("B", -21.0, -21.85, 2.0, 1.3, (0, 1), Paint::White, Some(Paint::Blue));
+        b.sign_wall("B", -18.85, -13.0, 2.0, 1.1, (1, 0), Paint::White, Some(Paint::Blue));
+        b.sign_wall("B", -23.0, -10.85, 2.0, 1.1, (0, 1), Paint::White, Some(Paint::Blue));
+        b.sign_floor("B", -25.0, -12.6, 2.0, (0, -1), Paint::Blue);
+        // Directions from the lobby, and down the corridors.
+        b.sign_wall("< B", -9.0, 22.15, 2.1, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_wall("A >", 9.0, 22.15, 2.1, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_floor("A ^", 17.0, 12.0, 1.0, (0, -1), Paint::Yellow);
+        b.sign_floor("B ^", -17.0, 12.0, 1.0, (0, -1), Paint::Yellow);
+        // Spawn borders: attackers orange (lobby), defenders blue (back hallway).
+        b.outline(-10.0, 24.5, 10.0, 30.8, 0.2, Paint::Orange);
+        b.outline(-11.6, -30.8, 11.6, -23.2, 0.2, Paint::Blue);
         let zones = vec![
             zone("the north-west office", -32.0, -32.0, -12.0, -22.0),
             zone("the back hallway", -12.0, -32.0, 12.0, -22.0),

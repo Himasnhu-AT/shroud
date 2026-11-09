@@ -26,7 +26,7 @@ fn win_rate(a: &Arena, model: &PlayerModel, mode: GhostMode, brains: &[BrainStat
 
 #[test]
 fn ghost_v2_beats_v1_against_the_same_squads() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let brains: Vec<BrainState> = (1..=4).map(BrainState::new).collect();
     let v1 = win_rate(&a, &model, GhostMode::V1, &brains, 40);
@@ -39,7 +39,7 @@ fn ghost_v2_beats_v1_against_the_same_squads() {
 
 #[test]
 fn ghost_v2_round_is_deterministic() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let s = BrainState::new(3);
     let model = PlayerModel::default();
     let r1 = sim::run_round(&a, &model, Limits::for_generation(0), s.squad_minds(5), 9);
@@ -54,7 +54,7 @@ fn planted() -> GhostParams {
 
 #[test]
 fn calibration_recovers_planted_parameters() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let brains: Vec<BrainState> = (11..=13).map(BrainState::new).collect();
     let make = |g: usize, seed: u64| (brains[g].squad_minds(seed), Limits::for_generation(0));
     let model = PlayerModel::default();

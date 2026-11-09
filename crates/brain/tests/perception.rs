@@ -21,7 +21,7 @@ fn obs(pos: V2, player: V2, age: f32, alert: Alert) -> Observation {
 
 #[test]
 fn shooting_one_enemy_alerts_whole_squad_within_one_tick() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let mut minds: Vec<EnemyMind> = BrainState::new(3).squad_minds(3);
@@ -52,7 +52,7 @@ fn shooting_one_enemy_alerts_whole_squad_within_one_tick() {
 
 #[test]
 fn fresh_sighting_relays_instantly_in_combat() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let mut coord = SquadCoordinator::new(&a, 3);
     let p = V2::new(0.0, 20.0);
@@ -67,7 +67,7 @@ fn fresh_sighting_relays_instantly_in_combat() {
 
 #[test]
 fn gunshot_occluded_by_tall_block_and_heard_at_40m_in_open() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let b = a.blocks.iter().find(|b| b.kind == BlockKind::Tall).expect("a tall block");
     let src = b.center - V2::new(b.half.x + 3.0, 0.0);
     let lis = b.center + V2::new(b.half.x + 3.0, 0.0);
@@ -91,7 +91,7 @@ fn gunshot_occluded_by_tall_block_and_heard_at_40m_in_open() {
 
 #[test]
 fn stuck_against_wall_corner_reaches_goal() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let mut reached = 0;
@@ -119,7 +119,7 @@ fn stuck_against_wall_corner_reaches_goal() {
 
 #[test]
 fn attack_tokens_limit_shooters() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     for n in 1..=6 {
         let mut coord = SquadCoordinator::new(&a, n);
@@ -186,7 +186,7 @@ fn aggressive_choices() {
 
 #[test]
 fn enemies_keep_standoff_from_player() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let p = V2::new(0.0, 20.0);
@@ -208,7 +208,7 @@ fn enemies_keep_standoff_from_player() {
 
 #[test]
 fn contact_callout_names_true_zone() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let mut coord = SquadCoordinator::new(&a, 4);
     let mut views: Vec<MemberView> = a.enemy_spawns.iter().take(4).map(|&s| member(s, a.player_spawn, 99.0)).collect();

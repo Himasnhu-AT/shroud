@@ -9,7 +9,7 @@ use std::time::Duration;
 
 #[test]
 fn nav_finds_path_around_center_tower() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let p = a.nav.find_path(V2::new(0.0, 10.0), V2::new(0.0, -10.0)).expect("path");
     assert!(p.len() >= 2, "must detour around the tower");
     assert!(p.iter().all(|w| a.nav.walkable_at(*w)));
@@ -17,7 +17,7 @@ fn nav_finds_path_around_center_tower() {
 
 #[test]
 fn low_cover_blocks_only_crouched() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     // Long low wall at z = 26 between x = 0..8.
     let (from, to) = (V2::new(4.0, 29.0), V2::new(4.0, 22.0));
     assert!(a.line_of_sight(from, false, to, false));
@@ -56,7 +56,7 @@ fn player_model_ema_and_confidence() {
     assert!(m.strafe_bias < -0.5, "strafes left: {}", m.strafe_bias);
     assert!(m.accuracy_at(12.0) > 0.7);
     assert!(m.confidence() > 0.3);
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let ins = m.insights(&a, Some(&t), None, 500.0);
     assert!(ins.iter().any(|s| s.contains("south yard")), "{ins:?}");
     assert!(ins.iter().all(|s| s.is_ascii()), "UI font is ASCII-only: {ins:?}");
@@ -64,7 +64,7 @@ fn player_model_ema_and_confidence() {
 
 #[test]
 fn sim_round_finishes_and_is_deterministic() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let s = BrainState::new(7);
     let model = PlayerModel::default();
     let r1 = sim::run_round(&a, &model, Limits::for_generation(0), s.squad_minds(1), 42);
@@ -92,7 +92,7 @@ fn save_load_round_trip() {
 /// The key claim: evolved squads beat fresh ones against the same ghost.
 #[test]
 fn evolution_makes_squads_stronger() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     // Evaluate under Recruit mechanics: at the default level the fresh squad already wins most
     // rounds against the ghost, leaving no headroom to see technique gains. Evolution never
@@ -129,7 +129,7 @@ fn evolution_makes_squads_stronger() {
 
 #[test]
 fn insights_are_specific() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let mut m = PlayerModel::default();
     let mut t = MatchTelemetry::default();
     for _ in 0..300 {
@@ -150,7 +150,7 @@ fn insights_are_specific() {
 /// its round-win rate against a fixed reference squad on fixed seeds.
 #[test]
 fn ghost_calibrates_toward_real_outcomes() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let reference = BrainState::new(99);
     let strength = |model: &PlayerModel| -> f32 {
         let wins = (0..24u64)
@@ -214,7 +214,7 @@ fn ghost_headshots_follow_the_players_habit() {
     model.ingest(&t);
     assert!(model.headshot_rate > prior + 0.1, "learned {} from prior {prior}", model.headshot_rate);
 
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let limits = Limits::for_generation(0);
     let s = BrainState::new(3);
     let rate = |m: &PlayerModel| {

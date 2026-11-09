@@ -123,7 +123,7 @@ fn open_pair(a: &Arena) -> (V2, V2) {
 
 #[test]
 fn shoots_on_sight_without_a_token() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let limits = Limits::for_generation(0);
     let cx = MindCtx { arena: &a, model: &model, limits };
@@ -159,7 +159,7 @@ fn shoots_on_sight_without_a_token() {
 
 #[test]
 fn caught_unaware_reacts_slower() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let limits = Limits::for_generation(0);
     let cx = MindCtx { arena: &a, model: &model, limits };
@@ -174,7 +174,7 @@ fn caught_unaware_reacts_slower() {
 
 #[test]
 fn isolated_bot_peeks_shoots_hides_and_moves_posts() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let player = V2::new(0.0, 22.0);
     let start = scene(&a, player).expect("a cover point with two posts near the player");
     let mut cycles_total = 0;
@@ -220,7 +220,7 @@ fn isolated_bot_peeks_shoots_hides_and_moves_posts() {
 #[test]
 fn peeks_lean_out_at_tall_cover() {
     // Somewhere a peek steps sideways out of tall cover: the action leans that way.
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let player = V2::new(0.0, 22.0);
     let start = scene(&a, player).unwrap();
     let mut leaned = false;
@@ -233,7 +233,7 @@ fn peeks_lean_out_at_tall_cover() {
 
 #[test]
 fn bot_with_squad_nearby_fights_in_the_open_with_a_token() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let player = V2::new(0.0, 22.0);
     let start = scene(&a, player).unwrap();
     let mut m = mind(1);
@@ -247,7 +247,7 @@ fn bot_with_squad_nearby_fights_in_the_open_with_a_token() {
 
 #[test]
 fn reloads_behind_cover_not_in_the_open() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let player = V2::new(0.0, 22.0);
     // An open spot with hidden cover within ~3.5 m, the player in clear view.
     let spot = a
@@ -283,7 +283,7 @@ fn reloads_behind_cover_not_in_the_open() {
 #[test]
 fn radio_updates_reach_members_at_different_times() {
     // The squad's belief jumps; members turn to it at their own (seeded) delays, not in unison.
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let me = V2::new(-20.0, -20.0);
@@ -332,7 +332,7 @@ fn squads_stay_tough_against_the_ghost() {
 #[test]
 fn members_without_a_token_fire_suppressively() {
     // Same enemy, same shot: without a token (and not defending itself) the spread is wider.
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let cx = MindCtx { arena: &a, model: &model, limits: Limits::for_generation(0) };
     let (me, p) = open_pair(&a);

@@ -48,7 +48,7 @@ fn township_is_big_and_has_eight_buildings() {
     assert!(a.decor.buildings.len() >= 9, "{} buildings", a.decor.buildings.len());
     assert!(a.decor.windows.len() >= 40, "{} windows", a.decor.windows.len());
     // Everything else stays the default size.
-    for id in [MapId::Foundry, MapId::Depot, MapId::Office] {
+    for id in [MapId::Depot, MapId::Office] {
         assert_eq!(Arena::build(id).half(), brain::arena::ARENA_HALF);
     }
 }

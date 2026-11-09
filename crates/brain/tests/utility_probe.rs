@@ -11,7 +11,7 @@ use brain::squad::UtilityBudget;
 #[test]
 #[ignore]
 fn probe() {
-    let a = Arena::foundry();
+    let a = Arena::yard();
     let model = PlayerModel::default();
     let brains: Vec<BrainState> = (1..=4).map(BrainState::new).collect();
     for mode in [GhostMode::V1, GhostMode::V2] {

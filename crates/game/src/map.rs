@@ -240,7 +240,7 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
         if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
             // Lintels and arches on maps with buildings are part of their wall: same material
             // as the wall beside them.
-            let wall = matches!(arena.id, MapId::Township | MapId::Sirocco | MapId::Gantry).then(|| wall_beside(arena, min, max)).flatten();
+            let wall = matches!(arena.id, MapId::Township | MapId::Sirocco | MapId::Gantry | MapId::Foundry).then(|| wall_beside(arena, min, max)).flatten();
             match wall {
                 Some(k) => {
                     let key = p.block_key(k, &arena.blocks[k]);

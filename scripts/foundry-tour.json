@@ -1,0 +1,521 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "map.info"
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 8,
+   "z": 34
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "shot": "f01_attacker_spawn"
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -33,
+   "z": 22
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -33,
+    2,
+    -6
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f02_scrap_yard"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -29.5,
+   "z": 6
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -36,
+    1.5,
+    -6
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f03_balers_chicane"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -33,
+   "z": -6
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -31,
+    2,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f04_a_long_to_roller_door"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -31,
+   "z": -17
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -24,
+    1.5,
+    -30
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f05_a_site_from_roller_door"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -18,
+   "z": -18
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    2.0,
+    -34
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f06_a_site_furnace"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -16,
+   "z": -29
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -28,
+    1.5,
+    -22
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f07_a_site_from_defender_door"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -11,
+   "z": -7
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -24,
+    1.5,
+    -6
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f08_boiler_house_a_short"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -16,
+   "z": -13.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    1.6,
+    -13.5
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f09_a_apron"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f10_mid_from_spawn"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -27
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    10
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f11_mid_doors_from_defenders"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -14
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f12_top_mid"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -10,
+   "z": 0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -30,
+    1.5,
+    0
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f13_west_cut"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 11,
+   "z": -10
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    24,
+    1.5,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f14_scale_house_b_short"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 22.5,
+   "z": -13
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    28,
+    1.5,
+    -30
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f15_b_from_scale_house"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 29,
+   "z": 22
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    30,
+    1.5,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f16_rail_spur"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 33,
+   "z": -10
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    26,
+    1.5,
+    -30
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f17_b_ramp_into_docks"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 36,
+   "z": -17
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    20,
+    1.5,
+    -32
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f18_b_site_docks"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 10,
+   "z": -31.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    26,
+    1.5,
+    -31
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f19_b_connector"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 10,
+   "z": -26
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -12,
+    2.4,
+    -30
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f20_defender_spawn"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 10,
+   "z": -2
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    30,
+    1.5,
+    -2
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "f21_east_cut"
+ }
+]
