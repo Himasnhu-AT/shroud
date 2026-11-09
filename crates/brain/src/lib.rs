@@ -19,6 +19,7 @@ pub mod maps;
 pub mod math;
 pub mod mind;
 pub mod nav;
+pub mod objective;
 pub mod pad;
 pub mod perception;
 pub mod neat;

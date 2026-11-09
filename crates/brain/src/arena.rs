@@ -237,6 +237,8 @@ pub struct Arena {
     /// Lamps shot out this round (indices into `decor.lamps`, the lamp ids). The game keeps it
     /// up to date and clears it at round start; the doctrine reads it (`Arena::lamps_lighting`).
     pub dark_lamps: Vec<usize>,
+    /// Bomb sites (A first, then B). Every map has two; see [`crate::objective`].
+    pub sites: Vec<crate::objective::BombSite>,
 }
 
 /// Agent collision radius used for nav inflation.
@@ -505,6 +507,8 @@ pub(crate) struct Builder {
     pub(crate) zones: Vec<Zone>,
     /// Style for `lamp()`.
     pub(crate) lamp_style: LampStyle,
+    /// Bomb sites added with `site()`. Empty: `finish` takes the zones named "A site" / "B site".
+    pub(crate) sites: Vec<crate::objective::BombSite>,
 }
 
 impl Builder {
@@ -524,7 +528,7 @@ impl Builder {
             b.skin = wall_skin;
             blocks.push(b);
         }
-        Builder { half, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead }
+        Builder { half, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead, sites: Vec::new() }
     }
 
     pub(crate) fn low(&mut self, x0: f32, z0: f32, x1: f32, z1: f32, skin: Skin) {
@@ -625,10 +629,25 @@ impl Builder {
         self.paint(x1 - w, z0 + w, x1, z1 - w, paint);
     }
 
+    /// A bomb site (plantable rectangle). Add A before B.
+    pub(crate) fn site(&mut self, letter: char, x0: f32, z0: f32, x1: f32, z1: f32) {
+        self.sites.push(crate::objective::BombSite::new(letter, x0, z0, x1, z1));
+    }
+
     pub(crate) fn finish(mut self, id: MapId, zones: Vec<Zone>, player_spawn: V2, enemy_spawns: Vec<V2>) -> Arena {
         let nav = NavGrid::bake(&self.blocks, self.half, 1.0, AGENT_RADIUS);
         // Rooms added with `zone()` come first: `zone_of` returns the first match.
         self.zones.extend(zones);
+        if self.sites.is_empty() {
+            for (letter, name) in [('A', "A site"), ('B', "B site")] {
+                if let Some(z) = self.zones.iter().find(|z| z.name == name) {
+                    self.sites.push(crate::objective::BombSite::new(letter, z.min.x, z.min.y, z.max.x, z.max.y));
+                }
+            }
+        }
+        if self.sites.is_empty() {
+            self.sites = fallback_sites(id);
+        }
         let mut arena = Arena {
             id,
             half: self.half,
@@ -641,9 +660,21 @@ impl Builder {
             decor: self.decor,
             smokes: Vec::new(),
             dark_lamps: Vec::new(),
+            sites: self.sites,
         };
         arena.cover = arena.compute_cover();
         arena
+    }
+}
+
+/// Sites for maps that don't declare any (until they get a real defusal layout).
+fn fallback_sites(id: MapId) -> Vec<crate::objective::BombSite> {
+    use crate::objective::BombSite;
+    match id {
+        MapId::Foundry => vec![BombSite::new('A', -31.0, -31.0, -15.0, -15.0), BombSite::new('B', 15.0, -31.0, 31.0, -15.0)],
+        MapId::Office => vec![BombSite::new('A', -31.0, -31.0, -13.0, -22.5), BombSite::new('B', 19.5, -21.5, 31.0, -11.5)],
+        MapId::Township => vec![BombSite::new('A', -23.0, -29.0, -8.0, -7.0), BombSite::new('B', 11.0, -29.0, 33.0, -7.0)],
+        _ => Vec::new(),
     }
 }
 
@@ -716,7 +747,7 @@ impl Arena {
             zone("the inner west side", -14.0, -8.0, -8.0, 8.0),
             zone("the inner east side", 8.0, -8.0, 14.0, 8.0),
         ];
-        let b = Builder { half: ARENA_HALF, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead };
+        let b = Builder { half: ARENA_HALF, blocks, decor: Decor::default(), zones: Vec::new(), lamp_style: LampStyle::Bulkhead, sites: Vec::new() };
         b.finish(
             MapId::Foundry,
             zones,

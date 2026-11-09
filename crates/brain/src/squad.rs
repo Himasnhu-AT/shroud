@@ -798,6 +798,10 @@ pub struct SquadCoordinator {
     /// Off-angle traps: (member, spot, door it watches).
     pub traps: Vec<(usize, V2, V2)>,
     traps_t: f32,
+    /// The planted bomb, if any (the game updates it every frame; `crate::objective`).
+    pub bomb: Option<crate::objective::PlantedBomb>,
+    /// The member assigned to defuse it.
+    pub defuser: Option<usize>,
 }
 
 /// Stack and breach: the entry and its trader stack beside the door frame, utility goes in,
@@ -939,7 +943,26 @@ impl SquadCoordinator {
             lights_next: 0.0,
             traps: Vec::new(),
             traps_t: -99.0,
+            bomb: None,
+            defuser: None,
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Bomb objective (CONTRACT with the game: `set_bomb` each frame, `wants_defuse` per member).
+
+    /// The game reports the planted bomb (None before a plant / after it's resolved).
+    pub fn set_bomb(&mut self, bomb: Option<crate::objective::PlantedBomb>) {
+        if bomb.is_none() {
+            self.defuser = None;
+        }
+        self.bomb = bomb;
+    }
+
+    /// Member `i` is trying to defuse right now (the game ticks the defuse while this holds and
+    /// it stands within `objective::DEFUSE_REACH` of the bomb).
+    pub fn wants_defuse(&self, i: usize) -> bool {
+        self.bomb.is_some() && self.defuser == Some(i)
     }
 
     // ---------------------------------------------------------------------------------------
