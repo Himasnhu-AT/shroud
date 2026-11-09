@@ -369,6 +369,9 @@ pub struct EvolveConfig {
     pub threads: usize,
     /// Run on each worker thread before it simulates (e.g. lower its priority).
     pub worker_init: Option<fn()>,
+    /// Share of sim rounds played as bomb defusal (`sim::run_round_objective`), so evolution
+    /// sees the objective (site holds, retakes) as well as the open hunt.
+    pub objective_share: f32,
 }
 
 impl Default for EvolveConfig {
@@ -381,6 +384,7 @@ impl Default for EvolveConfig {
             rungs: 3,
             threads: std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 6),
             worker_init: None,
+            objective_share: 0.5,
         }
     }
 }
@@ -775,7 +779,12 @@ impl BrainState {
                 .collect();
             // Guns from the weapon genes, as the game hands them out.
             loadout::equip(&mut minds, TRAINER_DIFFICULTY);
-            let rr: RoundResult = sim::run_round(arena, &self.player_model, limits, minds, seed);
+            let defusal = (seed % 1000) as f32 / 1000.0 < cfg.objective_share;
+            let rr: RoundResult = if defusal {
+                sim::run_round_objective(arena, &self.player_model, limits, minds, seed)
+            } else {
+                sim::run_round(arena, &self.player_model, limits, minds, seed)
+            };
             let rho: Vec<f32> = rr.enemies.iter().map(sim::EnemyStats::fitness).collect();
             let mean = rho.iter().sum::<f32>() / rho.len().max(1) as f32;
             let reward: Vec<f32> = rho.iter().map(|&p| (1.0 - tau) * p + tau * mean).collect();

@@ -1124,6 +1124,16 @@ impl EnemyMind {
             crouch = false;
         }
 
+        // Defusing: on the bomb, stand still (moving off resets the defuse) and keep the gun up.
+        if let Some(d) = self.following().filter(|od| od.role == squad::Role::Defuser && od.goal == Goal::Hold).and_then(|od| od.dest) {
+            let r = o.pos.dist(d);
+            if r < crate::objective::DEFUSE_REACH - 0.3 && (self.path.is_empty() || r < 0.8) {
+                move_dir = V2::ZERO;
+                sprint = false;
+                lean = 0.0;
+            }
+        }
+
         self.debug.goal = Some(self.goal);
         self.debug.post = posting;
         self.debug.isolated = self.isolated;
