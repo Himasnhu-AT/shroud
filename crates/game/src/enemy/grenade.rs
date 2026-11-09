@@ -556,8 +556,9 @@ fn animate_smoke(
     }
 }
 
+/// A fireball / flash: an additive sphere that swells and fades over `ttl`, with a light.
 #[allow(clippy::too_many_arguments)]
-fn spawn_blast(
+pub(crate) fn spawn_blast(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,

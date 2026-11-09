@@ -39,7 +39,7 @@ impl Plugin for FeedbackPlugin {
 }
 
 #[derive(Resource, Default)]
-struct Feedback {
+pub(crate) struct Feedback {
     /// 0..1 red flash from recent hits, decays.
     flash: f32,
     /// 0..1 camera shake trauma, decays; amplitude goes with trauma squared.
@@ -47,6 +47,13 @@ struct Feedback {
     /// World positions of recent attackers: (position, seconds left).
     slots: [Option<(Vec3, f32)>; INDICATORS],
     next_slot: usize,
+}
+
+impl Feedback {
+    /// Add camera shake (0..1 trauma, e.g. a nearby explosion).
+    pub(crate) fn shake(&mut self, trauma: f32) {
+        self.trauma = (self.trauma + trauma).clamp(0.0, 1.0);
+    }
 }
 
 #[derive(Component)]

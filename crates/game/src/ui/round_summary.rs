@@ -97,7 +97,7 @@ fn show_summary(mut commands: Commands, flow: Res<MatchFlow>, sb: Res<Scoreboard
             ))
             .with_children(|p| {
                 if flow.timed_out {
-                    p.spawn(text("TIME UP \u{b7} DECIDED ON HEALTH LEFT", label(SIZE_LABEL), ACCENT));
+                    p.spawn(text("TIME UP \u{b7} THE SQUAD HELD THE SITES", label(SIZE_LABEL), ACCENT));
                 }
                 p.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
                     r.spawn(text("MVP", label(SIZE_LABEL + 2.0), ACCENT));

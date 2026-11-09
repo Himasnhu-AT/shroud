@@ -769,6 +769,7 @@ fn animate_viewmodel(
     mut muzzle_cam: ResMut<MuzzleCam>,
     aim: Res<crate::bodycam::BodycamAim>,
     grenade: Option<Res<super::throwing::GrenadeHand>>,
+    bomb: Option<Res<crate::bomb::Bomb>>,
 ) {
     let dt = time.delta_secs().clamp(1e-4, 0.05);
     let body = aim.active;
@@ -874,6 +875,8 @@ fn animate_viewmodel(
         Phase::Drawing { left, total } => ease(left / total.max(1e-3)),
         Phase::Holstering { left, .. } => ease(1.0 - left / HOLSTER_S),
     };
+    // Planting the bomb (or down after it): the gun goes out of the way.
+    let lowered = lowered.max(bomb.map_or(0.0, |b| ease(b.lower)));
     // Pump / bolt cycle.
     let spec = w.kind.spec();
     let cyc = if w.cycling > 0.0 && spec.cycle_s > 0.0 {

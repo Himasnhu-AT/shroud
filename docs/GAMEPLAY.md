@@ -4,8 +4,7 @@
 `Menu → Playing (match) → Evolving → Debrief → Playing …`
 
 **Match:** first to 3 rounds (at most 5), you vs the squad. Main menu "Play" → setup (map cards, then
-difficulty) → "Start match". A round ends when you die, the whole squad is dead, or the clock runs out.
-No respawns within a round. Full HP and refilled ammo each round. The squad only evolves *between
+difficulty) → "Start match". Rounds are bomb defusal (see Objective below). No respawns within a round. Full HP and refilled ammo each round. The squad only evolves *between
 matches*, and only in technique.
 
 ## Round economy (`economy.rs`, rules in `brain::economy`)
@@ -69,7 +68,25 @@ reachable from both spawns, no overlapping geometry, a sim round that plays out.
 | Move | WASD, Shift sprint, Space jump, Ctrl/C crouch (eye height 1.0 m) |
 | Look | mouse (cursor locked while playing; Esc releases) |
 | Shoot / reload | LMB / R |
+| Plant bomb / take gun | hold E (in a site with the bomb: plant; a gun in reach wins) |
 | HP | 100 |
+
+## Objective: bomb defusal (`bomb.rs`, rules in `brain::objective`)
+You attack, the squad defends. You start every round carrying the bomb ("BOMB" tag above health).
+- **Plant:** stand in site A or B (painted outline and letter on the floor), round live, hold **E**
+  for 3.2 s. You can't move or fire while planting; letting go resets. +$300.
+- **Planted:** the round timer becomes a pulsing red bomb (no exact fuse, like CS). It beeps faster
+  as its 40 s fuse runs, then explodes: lethal within 8 m, falling off to nothing at 22 m (halved
+  behind cover past 8 m), screen shake and flash.
+- **Defuse:** a defender standing on the bomb for 7 s defuses it ("DEFUSING" under the enemy pips,
+  and you hear it). Stepping off or dying resets it.
+- **Who wins:** before a plant: squad dead → you; you dead or the clock (1:55) out → the squad.
+  After a plant the clock and your death don't matter: explodes → you, defused → the squad, squad dead
+  → you. Dead after planting, you stay down and watch ("Bomb ticking") until the bomb decides it.
+- **Money:** planted but lost → +$800 on top of the loss pay.
+- Control port: `bomb.state`, `bomb.plant {site, fuse, plant}`, `bomb.defuse {member, teleport}`;
+  trace events `bomb.planted`, `bomb.defused`, `bomb.exploded`. Visual check:
+  `scripts/bomb-plant.json`.
 
 ## Weapons (prototype)
 | | Rifle | Pistol (stretch) |
