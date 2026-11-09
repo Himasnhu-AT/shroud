@@ -1,0 +1,408 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "map.info"
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 28
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    20
+   ]
+  }
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "shot": "o01_lobby_spawn"
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 17,
+   "z": 20
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    17,
+    1.6,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "o02_east_corridor"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 20,
+   "z": -13
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    28,
+    1.5,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "o03_a_server_room"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 27,
+   "z": -8
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    26,
+    1.5,
+    -18
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "o04_a_from_kitchen"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -9
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.5,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "o05_b_break_room"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -17,
+   "z": -14
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.5,
+    -18
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "o06_b_from_corridor"
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Township"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "map.info"
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 41
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    2,
+    25
+   ]
+  }
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "shot": "t01_spawn"
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -20,
+    1.6,
+    0
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "t02_crossroads"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -25,
+   "z": -5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    1.5,
+    -24
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "t03_a_loading_yard"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 17,
+   "z": -6
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    17,
+    1.5,
+    -26
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "t04_b_courtyard"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -32
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -42
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "t05_defender_spawn"
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Depot"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "map.info"
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -20,
+   "z": -10
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -24,
+    1.5,
+    -24
+   ]
+  }
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "shot": "d01_a_site"
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 20,
+   "z": -8
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    24,
+    1.5,
+    -22
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d02_b_site"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -20
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.0,
+    -28
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d03_defender_spawn"
+ }
+]

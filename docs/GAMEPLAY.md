@@ -27,20 +27,41 @@ matches*, and only in technique.
 - Control port: `econ.state`, `econ.set_money`, `buy {item}`, `buy.menu {open}`, `round.freeze
   {seconds}`. Visual check: `scripts/buy-round.json`.
 
-## Maps (64 × 64 m, flat; `brain::arena::Arena::build(MapId)`)
+## Maps (flat, 64–90 m; `brain::arena::Arena::build(MapId)`)
 Picked in the menu (`Settings.map`); the map switches when a new match starts. All maps are
 axis-aligned boxes so the 2D AI and trainer see the same layout as the 3D game. Low cover is 1.1 m:
-crouch behind it to hide, stand to shoot over it. The player spawns south; the squad (6+ spawns) north.
-Named zones are used in callouts and debrief text. `cargo run -p brain --example map_ascii -- depot`
-prints a map's nav grid.
+crouch behind it to hide, stand to shoot over it. Every map is a **bomb-defusal** layout: the player
+(attacker) spawns south inside an orange border; the squad (6+ spawns) defends north inside a blue
+one, between two plant zones, **A** and **B** (`Arena::sites`, declared with `Builder::site` or zones
+named "A site" / "B site"). Sites carry big painted letters on walls and floor and crates or
+containers as default plant cover; yellow direction signs ("< A", "B >", "MID") lead from spawn.
+Named zones are used in callouts and debrief text. `cargo run -p brain --example map_ascii -- foundry`
+prints a map's nav grid. `brain/tests/maps.rs` checks every map: sites A and B with plantable floor,
+reachable from both spawns, no overlapping geometry, a sim round that plays out.
 
-- **Foundry**: open industrial yard. Center tower, lane walls at x = ±14, yard pillars, lane blockers.
+- **Foundry** (80 m, default): a steelworks on a hazy evening. **A** is the casting hall (furnace,
+  ladles, ingot moulds, a control room; roller door off A long, a side door off the A apron, the
+  defenders' door on the east). **B** is the loading docks (trailers backed onto the dock shed,
+  steel coils, a container). Routes: *A long* through the scrap yard and an S-bend between two
+  scrap balers; *A short* off mid through the boiler house; *mid* with a ladle car on rails and a
+  conveyor overhead, held from the *mid doors*; *B short* through the scale house; *B ramp* up the
+  rail spur past hopper wagons. The *west cut* and *east cut* link the lanes; defenders rotate
+  through the hall's east door and the *B connector* arch. Tour: `scripts/foundry-tour.json`.
 - **Depot**: three lanes between sun-baked buildings. *Long A* (west, with the long doors choke),
   *mid* (contested double doors into north mid, connector alleys to long A and the lower tunnel),
-  roofed serpentine *B tunnels* (east). Two crate-and-container sites, *A site* and *B site*, at the north end.
-- **Office**: one roofed floor, close quarters. Two long corridors with flank rooms (records, copy room,
-  server room, kitchen …), open-plan cubicles around a conference room, break room north, reception and
-  lobby south. Every room has 2+ doorways (2.2 m) so any position can be flanked.
+  roofed serpentine *B tunnels* (east). Two crate-and-container sites at the north end.
+- **Office**: one roofed floor, close quarters. **A** is the server room (east corridor door, a
+  kitchen door, the north-east office behind); **B** is the break room (cubicles south, back
+  hallway north, both corridors). Two long corridors with flank rooms, open-plan cubicles around a
+  conference room, reception and lobby south. Every room has 2+ doorways (2.2 m).
+- **Township** (90 m): a town block on a late afternoon. **A** is the warehouse loading yard
+  (north-west), **B** the office courtyard (north-east); the squad spawns on north Main Street
+  between them, the player south behind the bus.
+- **Sirocco** (80 m): whitewashed hill town. A plaza (A) and a market (B); long A, a house and an
+  alley off mid, a roofed B tunnel. Tour: `scripts/sirocco-tour.json`.
+- **Gantry** (80 m): harbour rail yard. A inside the warehouse, trains across mid, B on the quay
+  under the crane. Tour: `scripts/gantry-tour.json`.
+- `scripts/sites-tour.json` shoots the sites of Office, Township and Depot.
 
 ## Player
 | | |
