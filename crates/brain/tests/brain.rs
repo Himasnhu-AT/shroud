@@ -100,7 +100,9 @@ fn evolution_makes_squads_stronger() {
     let limits = brain::difficulty::Difficulty::Recruit.limits(0);
     let mut s = BrainState::new(11);
     let gen0 = s.clone();
-    let cfg = EvolveConfig { budget: Duration::from_secs(60), max_neat_generations: 4, ..Default::default() };
+    // Hunt rounds only (`objective_share: 0`): the score below plays `sim::run_round` (no bomb),
+    // so training must play the same round type for the gain to show in 6 generations.
+    let cfg = EvolveConfig { budget: Duration::from_secs(60), max_neat_generations: 4, objective_share: 0.0, ..Default::default() };
     // Six generations, 48 rounds: since the perception/aggression pass (addendum) the gen-0
     // squad already wins ~half its rounds, so three generations on 24 rounds left too little
     // headroom to measure the gain reliably.
