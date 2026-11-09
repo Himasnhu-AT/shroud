@@ -622,6 +622,10 @@ pub struct PlayerModel {
     /// countering a strong habit (`doctrine::Doctrine::with_prior`).
     #[serde(default)]
     pub style: crate::doctrine::StyleSummary,
+    /// Bomb plants per site (index into `Arena::sites`: A, B), decayed: the squad stacks the
+    /// site he favours (`record_plant`, `plant_share`).
+    #[serde(default)]
+    pub plants: [f32; 2],
 }
 
 fn one() -> f32 {
@@ -679,6 +683,7 @@ impl Default for PlayerModel {
             ghost: crate::ghost::GhostParams::default(),
             weapon_use: [0.0; WEAPON_COUNT],
             style: crate::doctrine::StyleSummary::default(),
+            plants: [0.0; 2],
         }
     }
 }
@@ -814,6 +819,22 @@ impl PlayerModel {
 
     pub fn accuracy_at(&self, dist: f32) -> f32 {
         self.accuracy[range_bin(dist)]
+    }
+
+    /// He planted the bomb on site `site` (0 = A, 1 = B). Older plants fade (x0.85 each).
+    pub fn record_plant(&mut self, site: usize) {
+        for p in &mut self.plants {
+            *p *= 0.85;
+        }
+        if let Some(p) = self.plants.get_mut(site) {
+            *p += 1.0;
+        }
+    }
+
+    /// Share of his plants on `site`, shrunk toward even (one pseudo-plant per site).
+    pub fn plant_share(&self, site: usize) -> f32 {
+        let total: f32 = self.plants.iter().sum();
+        (self.plants.get(site).copied().unwrap_or(0.0) + 1.0) / (total + self.plants.len() as f32)
     }
 
     /// Range bin where the player is weakest (lowest accuracy), ignoring the extremes.

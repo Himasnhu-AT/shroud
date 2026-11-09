@@ -14,6 +14,7 @@ use crate::perception::{self, Sound, GUNSHOT_RANGE, RELOAD_RANGE};
 use crate::ghost::{EnemyView, Ghost, GhostMode, GhostStats, GhostView};
 use crate::grenade::{self, GrenadeKind, SimGrenade};
 use crate::player_model::PlayerModel;
+use crate::objective::{self, PlantedBomb};
 use rand::Rng;
 
 pub const DT: f32 = 0.05;
@@ -70,6 +71,10 @@ pub struct RoundResult {
     pub enemies: Vec<EnemyStats>,
     /// The ghost's own numbers (for calibration against real telemetry).
     pub ghost: GhostStats,
+    /// Bomb defusal rounds (`run_round_objective`): what happened to the bomb.
+    pub planted: bool,
+    pub defused: bool,
+    pub exploded: bool,
 }
 
 pub(crate) struct Body {
@@ -207,12 +212,37 @@ pub fn run_round_opts(
     arena: &Arena,
     model: &PlayerModel,
     limits: Limits,
-    mut minds: Vec<EnemyMind>,
+    minds: Vec<EnemyMind>,
     seed: u64,
     mode: GhostMode,
     coordinated: bool,
     utility: UtilityBudget,
 ) -> RoundResult {
+    run_round_full(arena, model, limits, minds, seed, mode, coordinated, utility, false)
+}
+
+/// A bomb defusal round (`crate::objective`): the ghost heads for a site (picked by his plant
+/// history, `PlayerModel::plant_share`) and plants when no defender is in view; the squad holds
+/// the sites, retakes and defuses. Outcome per the objective rules: before the plant the ghost
+/// dead or the clock out is a squad win; after it only the bomb (or a squad wipe) decides.
+pub fn run_round_objective(arena: &Arena, model: &PlayerModel, limits: Limits, minds: Vec<EnemyMind>, seed: u64) -> RoundResult {
+    run_round_full(arena, model, limits, minds, seed, GhostMode::V2, true, UtilityBudget::STANDARD, true)
+}
+
+/// Every round flavour. `objective`: bomb defusal (needs two sites; ignored otherwise).
+#[allow(clippy::too_many_arguments)]
+pub fn run_round_full(
+    arena: &Arena,
+    model: &PlayerModel,
+    limits: Limits,
+    mut minds: Vec<EnemyMind>,
+    seed: u64,
+    mode: GhostMode,
+    coordinated: bool,
+    utility: UtilityBudget,
+    objective: bool,
+) -> RoundResult {
+    let objective = objective && arena.sites.len() >= 2;
     let n = minds.len();
     let mut enemies: Vec<Body> = arena.enemy_spawns.iter().take(n).zip(&minds).map(|(&p, m)| Body::with_gun(p, m.weapon())).collect();
     let mut looks: Vec<V2> = vec![V2::new(0.0, 1.0); n];
@@ -238,10 +268,47 @@ pub fn run_round_opts(
     let mut blind_t = 0.0f32;
     // Damage per enemy from one ghost trigger pull (reused).
     let mut ghost_dmg: Vec<f32> = Vec::with_capacity(n);
+    // --- Bomb defusal: the site he goes for, the plant clock, the bomb and its defuse.
+    let mut bomb: Option<PlantedBomb> = None;
+    let mut plant_t = 0.0f32;
+    let mut defusing: Option<usize> = None;
+    let (mut defused, mut exploded) = (false, false);
+    if objective {
+        let r: f32 = rng.random();
+        let site = if r < model.plant_share(0) { 0 } else { 1 };
+        ghost.plant_goal = Some(arena.nav.nearest_walkable(arena.sites[site].center()));
+    }
 
-
-    while t < ROUND_TIME && ghost.body.alive() && enemies.iter().any(Body::alive) {
+    while (if bomb.is_some() { !defused && !exploded } else { t < ROUND_TIME && ghost.body.alive() }) && enemies.iter().any(Body::alive) {
         t += DT;
+        if let Some(b) = bomb.as_mut() {
+            b.fuse_left -= DT;
+            let on = (0..n).find(|&i| enemies[i].alive() && squad.wants_defuse(i) && enemies[i].pos.dist(b.pos) <= objective::DEFUSE_REACH);
+            match on {
+                Some(i) if defusing.is_none_or(|d| d == i) => {
+                    defusing = Some(i);
+                    b.defuse_progress += DT / objective::DEFUSE_S;
+                }
+                _ => {
+                    defusing = None;
+                    b.defuse_progress = 0.0;
+                }
+            }
+            if b.defuse_progress >= 1.0 {
+                defused = true;
+            } else if b.fuse_left <= 0.0 {
+                exploded = true;
+                for e in enemies.iter_mut() {
+                    e.hp -= objective::blast_damage(e.pos.dist(b.pos));
+                }
+            }
+            if defused || exploded {
+                break;
+            }
+        }
+        if objective {
+            squad.set_bomb(bomb);
+        }
         // --- Enemies think and act.
         let snapshot: Vec<(V2, bool, bool, bool)> = (0..n)
             .map(|i| (enemies[i].pos, enemies[i].alive(), last_seen[i] < 1.5, minds[i].goal() == Goal::Flank))
@@ -280,7 +347,7 @@ pub fn run_round_opts(
                 continue;
             }
             stats[i].time_alive += DT;
-            let sees = visible(arena, &enemies[i], looks[i], &ghost.body, true);
+            let sees = ghost.body.alive() && visible(arena, &enemies[i], looks[i], &ghost.body, true);
             ghost_spotted |= sees;
             if sees {
                 last_seen[i] = 0.0;
@@ -340,7 +407,7 @@ pub fn run_round_opts(
             // this gun shoots through (a wallbang keeps `Arena::penetration` of the damage).
             let open = arena.line_of_sight(e.pos, e.crouched, ghost.body.pos, ghost.body.crouched);
             let through = if !sees && !open && act.prefire.is_some() { arena.penetration(e.pos, ghost.body.pos, kind.spec().penetration) } else { 1.0 };
-            let can_hit = sees || act.prefire.is_some() && (open || through > 0.0);
+            let can_hit = ghost.body.alive() && (sees || act.prefire.is_some() && (open || through > 0.0));
             let dmg = if enemy_fired[i] && can_hit {
                 through * enemy_volley(kind, e.pos, act.shot_dir, act.shot_pitch_err, act.spread, ghost.body.pos, ghost.body.height(), &limits, &mut rng)
             } else {
@@ -407,6 +474,10 @@ pub fn run_round_opts(
             false
         });
         if !ghost.body.alive() {
+            // After a plant the round goes on without him: only the bomb decides.
+            if bomb.is_some() {
+                continue;
+            }
             break;
         }
         blind_t = (blind_t - DT).max(0.0);
@@ -444,6 +515,21 @@ pub fn run_round_opts(
                 .filter(|c| c.dist(at) > grenade::FRAG_RADIUS + 0.5 && c.dist(gp) < 9.0 && (*c - gp).dot(away) > -0.2 && arena.nav.clear_line(gp, *c))
                 .min_by(|a, b| a.dist(gp).total_cmp(&b.dist(gp)));
             act.vel = spot.map_or(away, |c| (c - gp).norm()) * SPRINT;
+        }
+        // Bomb defusal: inside the site with no defender in view he stops and plants.
+        if objective && bomb.is_none() {
+            let site = objective::site_at(&arena.sites, ghost.body.pos);
+            if let Some(s) = site.filter(|_| !views.iter().any(|e| e.visible) && act.shot.is_none()) {
+                act.vel = V2::ZERO;
+                plant_t += DT;
+                if plant_t >= objective::PLANT_S {
+                    bomb = Some(PlantedBomb { pos: ghost.body.pos, site: s, fuse_left: objective::FUSE_S, defuse_progress: 0.0 });
+                    // Post-plant: hang around the bomb.
+                    ghost.plant_goal = Some(ghost.body.pos);
+                }
+            } else {
+                plant_t = 0.0;
+            }
         }
         ghost.body.vel = act.vel;
         // --- Stimuli the ghost makes this tick: gunshot, footsteps, reload (perception.rs).
@@ -538,5 +624,10 @@ pub fn run_round_opts(
         ghost.body.pos = arena.resolve_collision(ghost.body.pos + ghost.body.vel * DT, BODY_RADIUS);
     }
 
-    RoundResult { player_won: ghost.body.alive(), duration: t, enemies: stats, ghost: ghost.stats }
+    let player_won = if objective {
+        exploded || !defused && !enemies.iter().any(Body::alive)
+    } else {
+        ghost.body.alive()
+    };
+    RoundResult { player_won, duration: t, enemies: stats, ghost: ghost.stats, planted: bomb.is_some(), defused, exploded }
 }
