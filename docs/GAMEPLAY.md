@@ -51,8 +51,8 @@ reachable from both spawns, no overlapping geometry, a sim round that plays out.
   *mid* (contested double doors into north mid, connector alleys to long A and the lower tunnel),
   roofed serpentine *B tunnels* (east). Two crate-and-container sites at the north end.
 - **Office**: one roofed floor, close quarters. **A** is the server room (east corridor door, a
-  kitchen door, the north-east office behind); **B** is the break room (cubicles south, back
-  hallway north, both corridors). Two long corridors with flank rooms, open-plan cubicles around a
+  kitchen door, the north-east office behind); **B** is the records room on the west flank
+  (west corridor door, the west office, the north-west office behind). Two long corridors with flank rooms, open-plan cubicles around a
   conference room, reception and lobby south. Every room has 2+ doorways (2.2 m).
 - **Township** (90 m): a town block on a late afternoon. **A** is the warehouse loading yard
   (north-west), **B** the office courtyard (north-east); the squad spawns on north Main Street

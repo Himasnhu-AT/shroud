@@ -27,7 +27,8 @@
 //! ladle car on rails; the defenders hold it from the mid doors under the conveyor),
 //! **B short** (off mid through the scale house into the docks), **B ramp** (the rail spur
 //! along the east wall, through the ramp gate). Two cuts link the lanes: the **west cut**
-//! (A long ↔ mid, under a conveyor) and the **east cut** (mid ↔ rail spur). Defenders reach A
+//! (A long ↔ mid, under a conveyor) and the **east cut** (mid ↔ rail spur); further south the
+//! **pattern alley** and the **pipe alley** link lower mid to both side lanes. Defenders reach A
 //! through the hall's east door and B through the B connector arch.
 
 use crate::arena::{Arena, BuildingUse, Builder, FloorSkin, Header, LampStyle, MapId, Paint, Roof, Skin, zone};
@@ -131,14 +132,19 @@ pub fn foundry() -> Arena {
     b.tall(-14.0, -16.6, -9.0, -12.0, 4.0, Brick);
 
     // ------------------------------------------------------------------ west cut, pattern shop
-    b.tall(-27.0, 2.0, -9.0, 24.0, 6.5, Brick); // the pattern shop
+    // The pattern shop, split by the pattern alley (a second link from mid to A long).
+    b.tall(-27.0, 2.0, -9.0, 12.0, 6.5, Brick);
+    b.tall(-27.0, 15.0, -9.0, 24.0, 6.5, Brick);
+    beam(&mut b, -27.0, 12.0, -26.4, 15.0, 3.2, 6.5);
+    beam(&mut b, -9.6, 12.0, -9.0, 15.0, 3.2, 6.5);
+    b.low(-19.0, 12.0, -17.8, 13.2, Barrel);
     bridge(&mut b, -27.0, -1.0, -9.0, 1.0, 4.8); // conveyor over the west cut
     b.low(-20.0, -1.6, -18.8, -0.4, Crate);
 
     // ------------------------------------------------------------------ mid
     b.tall(-1.3, 4.0, 1.3, 10.0, 3.0, Container); // the ladle car on its rails
     b.low(-7.0, 14.0, -5.8, 15.2, Crate);
-    b.tall(4.0, 16.0, 6.4, 18.4, 2.4, Crate);
+    b.low(4.0, 17.0, 6.4, 18.2, Crate);
     b.low(5.0, -8.0, 6.2, -6.8, Barrel);
     b.low(-2.0, -12.0, 2.0, -11.4, Sandbag);
     b.low(-7.6, -4.0, -6.4, -2.8, Crate);
@@ -146,9 +152,14 @@ pub fn foundry() -> Arena {
     b.low(-4.6, 19.0, -3.4, 20.2, Crate);
     bridge(&mut b, -9.0, -7.0, 9.0, -5.4, 5.0); // conveyor across mid
     // Mid doors: the defenders' end of mid, a beam over the gap.
-    b.tall(-14.0, -18.0, -1.6, -16.6, 5.0, Concrete);
-    b.tall(1.6, -18.0, 13.0, -16.6, 5.0, Concrete);
+    // Plus a side door either side (personnel doors), so rotations don't all share one gap.
+    b.tall(-14.0, -18.0, -8.1, -16.6, 5.0, Concrete);
+    b.tall(-5.9, -18.0, -1.6, -16.6, 5.0, Concrete);
+    b.tall(1.6, -18.0, 5.9, -16.6, 5.0, Concrete);
+    b.tall(8.1, -18.0, 13.0, -16.6, 5.0, Concrete);
     beam(&mut b, -1.6, -18.0, 1.6, -16.6, 3.4, 5.0);
+    beam(&mut b, -8.1, -18.0, -5.9, -16.6, 2.25, 5.0);
+    beam(&mut b, 5.9, -18.0, 8.1, -16.6, 2.25, 5.0);
     b.tall(9.0, -16.6, 13.0, -15.0, 4.0, Brick);
 
     // ------------------------------------------------------------------ east: scale house (B short), east cut, compressor house
@@ -164,7 +175,13 @@ pub fn foundry() -> Arena {
         .tall(15.0, -6.0, 15.85, -4.4, 2.0, Cabinet)
         .low(20.0, -7.0, 22.4, -5.8, Crate)
         .emit(&mut b);
-    b.tall(9.0, 0.0, 26.0, 24.0, 7.0, Concrete); // the compressor house
+    // The compressor house, split by the pipe alley (lower mid ↔ rail spur).
+    b.tall(9.0, 0.0, 26.0, 12.0, 7.0, Concrete);
+    b.tall(9.0, 15.0, 26.0, 24.0, 7.0, Concrete);
+    beam(&mut b, 9.0, 12.0, 9.6, 15.0, 3.2, 7.0);
+    beam(&mut b, 25.4, 12.0, 26.0, 15.0, 3.2, 7.0);
+    bridge(&mut b, 9.6, 13.2, 25.4, 13.8, 4.6); // steam pipe along the alley
+    b.low(17.0, 13.8, 18.2, 15.0, Crate);
     b.low(16.0, -3.4, 17.2, -2.2, Barrel);
     b.low(23.0, -1.6, 24.2, -0.4, Crate);
 
@@ -213,8 +230,8 @@ pub fn foundry() -> Arena {
         (-24.0, -15.0, 0, 1),
         (31.0, -35.0, 0, 1),
         (26.0, -9.0, 1, 0),
-        (-9.0, 12.0, 1, 0),
-        (9.0, 12.0, -1, 0),
+        (-9.0, 8.0, 1, 0),
+        (9.0, 8.0, -1, 0),
         (-27.0, -9.0, -1, 0),
         (-4.0, -36.0, 0, 1),
         (4.0, -36.0, 0, 1),
@@ -254,6 +271,8 @@ pub fn foundry() -> Arena {
     b.floor(15.0, -35.0, 39.0, -16.0, FloorSkin::Concrete);
     b.floor(-27.0, -15.0, -14.0, -12.0, FloorSkin::Concrete);
     b.floor(-27.0, -2.0, -9.0, 2.0, FloorSkin::Concrete);
+    b.floor(-27.0, 12.0, -9.0, 15.0, FloorSkin::Concrete);
+    b.floor(9.0, 12.0, 26.0, 15.0, FloorSkin::Concrete);
     b.floor(9.0, -4.0, 26.0, 0.0, FloorSkin::Concrete);
     // Rails set into the ground (mid's ladle track, the spur), the dock edge, spawn borders.
     for (x, z0, z1) in [(0.0, -16.6, 24.0), (33.0, -14.0, 24.0)] {
@@ -271,6 +290,8 @@ pub fn foundry() -> Arena {
         zone("A long", -39.0, -15.0, -27.0, -4.0),
         zone("A apron", -27.0, -15.0, -14.0, -12.0),
         zone("west cut", -27.0, -2.0, -9.0, 2.0),
+        zone("pattern alley", -27.0, 12.0, -9.0, 15.0),
+        zone("pipe alley", 9.0, 12.0, 26.0, 15.0),
         zone("mid", -9.0, -16.6, 9.0, 24.0),
         zone("mid doors", -14.0, -24.0, 13.0, -16.6),
         zone("defender spawn", -14.0, -39.0, 13.0, -24.0),

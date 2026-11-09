@@ -185,7 +185,7 @@ pub enum MapId {
     Foundry,
     /// Three-lane, medium-range outdoor defusal map.
     Depot,
-    /// Tight indoor close-quarters defusal map: A in the server room, B in the break room.
+    /// Tight indoor close-quarters defusal map: A in the server room, B in the records room.
     Office,
     /// A 90 m town block: streets, alleys, a courtyard and eight enterable buildings.
     Township,
@@ -214,7 +214,7 @@ impl MapId {
         match self {
             MapId::Foundry => "Bomb sites in a steelworks. A in the casting hall, B at the loading docks, a ladle car on the rails down mid.",
             MapId::Depot => "Three lanes, long sightlines, one contested middle.",
-            MapId::Office => "Bomb sites in an office floor. A in the server room, B in the break room; tight corridors, every corner a fight.",
+            MapId::Office => "Bomb sites in an office floor. A in the server room, B in the records room; tight corridors, every corner a fight.",
             MapId::Township => "Bomb sites in a town block on a late afternoon. A in the warehouse loading yard, B in the office courtyard; long streets, alleys, houses with windows.",
             MapId::Sirocco => "Bomb sites in a whitewashed hill town. Long A, a house and an alley off mid, a roofed B tunnel.",
             MapId::Gantry => "Bomb sites in a harbour rail yard. A inside the warehouse, trains across mid, B out on the quay.",
@@ -940,7 +940,7 @@ impl Arena {
         }
         b.low(-6.0, -22.0 + t, 6.0, -21.0, Desk); // counter along the north wall
         b.tall(11.0, -22.0 + t, 12.4, -21.0, 2.0, Cabinet); // vending machine
-        // B site dressing: a delivery of boxed kit stacked in the corners (default plant cover).
+        // A delivery of boxed kit stacked in the corners.
         b.tall(12.6, -22.0 + t, 14.6, -19.85, 2.0, Crate);
         b.low(-15.0 + t, -22.0 + t, -13.65, -20.65, Crate);
         b.low(-15.0 + t, -20.65, -13.65, -19.45, Crate);
@@ -953,9 +953,13 @@ impl Arena {
         b.tall(-16.2, 9.5, -15.0 - t, 10.5, 2.0, Cabinet);
         b.tall(15.0 + t, -9.5, 16.2, -8.5, 2.0, Cabinet);
         b.tall(17.8, 8.5, 19.0 - t, 9.5, 2.0, Cabinet);
-        // West rooms: records (shelves), office, copy room, manager's office.
+        // West rooms: records (shelves; B site), office, copy room, manager's office.
         b.tall(-28.0, -19.0, -22.0, -18.4, 2.2, Cabinet);
         b.tall(-28.0, -15.0, -22.0, -14.4, 2.2, Cabinet);
+        // B site dressing: archive boxes (default plant cover) and a shredder bin.
+        b.tall(-31.0, -13.4, -29.4, -11.15, 2.0, Crate);
+        b.low(-29.4, -12.35, -28.2, -11.15, Crate);
+        b.low(-20.35, -21.85, -19.15, -20.65, Barrel);
         b.low(-28.0, -8.0, -25.6, -7.2, Desk);
         b.low(-24.0, -4.0, -21.6, -3.2, Desk);
         b.low(-31.0, 4.0, -29.8, 6.0, Cabinet);
@@ -1033,20 +1037,20 @@ impl Arena {
         b.floor(19.0, -11.0, 31.0, 0.0, FloorSkin::Tiles);
         b.floor(-19.0, -22.0, -15.0, 22.0, FloorSkin::Tiles);
         b.floor(15.0, -22.0, 19.0, 22.0, FloorSkin::Tiles);
-        // --- Bomb sites: A is the server room (east), B the break room (north centre). The
-        //     squad spawns in the back offices behind both; the player in the lobby.
+        // --- Bomb sites on the flanks: A is the server room (east), B the records room (west).
+        //     The squad spawns in the back offices behind both; the player in the lobby.
         b.site('A', 19.15, -21.85, 31.0, -11.15);
-        b.site('B', -14.85, -21.85, 14.85, -11.15);
+        b.site('B', -31.0, -21.85, -19.15, -11.15);
         b.sign_wall("A", 21.0, -21.85, 2.0, 1.3, (0, 1), Paint::White, Some(Paint::Red));
         b.sign_wall("A", 18.85, -13.0, 2.0, 1.1, (-1, 0), Paint::White, Some(Paint::Red));
         b.sign_wall("A", 23.5, -10.85, 2.0, 1.1, (0, 1), Paint::White, Some(Paint::Red));
         b.sign_floor("A", 25.0, -12.6, 2.0, (0, -1), Paint::Red);
-        b.sign_wall("B", -3.0, -21.85, 2.2, 1.3, (0, 1), Paint::White, Some(Paint::Blue));
-        b.sign_wall("B", 5.0, -10.85, 2.1, 1.1, (0, 1), Paint::White, Some(Paint::Blue));
-        b.sign_wall("B", -15.15, -18.0, 2.0, 1.1, (-1, 0), Paint::White, Some(Paint::Blue));
-        b.sign_floor("B", 0.0, -14.0, 3.0, (0, -1), Paint::Blue);
+        b.sign_wall("B", -21.0, -21.85, 2.0, 1.3, (0, 1), Paint::White, Some(Paint::Blue));
+        b.sign_wall("B", -18.85, -13.0, 2.0, 1.1, (1, 0), Paint::White, Some(Paint::Blue));
+        b.sign_wall("B", -23.0, -10.85, 2.0, 1.1, (0, 1), Paint::White, Some(Paint::Blue));
+        b.sign_floor("B", -25.0, -12.6, 2.0, (0, -1), Paint::Blue);
         // Directions from the lobby, and down the corridors.
-        b.sign_wall("B ^", 0.0, 22.15, 2.1, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_wall("< B", -9.0, 22.15, 2.1, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
         b.sign_wall("A >", 9.0, 22.15, 2.1, 0.8, (0, 1), Paint::Black, Some(Paint::Yellow));
         b.sign_floor("A ^", 17.0, 12.0, 1.0, (0, -1), Paint::Yellow);
         b.sign_floor("B ^", -17.0, 12.0, 1.0, (0, -1), Paint::Yellow);
