@@ -4,6 +4,7 @@
 pub mod arena;
 pub mod bandit;
 pub mod building;
+pub mod career;
 pub mod difficulty;
 pub mod doctrine;
 pub mod economy;
