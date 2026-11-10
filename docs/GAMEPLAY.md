@@ -88,6 +88,28 @@ You attack, the squad defends. You start every round carrying the bomb ("BOMB" t
   trace events `bomb.planted`, `bomb.defused`, `bomb.exploded`. Visual check:
   `scripts/bomb-plant.json`.
 
+## Career: XP, ranks, match objectives (`career.rs`, rules in `brain::career`)
+- **Ranks:** Recruit (0 XP), Private (1,000), Corporal (2,500), Sergeant (4,500), Staff Sergeant
+  (7,000), Lieutenant (10,000), Captain (14,000), Elite (19,000). XP only goes up.
+- **XP per finished match:** win +500 (loss +100), +50 per round won, plus each completed
+  objective's XP. An abandoned match (pause → Restart match / Main menu) pays nothing.
+- **Objectives:** every match rolls 3 (Recruit) to 6 (Captain, Elite) distinct objectives from the
+  rank, the map's site letters and a per-match seed, harder and worth more as you climb: plant on
+  site X, plant N times, let it explode, N kills / headshots / kills with a named gun, N kills in
+  one round, ace, kill a defuser, fast plant, flawless round, win without a primary, win streak.
+  Only kills with your guns count (not the bomb, not frags).
+- **HUD:** the tracker sits top left under the money: each objective with "3/5" or a green check
+  and its XP, the rank and a thin XP bar. In round 1 (freeze time and the first 6 s) it opens up as
+  "MATCH OBJECTIVES" with each reward. Completing one mid-match shows "OBJECTIVE COMPLETE +200 XP".
+- **Debrief:** the career panel lists match/round/objective XP and the total, fills the XP bar from
+  the old XP to the new, and pops "PROMOTED TO SERGEANT" when it crosses a rank; the objectives are
+  listed done or not. **Main menu:** a "Your rank" card with XP to the next rank.
+- **Save:** `<data dir>/career.json` (`xp`, `matches`, `wins`, `objectives_done`), written after
+  each credited match. Missing → fresh career; corrupt → moved to `career.json.corrupt`.
+- Control port: `career.state` (rank, XP, objectives with progress, the match log, last award),
+  `career.set_xp {xp}`, `career.reroll {seed}`; trace events `career.objectives`,
+  `career.objective`, `career.credited`, `career.promoted`. Visual check: `scripts/career.json`.
+
 ## Weapons (prototype)
 | | Rifle | Pistol (stretch) |
 |---|---|---|
@@ -144,6 +166,9 @@ lighting the player), `lamp.break {id}`. Checks: `scripts/lamps-office.json` (sh
 
 ## Debrief screen
 - Match result + round scores.
+- **Career**: XP breakdown, XP bar, promotion, objectives (see Career above). It replaces the
+  "How they changed / History" row, and trims "What to work on" by one line per objective past three
+  so the screen still fits.
 - **"What they learned"**: top 3 player-model insights.
 - **"How they changed"**: biggest trait shifts of the new squad vs the last one, e.g. `Flanking ▲ +32%`, `Reaction 410 → 360 ms`.
 - Small chart: squad fitness and your win rate by generation.

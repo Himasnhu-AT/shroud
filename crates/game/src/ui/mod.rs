@@ -3,6 +3,7 @@
 
 pub mod bomb_hud;
 pub mod buy_menu;
+pub mod career_hud;
 pub mod callouts;
 pub mod debrief;
 pub mod feedback;
@@ -25,7 +26,7 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((callouts::CalloutsPlugin, hud::HudPlugin, debrief::DebriefPlugin, feedback::FeedbackPlugin, weapon_hud::WeaponHudPlugin))
-            .add_plugins((bomb_hud::BombHudPlugin, killfeed::KillFeedPlugin, scoreboard::ScoreboardPlugin, round_summary::RoundSummaryPlugin, perf_toast::PerfToastPlugin, buy_menu::BuyMenuPlugin))
+            .add_plugins((bomb_hud::BombHudPlugin, killfeed::KillFeedPlugin, scoreboard::ScoreboardPlugin, round_summary::RoundSummaryPlugin, perf_toast::PerfToastPlugin, buy_menu::BuyMenuPlugin, career_hud::CareerHudPlugin))
             // The pause menu freezes weapons and the enemy AI (the engine already stops the
             // player's movement). Time<Virtual> is paused too, but frame-based logic would tick.
             .configure_sets(Update, (WeaponSet, EnemySet).run_if(not_paused));

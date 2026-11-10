@@ -13,6 +13,7 @@ mod armor;
 mod bomb;
 mod audio;
 mod bodycam;
+mod career;
 mod dev;
 mod economy;
 mod enemy;
@@ -58,6 +59,6 @@ fn main() {
             ui::UiPlugin,
             bodycam::BodycamPlugin,
         ))
-        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
+        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
         .run();
 }

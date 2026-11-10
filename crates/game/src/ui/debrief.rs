@@ -3,7 +3,9 @@
 
 use bevy::prelude::*;
 
+use crate::career::{CareerSave, MatchCareer};
 use crate::match_flow::MatchFlow;
+use brain::career::{Award, Rank};
 use crate::save::{Brain, LastEvolve};
 use super::theme::*;
 use crate::state::{AppState, GameState, Headless};
@@ -14,14 +16,22 @@ pub struct DebriefPlugin;
 impl Plugin for DebriefPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Debrief), spawn_debrief)
-            .add_systems(Update, input.run_if(in_state(GameState::Debrief)));
+            .add_systems(Update, (input, animate_xp).run_if(in_state(GameState::Debrief)));
     }
 }
 
 #[derive(Resource)]
 struct HeadlessAdvance(Timer);
 
-fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<MatchFlow>, last: Res<LastEvolve>, brain: Res<Brain>) {
+fn spawn_debrief(
+    mut commands: Commands,
+    headless: Res<Headless>,
+    flow: Res<MatchFlow>,
+    last: Res<LastEvolve>,
+    brain: Res<Brain>,
+    mc: Res<MatchCareer>,
+    save: Res<CareerSave>,
+) {
     if headless.0 {
         commands.insert_resource(HeadlessAdvance(Timer::from_seconds(0.5, TimerMode::Once)));
         return;
@@ -118,6 +128,12 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                                 h.spawn(text(gen_line, body(SIZE_SMALL), TEXT_MUTED));
                             }
                         });
+                    // The career panel takes the place of "How they changed / History" (the screen
+                    // has no room for both; the main menu keeps the record).
+                    let award = mc.award.as_ref().filter(|_| mc.match_no == flow.match_no);
+                    if let Some(award) = award {
+                        career_panel(root, &mc, award, mc.xp_before, save.career.xp);
+                    }
                     if show_loadout {
                         root.spawn(card_panel()).with_children(|p| {
                             p.spawn(eyebrow("Their loadout", ENEMY));
@@ -149,7 +165,10 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                     root.spawn(card_panel()).with_children(|p| {
                         p.spawn(eyebrow("What to work on", INTEL));
                         // (One line fewer when the loadout panel takes its place on screen.)
-                        for (i, line) in insights.iter().take(if show_loadout { 3 } else { 4 }).enumerate() {
+                        // (One fewer per career objective past three: the career panel grows with them.)
+                        let extra = if award.is_some() { mc.objectives.len().saturating_sub(3) } else { 0 };
+                        let n = (if show_loadout { 3usize } else { 4 }).saturating_sub(extra).max(1);
+                        for (i, line) in insights.iter().take(n).enumerate() {
                             p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
                                 r.spawn((Node { width: px(24), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
                                     .with_child(text(format!("0{}", i + 1), label(SIZE_LABEL), INTEL));
@@ -158,32 +177,34 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
                             });
                         }
                     });
-                    root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), ..default() }, Pickable::IGNORE))
-                        .with_children(|row| {
-                            for (title, lines) in [("How they changed", deltas), ("History", history)] {
-                                row.spawn((
-                                    Node {
-                                        flex_grow: 1.0,
-                                        flex_basis: px(0),
-                                        flex_direction: FlexDirection::Column,
-                                        row_gap: px(4),
-                                        padding: UiRect::all(px(20)),
-                                        border: UiRect::all(px(1)),
-                                        border_radius: BorderRadius::all(px(RADIUS)),
-                                        ..default()
-                                    },
-                                    BackgroundColor(PANEL),
-                                    BorderColor::all(LINE),
-                                    Pickable::IGNORE,
-                                ))
-                                .with_children(|col| {
-                                    col.spawn(eyebrow(title, TEXT_MUTED));
-                                    for l in lines {
-                                        col.spawn(text(l, body(SIZE_SMALL), TEXT));
-                                    }
-                                });
-                            }
-                        });
+                    if award.is_none() {
+                        root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), ..default() }, Pickable::IGNORE))
+                            .with_children(|row| {
+                                for (title, lines) in [("How they changed", deltas), ("History", history)] {
+                                    row.spawn((
+                                        Node {
+                                            flex_grow: 1.0,
+                                            flex_basis: px(0),
+                                            flex_direction: FlexDirection::Column,
+                                            row_gap: px(4),
+                                            padding: UiRect::all(px(20)),
+                                            border: UiRect::all(px(1)),
+                                            border_radius: BorderRadius::all(px(RADIUS)),
+                                            ..default()
+                                        },
+                                        BackgroundColor(PANEL),
+                                        BorderColor::all(LINE),
+                                        Pickable::IGNORE,
+                                    ))
+                                    .with_children(|col| {
+                                        col.spawn(eyebrow(title, TEXT_MUTED));
+                                        for l in lines {
+                                            col.spawn(text(l, body(SIZE_SMALL), TEXT));
+                                        }
+                                    });
+                                }
+                            });
+                    }
                     root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), align_items: AlignItems::Center, margin: UiRect::top(px(GAP_S)), ..default() }, Pickable::IGNORE))
                         .with_children(|b| {
                             let t = Theme::default();
@@ -199,6 +220,147 @@ fn spawn_debrief(mut commands: Commands, headless: Res<Headless>, flow: Res<Matc
 }
 
 const PANEL_W: f32 = 1100.0;
+
+/// Seconds the XP bar takes to fill from the old XP to the new.
+const XP_ANIM_S: f32 = 1.8;
+/// Delay before it starts.
+const XP_ANIM_DELAY: f32 = 0.5;
+
+#[derive(Component)]
+struct XpAnim {
+    from: u32,
+    to: u32,
+    rank_before: Rank,
+    t: f32,
+    /// Animation time the bar crossed into the new rank.
+    promoted_at: Option<f32>,
+}
+#[derive(Component)]
+struct XpFill;
+#[derive(Component)]
+struct XpRankText;
+#[derive(Component)]
+struct XpNumbers;
+#[derive(Component)]
+struct Promoted;
+
+/// "Career": the XP lines, total and an XP bar that fills from the old XP to the new (wrapping
+/// at each rank), with a big PROMOTED line when it crosses one; and the objectives, done or not.
+fn career_panel(root: &mut ChildSpawnerCommands, mc: &MatchCareer, award: &Award, from: u32, to: u32) {
+    const LEFT_W: f32 = 520.0;
+    let right_w = PANEL_W - 40.0 - LEFT_W - GAP_L;
+    root.spawn((card_panel(), XpAnim { from, to, rank_before: award.rank_before, t: -XP_ANIM_DELAY, promoted_at: None })).with_children(|p| {
+        p.spawn((Node { column_gap: px(GAP_L), ..default() }, Pickable::IGNORE)).with_children(|row| {
+            // Left: XP breakdown, total, rank bar.
+            row.spawn((Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() }, Pickable::IGNORE)).with_children(|l| {
+                l.spawn(eyebrow("Career", ACCENT));
+                // Match and rounds lines, then the objectives as one line (the right column lists them).
+                let done = mc.status().iter().filter(|s| s.0).count();
+                let fixed = award.lines.len().saturating_sub(done);
+                let obj_xp: u32 = award.lines[fixed..].iter().map(|l| l.xp).sum();
+                let mut lines: Vec<(String, u32)> = award.lines[..fixed].iter().map(|l| (l.label.clone(), l.xp)).collect();
+                if done > 0 {
+                    lines.push((format!("Objectives \u{d7}{done}"), obj_xp));
+                }
+                for (label_text, xp) in lines {
+                    l.spawn((Node { width: px(LEFT_W), justify_content: JustifyContent::SpaceBetween, ..default() }, Pickable::IGNORE)).with_children(|r| {
+                        r.spawn((Node { width: px(LEFT_W - 110.0), ..default() }, Pickable::IGNORE)).with_child(text(label_text, body(SIZE_SMALL), TEXT));
+                        r.spawn(text(format!("+{xp}"), label(SIZE_SMALL), FRIENDLY));
+                    });
+                }
+                l.spawn((Node { width: px(LEFT_W), height: px(1), ..default() }, BackgroundColor(LINE), Pickable::IGNORE));
+                l.spawn((Node { width: px(LEFT_W), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..default() }, Pickable::IGNORE)).with_children(|r| {
+                    r.spawn(text("TOTAL", label(SIZE_LABEL), TEXT_MUTED));
+                    r.spawn(text(format!("+{} XP", award.total), display(34.0), ACCENT));
+                });
+                l.spawn((Node { width: px(LEFT_W), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, margin: UiRect::top(px(4)), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                    r.spawn((XpRankText, text(award.rank_before.name().to_uppercase(), display(30.0), TEXT)));
+                    r.spawn((XpNumbers, text("", label(SIZE_TINY), TEXT_MUTED)));
+                });
+                l.spawn((Node { width: px(LEFT_W), height: px(10), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.12)), Pickable::IGNORE))
+                    .with_child((XpFill, Node { width: percent(0), height: percent(100), ..default() }, BackgroundColor(ACCENT), Pickable::IGNORE));
+            });
+            // Right: the objectives.
+            row.spawn((Node { width: px(right_w), flex_direction: FlexDirection::Column, row_gap: px(7), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                let done = mc.status().iter().filter(|s| s.0).count();
+                r.spawn(eyebrow(&format!("Objectives {done}/{}", mc.objectives.len()), TEXT_MUTED));
+                for (o, (ok, prog, target)) in mc.objectives.iter().zip(mc.status()) {
+                    r.spawn((Node { column_gap: px(GAP_S), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|line| {
+                        super::career_hud::check_box(line, 16.0, ok);
+                        line.spawn((Node { width: px(right_w - 16.0 - 90.0 - 2.0 * GAP_S), ..default() }, Pickable::IGNORE))
+                            .with_child(text(o.goal.describe(), body(SIZE_SMALL), if ok { TEXT } else { TEXT_MUTED }));
+                        let (s, c) = if ok { (format!("+{} XP", o.xp), FRIENDLY) } else { (format!("{prog}/{target}"), TEXT_DIM) };
+                        line.spawn((Node { width: px(90), justify_content: JustifyContent::FlexEnd, ..default() }, Pickable::IGNORE)).with_child(text(s, label(SIZE_TINY), c));
+                    });
+                }
+                if award.promoted() {
+                    // Shown (and popped in) when the XP bar crosses into the new rank.
+                    r.spawn((
+                        Promoted,
+                        text(format!("PROMOTED TO {}", award.rank_after.name().to_uppercase()), display(48.0), ACCENT),
+                        TextShadow::default(),
+                        Node { margin: UiRect::top(px(GAP_S)), ..default() },
+                        UiTransform::IDENTITY,
+                        Visibility::Hidden,
+                    ));
+                }
+            });
+        });
+    });
+}
+
+/// Fill the XP bar from the old XP to the new; the rank name follows, and PROMOTED pops when the
+/// bar crosses into a new rank.
+fn animate_xp(
+    time: Res<Time>,
+    mut anims: Query<&mut XpAnim>,
+    mut fill: Query<&mut Node, With<XpFill>>,
+    mut texts: ParamSet<(Query<&mut Text, With<XpRankText>>, Query<&mut Text, With<XpNumbers>>)>,
+    mut promoted: Query<(&mut Visibility, &mut UiTransform), With<Promoted>>,
+) {
+    let Ok(mut a) = anims.single_mut() else { return };
+    let before = a.t;
+    a.t += time.delta_secs();
+    if before >= XP_ANIM_S + 1.0 {
+        return;
+    }
+    let k = (a.t / XP_ANIM_S).clamp(0.0, 1.0);
+    let ease = 1.0 - (1.0 - k).powi(3);
+    let xp = a.from + ((a.to.saturating_sub(a.from)) as f32 * ease).round() as u32;
+    let c = brain::career::Career { xp, ..Default::default() };
+    let rank = c.rank();
+    let (frac, _) = super::career_hud::rank_line(&c);
+    if let Ok(mut n) = fill.single_mut() {
+        n.width = percent(frac * 100.0);
+    }
+    if let Ok(mut t) = texts.p0().single_mut() {
+        let s = rank.name().to_uppercase();
+        if t.0 != s {
+            t.0 = s;
+        }
+    }
+    if let Ok(mut t) = texts.p1().single_mut() {
+        let s = match (c.progress(), rank.next()) {
+            (Some((into, span)), Some(next)) => format!("{into} / {span} XP TO {}", next.name().to_uppercase()),
+            _ => format!("{xp} XP \u{b7} TOP RANK"),
+        };
+        if t.0 != s {
+            t.0 = s;
+        }
+    }
+    if rank > a.rank_before
+        && let Ok((mut v, mut tf)) = promoted.single_mut()
+    {
+        let now = a.t;
+        let at = *a.promoted_at.get_or_insert(now);
+        if *v != Visibility::Inherited {
+            *v = Visibility::Inherited;
+        }
+        // Pop in: 1.6x settling to 1x over 0.35 s.
+        let p = ((now - at) / 0.35).clamp(0.0, 1.0);
+        tf.scale = Vec2::splat(1.0 + 0.6 * (1.0 - p).powi(3));
+    }
+}
 
 /// "NEXT SQUAD: 2 RIFLEMEN  ·  1 BREACHER  ·  1 MARKSMAN" (most common role first).
 fn loadout_summary(kinds: &[brain::weapons::WeaponKind]) -> String {

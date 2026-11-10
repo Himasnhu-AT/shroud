@@ -40,6 +40,9 @@ pub struct KillEvent {
     /// Enemy slots of the killer / victim, when they are enemies.
     pub killer_slot: Option<usize>,
     pub victim_slot: Option<usize>,
+    /// The killer fired a gun on the killing frame (not a frag; the bomb is never "by_player").
+    /// The career's kill objectives only count these.
+    pub gun: bool,
 }
 
 impl KillEvent {
@@ -109,7 +112,7 @@ pub(crate) fn detect_kills(
             Some(en) => (callsign(en.slot), Some(en.slot)),
             None => ("You", None),
         };
-        out.write(KillEvent { killer, victim, weapon, headshot, by_player, on_player: is_player, killer_slot, victim_slot });
+        out.write(KillEvent { killer, victim, weapon, headshot, by_player, on_player: is_player, killer_slot, victim_slot, gun: shot });
     }
     // Forget entities that are gone (corpses despawn, rounds respawn the squad).
     if st.dead.len() > healths.iter().count() {
