@@ -362,7 +362,7 @@ pub fn roll_objectives(rank: Rank, sites: &[char], seed: u64) -> Vec<Objective> 
     let mut out = Vec::new();
     let mut bomb_goals = 0;
     for (goal, xp, _) in avail {
-        let bomb = matches!(goal, Goal::PlantOn(_) | Goal::Plants(_) | Goal::FastPlant(_));
+        let bomb = matches!(goal, Goal::PlantOn(_) | Goal::Plants(_) | Goal::FastPlant(_) | Goal::Detonations(_));
         if bomb && bomb_goals >= 2 {
             continue;
         }
@@ -408,6 +408,12 @@ mod tests {
             }
         }
         assert_eq!(roll_objectives(Rank::Sergeant, &['A', 'B'], 3), roll_objectives(Rank::Sergeant, &['A', 'B'], 3));
+        // Never more than two bomb objectives, so every match has some fighting to do.
+        for seed in 0..200 {
+            let o = roll_objectives(Rank::Recruit, &['A', 'B'], seed);
+            let bomb = o.iter().filter(|o| matches!(o.goal, Goal::PlantOn(_) | Goal::Plants(_) | Goal::FastPlant(_) | Goal::Detonations(_))).count();
+            assert!(bomb <= 2, "seed {seed}: {o:?}");
+        }
     }
 
     #[test]
