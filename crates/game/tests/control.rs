@@ -236,3 +236,59 @@ fn bomb_hold_plant_then_explosion_wins_and_defuse_loses() {
     assert_eq!(m["end"], json!("defused"), "{m}");
     exec(&mut c, "game.quit", json!({}));
 }
+
+#[test]
+fn career_logs_plants_and_credits_a_finished_match_with_promotion() {
+    // Arrange: 900 XP, 100 short of Private; frozen squad, god mode.
+    let (_game, port, key_file) = launch();
+    let mut c = Client::connect(port, key_file.parent().expect("key dir")).expect("connect");
+    c.set_timeout(Duration::from_secs(30));
+    exec(&mut c, "game.start", json!({}));
+    std::thread::sleep(Duration::from_millis(300));
+    exec(&mut c, "enemy.freeze", json!({"on": true}));
+    exec(&mut c, "player.god", json!({"on": true}));
+    let set = exec(&mut c, "career.set_xp", json!({"xp": 900}));
+    assert_eq!(set["rank"], json!("Recruit"), "{set}");
+    let s = exec(&mut c, "career.state", json!({}));
+    let n = s["objectives"].as_array().map_or(0, Vec::len);
+    assert_eq!(n, 3, "a Recruit gets 3 objectives: {s}");
+    assert_eq!(s["rounds_logged"], json!(1), "{s}");
+
+    // Act: win three rounds by letting the bomb go off on A.
+    for round in 1..=3u64 {
+        wait_for(&mut c, "match.state", 8, |m| m["round"].as_u64() == Some(round) && m["round_over"].is_null());
+        wait_for(&mut c, "bomb.state", 5, |s| s["phase"] == json!("carried"));
+        exec(&mut c, "bomb.plant", json!({"site": "A", "fuse": 1.0}));
+        let m = wait_for(&mut c, "match.state", 8, |m| !m["round_over"].is_null());
+        assert_eq!(m["round_over"]["player_won"], json!(true), "{m}");
+        if round == 1 {
+            // Assert: the log saw the plant, the explosion and the win; bomb kills are not his.
+            let s = wait_for(&mut c, "career.state", 3, |s| s["rounds"][0]["won"] == json!(true));
+            let r = &s["rounds"][0];
+            assert_eq!(r["planted"]["site"], json!("A"), "{s}");
+            assert_eq!(r["exploded"], json!(true), "{s}");
+            assert_eq!(r["kills"].as_array().map(Vec::len), Some(0), "{s}");
+            assert_eq!(r["had_primary"], json!(false), "{s}");
+            assert_eq!(r["died"], json!(false), "{s}");
+        }
+    }
+
+    // Assert: the finished match is credited once, saved, and promotes to Private.
+    let s = wait_for(&mut c, "career.state", 10, |s| s["credited"] == json!(true));
+    let award = &s["award"];
+    assert!(award["total"].as_u64().expect("total") >= 500 + 3 * 50, "{s}");
+    assert_eq!(award["promoted"], json!(true), "{s}");
+    assert_eq!(award["rank_after"], json!("Private"), "{s}");
+    assert_eq!(s["rank"], json!("Private"), "{s}");
+    assert_eq!((s["matches"].as_u64(), s["wins"].as_u64()), (Some(1), Some(1)), "{s}");
+    let xp = s["xp"].as_u64().expect("xp");
+
+    // An abandoned match pays nothing: start one, leave it, start again.
+    exec(&mut c, "game.menu", json!({}));
+    std::thread::sleep(Duration::from_millis(300));
+    exec(&mut c, "game.start", json!({}));
+    let s = wait_for(&mut c, "career.state", 10, |s| s["credited"] == json!(false) && s["rounds_logged"] == json!(1));
+    assert_eq!(s["xp"].as_u64(), Some(xp), "{s}");
+    assert_eq!(s["matches"].as_u64(), Some(1), "{s}");
+    exec(&mut c, "game.quit", json!({}));
+}

@@ -47,7 +47,7 @@ impl Plugin for MenuPlugin {
                 ("Main menu", MenuAction::MainMenu),
                 ("Quit game", MenuAction::Quit),
             ],
-            pause_note: "Restarting or leaving abandons this match; the squad does not train on it.",
+            pause_note: "Restarting or leaving abandons this match; the squad does not train on it and you earn no XP.",
             main_panel: Some(brain_card),
             pause_header: Some(pause_score),
             pause_eyebrow: Some(pause_eyebrow),
@@ -212,6 +212,40 @@ fn brain_card(world: &mut World, slot: Entity) {
                 }
             });
             p.spawn(text(last, body(SIZE_SMALL), t.text_muted));
+        });
+    });
+    career_card(world, slot);
+}
+
+fn plural(n: u32, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Main menu: your rank, XP and how far to the next rank.
+fn career_card(world: &mut World, slot: Entity) {
+    let t = world.resource::<Theme>().clone();
+    let c = world.resource::<crate::career::CareerSave>().career.clone();
+    let rank = c.rank();
+    let (frac, _) = crate::ui::career_hud::rank_line(&c);
+    let next = match (c.progress(), rank.next()) {
+        (Some((into, span)), Some(n)) => format!("{} XP to {}", span - into, n.name()),
+        _ => "Top rank".into(),
+    };
+    world.commands().entity(slot).with_children(|s| {
+        s.spawn((Node { height: px(GAP_M), ..default() }, Pickable::IGNORE));
+        s.spawn(accent_panel(&t, t.accent, 22.0, GAP_S)).with_children(|p| {
+            p.spawn(eyebrow("Your rank", t.accent));
+            p.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
+                r.spawn(text(rank.name().to_uppercase(), display(44.0), t.text));
+                r.spawn(text(format!("{} XP", c.xp), body(SIZE_SMALL), t.text_muted));
+            });
+            p.spawn((Node { width: percent(100), height: px(8), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.12)), Pickable::IGNORE))
+                .with_child((Node { width: percent(frac * 100.0), height: percent(100), ..default() }, BackgroundColor(t.accent), Pickable::IGNORE));
+            p.spawn(text(
+                format!("{next} \u{b7} {} \u{b7} {} won", plural(c.matches, "match", "matches"), c.wins),
+                body(SIZE_SMALL),
+                t.text_muted,
+            ));
         });
     });
 }

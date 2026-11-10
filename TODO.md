@@ -52,6 +52,10 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - [x] HUD: money, freeze countdown, buy hint
 - [x] Main menu: Play → map select (cards) + difficulty → Start; primary-weapon picker removed
 - [x] Tests: economy math, buy rules, round count
+- [x] Career: XP and 8 ranks, 3–6 objectives per match, HUD tracker + toast, debrief XP bar and
+  promotion, main menu rank card, `career.json` (`career.rs`, `brain::career`)
+- [ ] Career: the debrief is near full height at 1080p with a loadout note; at six objectives
+  "What to work on" drops to one line. A scrollable or two-column debrief would fix it properly.
 
 ### Phase 2: maps
 - [x] 2 new original defusal-style maps: Sirocco (hill town) and Gantry (harbour rail yard), in `brain/src/maps/`

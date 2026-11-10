@@ -74,6 +74,8 @@ Shroud:
 | `video.camera_style` | `{style?}` (`classic` / `bodycam`) | `{style}` |
 | `video.bodycam` | `{turn?, strafe?, fire?, ms?}` (non-blocking drive) | free-aim state: weapon/camera/delta angles, roll, muzzle + barrel (camera space), press check |
 | `round.freeze` | `{seconds, now?}` | freeze time for later rounds (and now); 0 by default in test runs |
+| `career.state` | — | rank, XP, next rank, this match's objectives (`text`, `xp`, `progress`, `target`, `done`), the match log per round, last `award` |
+| `career.set_xp` / `career.reroll` | `{xp}` / `{seed}` | set (and save) the XP / roll this match's objectives again |
 | `match.state`, `ai.brain`, `ai.evolve`, `ai.reset`, `ai.squad`, `ai.throw`, `ai.difficulty` | | |
 | `map.load {name}` / `map.info` | | |
 | `sim.run` | `{generations, seed}` | headless trainer fitness curve |
@@ -105,7 +107,8 @@ The engine's `TracePlugin` (feature `dev`) builds the tracer from `SHROUD_TRACE_
 `SHROUD_TRACE_KEY` (a no-op tracer without both), arms hang detection on the first in-game
 frame, reports frame times and `perf.hitch`, installs the panic hook and handles `--crash-test`.
 Shroud declares its events in `dev::DevPlugin` (`match.start`, `match.end`, `round.end`,
-`player.died`, `ai.evolved`, `ai.reset`) and records them with `dev::Dev::trace` /
+`player.died`, `ai.evolved`, `ai.reset`, `bomb.*`, `career.objectives`, `career.objective`,
+`career.credited`, `career.promoted`) and records them with `dev::Dev::trace` /
 `dev::trace` (no-ops in ship builds).
 
 Perf monitor: `ai` (`EnemySet`) and `weapons` (`WeaponSet`) are perf spans; physics is timed by
