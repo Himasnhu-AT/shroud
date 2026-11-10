@@ -16,6 +16,13 @@ steps.json: a list of steps, each one of
   {"sleep": 2.5}
   {"cmd": "player.look", "params": {"at": [0, 1.2, -27]}}
   {"shot": "name"}            -> DIR/name.png (windowed only)
+  {"capture": "name", "seconds": 6, "fps": 60}
+                              -> starts capture.frames into DIR/name/ (fixed time step; footage)
+  {"wait_frame": 120}         -> waits until the running capture has rendered that many frames
+                                 (game time = frames / fps): schedule actions inside a capture
+  {"wait_capture": true}      -> waits for the capture to end and every PNG to be written, then
+                                 encodes DIR/name.mp4 (H.264, yuv420p) with ffmpeg and deletes the PNGs
+                                 (add "keep": true to keep them)
 Every reply is printed as one JSON line.
 """
 import json, os, re, socket, subprocess, sys, tempfile, time
@@ -73,9 +80,39 @@ def main():
                 break
             time.sleep(0.5)
         time.sleep(1)
+        def call(command, params=None):
+            nonlocal n
+            n += 1
+            f.write(json.dumps({"id": n, "key": key, "method": "engine.execute", "params": {"command": command, "params": params or {}}}) + "\n"); f.flush()
+            return json.loads(f.readline())
+        cap = None
         for st in steps:
             if "sleep" in st:
                 time.sleep(st["sleep"]); continue
+            if "capture" in st:
+                cap = (st["capture"], st.get("fps", 60), st.get("keep", False))
+                r = call("capture.frames", {"dir": os.path.join(out, cap[0]), "fps": cap[1], "seconds": st.get("seconds", 5)})
+                print(json.dumps(r)[:500], flush=True); continue
+            if "wait_frame" in st:
+                while (call("capture.status").get("result") or {}).get("frame", 1 << 30) < st["wait_frame"]:
+                    time.sleep(0.05)
+                continue
+            if "wait_capture" in st:
+                while True:
+                    r = call("capture.status").get("result") or {}
+                    if not r.get("active") and r.get("saved", 0) + r.get("failed", 0) >= r.get("total", 0):
+                        break
+                    time.sleep(0.2)
+                print(json.dumps(r), flush=True)
+                if cap:
+                    d = os.path.join(out, cap[0])
+                    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(cap[1]), "-i", os.path.join(d, "f_%05d.png"),
+                                    "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                                    os.path.join(out, cap[0] + ".mp4")], check=False)
+                    if not cap[2]:
+                        shutil.rmtree(d, ignore_errors=True)
+                    print(f"encoded {cap[0]}.mp4", flush=True)
+                continue
             n += 1
             if "shot" in st:
                 req = {"command": "capture.screenshot", "params": {"path": os.path.join(out, st["shot"] + ".png")}}
