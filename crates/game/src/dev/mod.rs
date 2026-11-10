@@ -6,6 +6,8 @@
 #[cfg(feature = "dev")]
 mod ai_commands;
 #[cfg(feature = "dev")]
+mod cinema;
+#[cfg(feature = "dev")]
 mod commands;
 #[cfg(feature = "dev")]
 pub use commands::ControlDrive;
@@ -105,6 +107,7 @@ fn build_dev(app: &mut App) {
         .add_systems(Update, watch_events);
     commands::register(app);
     ai_commands::register(app);
+    cinema::register(app);
     // Pre-engine command names used by scripts and tests.
     app.alias_control_command("game.quit", "engine.quit")
         .alias_control_command("game.pause", "engine.pause")
