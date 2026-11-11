@@ -21,7 +21,9 @@ pub const CTX_LABELS: [&str; CTX_DIM] =
     ["bias", "rush", "zone focus", "re-peek rate", "strafe bias", "his range", "squad alive", "squad hp", "his hp", "his accuracy"];
 
 /// Plays the bandit chooses between (when the player is known and the squad can coordinate).
-pub const ARMS: [Play; 4] = [Play::Crossfire, Play::PinFlank, Play::Trade, Play::Bait];
+/// Arms are only ever appended: a save with fewer arms loads and gets fresh ones for the rest
+/// (`TacticsLearner::fix`; Rush came fifth).
+pub const ARMS: [Play; 5] = [Play::Crossfire, Play::PinFlank, Play::Trade, Play::Bait, Play::Rush];
 
 /// Exploration strength.
 pub const ALPHA: f32 = 0.35;
@@ -323,7 +325,7 @@ mod tests {
         // Trade pays. Noisy rewards; the learner must pick the right arm for each.
         let mut l = TacticsLearner::default();
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(7);
-        let prior = [Some(0.5), Some(0.4), Some(0.3), Some(0.2)];
+        let prior = [Some(0.5), Some(0.4), Some(0.3), Some(0.2), None];
         let ctx = |rush: bool| {
             let mut x = [0.0; CTX_DIM];
             x[0] = 1.0;
@@ -359,9 +361,9 @@ mod tests {
     fn untrained_follows_the_prior() {
         let l = TacticsLearner::default();
         let x = context(&PlayerModel::default(), 0.2, &LiveCtx { alive_ratio: 1.0, squad_hp: 1.0, player_hp: 1.0, ..Default::default() });
-        assert_eq!(l.choose(&x, &[Some(0.2), Some(0.9), Some(0.1), None]), Some(Play::PinFlank));
-        assert_eq!(l.choose(&x, &[None, None, None, Some(0.0)]), Some(Play::Bait));
-        assert_eq!(l.choose(&x, &[None; 4]), None);
+        assert_eq!(l.choose(&x, &[Some(0.2), Some(0.9), Some(0.1), None, None]), Some(Play::PinFlank));
+        assert_eq!(l.choose(&x, &[None, None, None, Some(0.0), None]), Some(Play::Bait));
+        assert_eq!(l.choose(&x, &[None; ARMS.len()]), None);
     }
 
     #[test]
@@ -373,7 +375,7 @@ mod tests {
         let s = serde_json::to_string(&l).unwrap();
         let back: TacticsLearner = serde_json::from_str(&s).unwrap();
         assert_eq!(back, l);
-        assert_eq!(back.choose(&x, &[Some(0.0); 4]), l.choose(&x, &[Some(0.0); 4]));
+        assert_eq!(back.choose(&x, &[Some(0.0); ARMS.len()]), l.choose(&x, &[Some(0.0); ARMS.len()]));
         // Missing / partial state loads as defaults and is repaired on use.
         let empty: TacticsLearner = serde_json::from_str("{}").unwrap();
         assert_eq!(empty, TacticsLearner::default());
@@ -382,6 +384,17 @@ mod tests {
         broken.forget();
         assert_eq!(broken.arms.len(), ARMS.len());
         assert!(broken.arms.iter().all(Arm::valid));
+        // A save from before the Rush arm (four arms) keeps its four and learns the fifth.
+        let mut four = TacticsLearner::default();
+        four.arms.truncate(4);
+        four.update(Play::Trade, &x, 0.5);
+        let old = serde_json::to_string(&four).unwrap();
+        let mut back: TacticsLearner = serde_json::from_str(&old).unwrap();
+        assert_eq!(back.choose(&x, &[None, None, None, None, Some(0.1)]), Some(Play::Rush));
+        back.update(Play::Rush, &x, 0.8);
+        assert_eq!(back.arms.len(), ARMS.len());
+        assert_eq!(back.arms[2], four.arms[2], "the old arms keep what they learned");
+        assert!(back.arms[4].n > 0.0);
     }
 
     #[test]

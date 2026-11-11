@@ -189,7 +189,7 @@ fn ai_play(world: &mut World, p: Value) -> Result<Value, String> {
 
     use brain::squad::Play;
     let want = p.get("name").and_then(Value::as_str).map(|s| s.to_lowercase().replace([' ', '-', '_'], ""));
-    let all = [Play::Free, Play::Overwatch, Play::Crossfire, Play::Trade, Play::PinFlank, Play::Collapse, Play::Bait, Play::Sweep, Play::Search, Play::Encircle];
+    let all = [Play::Free, Play::Overwatch, Play::Crossfire, Play::Trade, Play::PinFlank, Play::Collapse, Play::Bait, Play::Sweep, Play::Search, Play::Encircle, Play::Rush];
     let play = match &want {
         None => None,
         Some(w) => Some(
@@ -340,8 +340,33 @@ fn doctrine_json(c: &brain::squad::SquadCoordinator) -> Value {
         "jiggler": c.jiggler.map(|(i, j)| json!({ "id": i, "hide": [j.hide.x, j.hide.y] })),
         "wallbang": c.wallbang.map(|(i, at, _)| json!({ "id": i, "at": [at.x, at.y] })),
         "rushers": c.rushers.iter().map(|r| r.0).collect::<Vec<_>>(),
+        "rush": rush_json(c),
         "traps": c.traps.iter().map(|t| json!({ "id": t.0, "spot": [t.1.x, t.1.y], "door": [t.2.x, t.2.y] })).collect::<Vec<_>>(),
         "history": d.history.iter().map(|h| json!({ "t": h.t, "from": h.from.name(), "to": h.to.name(), "reason": h.reason })).collect::<Vec<_>>(),
+    })
+}
+
+/// The squad rush in progress (`Play::Rush`), or the retake rush, for `ai.squad` / `ai.doctrine`.
+fn rush_json(c: &brain::squad::SquadCoordinator) -> Value {
+    let started: Vec<Value> = brain::squad::RushReason::ALL
+        .iter()
+        .zip(c.rush_stats.started)
+        .filter(|(_, n)| *n > 0)
+        .map(|(r, n)| json!({ "reason": r.label(), "n": n }))
+        .collect();
+    json!({
+        "active": c.rush.as_ref().map(|r| json!({
+            "reason": r.reason.label(),
+            "phase": format!("{:?}", r.phase).to_lowercase(),
+            "target": [r.target.x, r.target.y],
+            "members": r.members,
+            "go_at": r.members.iter().map(|&i| r.go_at.get(i).copied().filter(|t| t.is_finite())).collect::<Vec<_>>(),
+            "arrive_t": r.arrive_t.is_finite().then_some(r.arrive_t),
+            "flash": r.flash,
+            "fast": r.fast,
+        })),
+        "retake_rush": c.site.rushing,
+        "started": started,
     })
 }
 
@@ -377,6 +402,7 @@ fn ai_squad(world: &mut World, _: Value) -> Result<Value, String> {
         "coordination": c.enabled,
         "play": c.play.label(),
         "doctrine": doctrine_json(c),
+        "rush": rush_json(c),
         "breach": c.breach.map(|b| json!({ "door": [b.door.pos.x, b.door.pos.y], "inside": [b.inside.x, b.inside.y], "t": b.t, "go_at": b.go_at })),
         "alert": c.board.alert.label(),
         "board_age": c.board.age,

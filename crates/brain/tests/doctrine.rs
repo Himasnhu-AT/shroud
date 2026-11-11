@@ -429,7 +429,8 @@ fn camper_gets_flashed_and_jiggle_peeked() {
     assert!(home > 0.5, "snaps back ({:.0}% at home)", home * 100.0);
 }
 
-/// A reloader's mag-out heard nearby sends the nearest one or two in at a sprint.
+/// A reloader's mag-out heard nearby sends the nearest one in at a sprint; a strong counter
+/// turns it into a squad rush (`Play::Rush`, the nearest ones first, everyone that can make it).
 #[test]
 fn mag_out_sound_triggers_a_rush() {
     let a = Arena::build(MapId::Sirocco);
@@ -457,7 +458,8 @@ fn mag_out_sound_triggers_a_rush() {
             }
             let orders = coord.tick(DT, &views, &a, &model).to_vec();
             for (i, o) in orders.iter().enumerate() {
-                if let Some(o) = o.filter(|o| o.role == Role::Rusher) {
+                // (Squad rushers waiting for the far ones hold; the runs are pushes.)
+                if let Some(o) = o.filter(|o| o.role == Role::Rusher && o.goal != brain::utility::Goal::Hold) {
                     assert_eq!(o.goal, brain::utility::Goal::Push);
                     assert!(o.sticky && o.dest.is_some_and(|d| d.dist(player) < 0.5));
                     if !rushers.contains(&i) {
@@ -466,18 +468,19 @@ fn mag_out_sound_triggers_a_rush() {
                 }
             }
         }
-        (rushers, coord.doctrine.tactic)
+        (rushers, coord.doctrine.tactic, coord.play)
     };
-    let (strong, tactic) = run(true, 1.0);
+    let (strong, tactic, play) = run(true, 1.0);
     assert_eq!(tactic, AiTactic::ReloadPunish);
-    assert_eq!(strong.len(), 2, "a strong counter sends two: {strong:?}");
+    assert_eq!(play, brain::squad::Play::Rush, "a strong counter rushes as a squad");
+    assert!(strong.len() >= 2, "a strong counter sends at least two: {strong:?}");
     // The nearest ones that heard it.
     let mut by_dist: Vec<usize> = (0..4).collect();
     by_dist.sort_by(|&x, &y| pos[x].dist(player).total_cmp(&pos[y].dist(player)));
-    assert!(strong.iter().all(|i| by_dist[..2].contains(i)), "{strong:?} vs nearest {by_dist:?}");
-    let (weak, _) = run(true, 0.0);
+    assert!(by_dist[..2].iter().all(|i| strong.contains(i)), "{strong:?} vs nearest {by_dist:?}");
+    let (weak, _, _) = run(true, 0.0);
     assert_eq!(weak.len(), 1, "a weak counter sends one");
-    let (none, tactic) = run(false, 1.0);
+    let (none, tactic, _) = run(false, 1.0);
     assert!(none.is_empty() && tactic == AiTactic::Default, "no reload habit, no rush");
 }
 

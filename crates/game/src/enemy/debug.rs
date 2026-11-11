@@ -53,8 +53,13 @@ fn doctrine_panel(mut commands: Commands, overlay: Res<DebugOverlay>, squad: Res
         let d = &c.doctrine;
         let arch = if d.active.is_empty() { "none".to_string() } else { d.active.labels().join(", ") };
         let p = &c.style;
+        let rush = match (&c.rush, c.site.rushing) {
+            (Some(r), _) => format!("  RUSH ({}, {}, {} in{})", r.reason.label(), format!("{:?}", r.phase).to_lowercase(), r.members.len(), if r.flash { ", flash first" } else { "" }),
+            (None, true) => "  RUSH (retake: fuse running low)".to_string(),
+            _ => String::new(),
+        };
         format!(
-            "DOCTRINE  {}\n{}\narchetypes: {arch}\nspeed {:.1} m/s  hold {:.1} s  ads {:.0}%  hs {:.0}% ({} hits)  early reloads {}  entries {}",
+            "DOCTRINE  {}\n{}\narchetypes: {arch}\nspeed {:.1} m/s  hold {:.1} s  ads {:.0}%  hs {:.0}% ({} hits)  early reloads {}  entries {}\nPLAY  {}{rush}",
             d.tactic.name(),
             if d.reason.is_empty() { "-" } else { &d.reason },
             p.avg_move_speed,
@@ -64,6 +69,7 @@ fn doctrine_panel(mut commands: Commands, overlay: Res<DebugOverlay>, squad: Res
             p.hits,
             p.premature_reload_count,
             p.rapid_entries,
+            c.play.label(),
         )
     });
     match (overlay.0, panel.single()) {
@@ -108,6 +114,22 @@ fn draw_doctrine(mut gizmos: Gizmos, squad: Res<Squad>, q: Query<(&Enemy, &Trans
         && let Some(p) = pos(i)
     {
         gizmos.line(p + Vec3::Y * 1.4, to_world(at, 1.1), Color::srgb(1.0, 0.1, 0.1));
+    }
+    // Squad rush: the spot (ring) and each rusher's line to it (red once it runs).
+    if let Some(r) = &c.rush {
+        let red = Color::srgb(1.0, 0.15, 0.1);
+        let spot = to_world(r.target, 0.05);
+        gizmos.circle(Isometry3d::new(spot, Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), brain::squad::RUSH_ARRIVED_M, red);
+        for &i in &r.members {
+            if let Some(p) = pos(i) {
+                let running = r.go_at.get(i).is_some_and(|t| t.is_finite());
+                let col = if running { red } else { Color::srgb(1.0, 0.6, 0.2) };
+                if let Some(s) = r.stage.get(i).copied().flatten().filter(|_| !running) {
+                    gizmos.line(p + Vec3::Y * 0.3, to_world(s, 0.3), col);
+                }
+                gizmos.arrow(p + Vec3::Y * 0.35, to_world(r.target, 0.35), col);
+            }
+        }
     }
     for &(i, at, _) in &c.rushers {
         if let Some(p) = pos(i) {

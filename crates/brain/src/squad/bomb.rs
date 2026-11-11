@@ -37,6 +37,9 @@ pub const RETAKE_PACE: f32 = 4.5;
 pub const DEFUSE_MARGIN_S: f32 = 1.0;
 /// With less than travel + `DEFUSE_S` + this left (s), defuse even with him watching.
 pub const STICK_S: f32 = 4.0;
+/// With less than the slowest member's travel + `DEFUSE_S` + this left (s), the retake
+/// becomes a rush (`SiteState::rushing`).
+pub const RETAKE_RUSH_S: f32 = 6.0;
 /// He is "watching the bomb" if seen within this long (s) with a line on it.
 pub const WATCH_S: f32 = 3.0;
 /// Save spots are at least this far past `BLAST_MAX_M` (m).
@@ -83,6 +86,9 @@ pub struct SiteState {
     pub going: bool,
     defuse_called: bool,
     watch_called: bool,
+    /// Retake rush: the fuse is running low, so everyone hits the site at once (sprinting,
+    /// committed) and the defuser goes straight in.
+    pub rushing: bool,
 }
 
 /// Distance (m) from `p` to the site's rectangle (0 inside).
@@ -234,7 +240,7 @@ impl SquadCoordinator {
         }
         self.track_rotation(members, arena, model);
         // In a fight before the plant: one anchor of the site he is not at keeps it.
-        if !matches!(play, Play::Encircle | Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait | Play::Collapse | Play::Sweep | Play::Overwatch) {
+        if !matches!(play, Play::Encircle | Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait | Play::Collapse | Play::Sweep | Play::Overwatch | Play::Rush) {
             return None;
         }
         if alive.len() < 3 || self.site.rotate.is_some_and(|r| r.3) {
@@ -467,6 +473,7 @@ impl SquadCoordinator {
             self.site.going = false;
             self.site.defuse_called = false;
             self.site.watch_called = false;
+            self.site.rushing = false;
             self.site.save_spot.iter_mut().for_each(|s| *s = None);
             self.vias.iter_mut().for_each(|v| *v = None);
             self.sector_of.iter_mut().for_each(|s| *s = None);
@@ -524,11 +531,24 @@ impl SquadCoordinator {
         let def = self.defuser;
         let known = self.board.age < KNOWN_S;
         let player = known.then_some(self.board.pos);
+        // Retake rush: with the fuse this short there's no time to clear angles one by one.
+        // Everyone goes at once (coordinated squads only: Recruit retakes the slow way).
+        if self.enabled && !self.site.rushing && alive.len() >= 2 && def.is_some() {
+            let slowest = alive.iter().map(|&i| path_d(i)).fold(0.0f32, f32::max);
+            if bomb.fuse_left < slowest / RETAKE_PACE + DEFUSE_S + RETAKE_RUSH_S {
+                self.site.rushing = true;
+                self.site.going = true;
+                self.rush_stats.started[RushReason::Retake.index()] += 1;
+                self.rush_events.push(RushEvent { t: self.time, reason: RushReason::Retake, target: bp, members: alive.clone() });
+                let speaker = alive.iter().copied().find(|&i| Some(i) != def).unwrap_or(alive[0]);
+                self.bark(speaker, RushReason::Retake.callout().into(), true);
+            }
+        }
         // Go, or wait for the angle to be cleared: he watches the bomb and there's still time.
         if let Some(d) = def {
             let watching = self.board.age < WATCH_S && arena.line_of_sight(self.board.pos, false, bp, true);
             let short = bomb.fuse_left < path_d(d) / RETAKE_PACE + DEFUSE_S + STICK_S;
-            let go = !watching || short || self.site.going && members[d].pos.dist(bp) <= DEFUSE_REACH;
+            let go = !watching || short || self.site.rushing || self.site.going && members[d].pos.dist(bp) <= DEFUSE_REACH;
             if go && !self.site.going {
                 self.site.going = true;
                 if watching {
@@ -609,6 +629,21 @@ impl SquadCoordinator {
                 self.site.staged[i] = true;
             }
             let role = if Some(i) == def { Role::Defuser } else { Role::Retaker };
+            if self.site.rushing && Some(i) != def {
+                // Rushing the site: sprint in on him (or onto the bomb's angle), no stopping.
+                let dest = player.unwrap_or(s.peek);
+                self.orders[i] = Some(Order {
+                    role: Role::Rusher,
+                    goal: Goal::Push,
+                    dest: Some(dest),
+                    watch: Some(dest),
+                    threat: None,
+                    sticky: true,
+                    via: if self.site.staged[i] { None } else { self.vias[i] },
+                    prefire: None,
+                });
+                continue;
+            }
             // The waiting defuser stays at its staging cell; the rest clear the angle on the bomb.
             let staged = self.site.staged[i];
             let watch = Some(player.unwrap_or(bp));

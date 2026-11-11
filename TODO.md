@@ -123,6 +123,18 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
   `camper_under_a_lamp_gets_his_light_shot_out`; in game `scripts/doctrine-lamps.json`
   (Office, Veteran: `ai.tactic` at 4.0 s, lamp 0 broken ~8 s later)
 - [x] These are technique counters, so they fit Phase 0's rule
+- [x] Squad rush (`Play::Rush`, `brain/src/squad/rush.rs`): everyone who can make it commits to
+  his last known spot (board / heard reload, never his true position), far members stage on
+  distinct approach sectors, the runs are timed to arrive together, a flash goes in first when
+  bought; committed (sprint, no fall-back). Triggers: heard reload (strong reload counter or
+  rush-minded squad), he's low, numbers (3+ vs a hurt player), the bandit's new Rush arm, and a
+  retake rush when the fuse runs low; 18 s cooldown; Recruit never rushes. Rush gene (old saves
+  seed it), old 4-arm bandit saves load. Callout, `ai.tactic {to: rush}`, F3 panel + arrows,
+  `ai.squad.rush`, debrief line. Tests `brain/tests/rush.rs`; in game `scripts/rush-lowhp.json`
+  (numbers rush at 7.9 s, he dies ~1 s later) and `scripts/rush-reload.json` (forced rush
+  converging on B)
+- [ ] Rush: an in-game natural reload rush still needs a reload-counter-strong or rush-minded
+  squad (fresh brains are mixed); the sim models it but nobody has benched the rush gene's drift
 
 ### Phase 6: bodycam handling (spec §2–3)
 - [x] Free-aim deadzone (18°×12°) that collapses on ADS (stiffness 14 hip / 35 ADS)
