@@ -19,7 +19,7 @@ use crate::weapon::{Weapon, WeaponSet};
 /// How long a press check shows the ammo readout (s).
 pub const PRESS_CHECK_S: f32 = 2.0;
 /// Shown on the stamp (a fictional device; the spec's real body-camera brand is not used).
-pub const DEVICE_ID: &str = "SHROUD BODY 4 // X84-9921";
+pub const DEVICE_ID: &str = "PATTERN BODY 4 // X84-9921";
 
 /// The health panel (hidden in bodycam).
 #[derive(Component)]

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build Shroud for Windows x64 on this Mac (cross-compiled with cargo-xwin):
+# Build Pattern of Life for Windows x64 on this Mac (cross-compiled with cargo-xwin):
 #
-#   dist/windows/Shroud/              Shroud.exe + assets/ + README.txt + CREDITS.md
-#   dist/shroud-<version>-windows-x64.zip
+#   dist/windows/PatternOfLife/       PatternOfLife.exe + assets/ + README.txt + CREDITS.md
+#   dist/pattern-of-life-<version>-windows-x64.zip
 #
 #   scripts/package-windows.sh                # build and zip
 #   scripts/package-windows.sh --skip-build   # re-zip what the target dir holds
@@ -35,8 +35,8 @@ TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import s
 BIN="$TARGET_DIR/$TARGET/release/shroud.exe"
 RES_DIR="$TARGET_DIR/winres"
 DIST="$ROOT/dist"
-OUT="$DIST/windows/Shroud"
-ZIP="$DIST/shroud-$VERSION-windows-x64.zip"
+OUT="$DIST/windows/PatternOfLife"
+ZIP="$DIST/pattern-of-life-$VERSION-windows-x64.zip"
 
 if [ "$SKIP_BUILD" = 0 ]; then
   command -v cargo-xwin >/dev/null || die "cargo-xwin missing (cargo install cargo-xwin)"
@@ -62,12 +62,12 @@ BEGIN
   BEGIN
     BLOCK "040904b0"
     BEGIN
-      VALUE "CompanyName", "Shroud"
-      VALUE "FileDescription", "Shroud"
+      VALUE "CompanyName", "Pattern of Life"
+      VALUE "FileDescription", "Pattern of Life"
       VALUE "FileVersion", "$VERSION"
       VALUE "InternalName", "shroud"
-      VALUE "OriginalFilename", "Shroud.exe"
-      VALUE "ProductName", "Shroud"
+      VALUE "OriginalFilename", "PatternOfLife.exe"
+      VALUE "ProductName", "Pattern of Life"
       VALUE "ProductVersion", "$VERSION ($GIT_SHA)"
     END
   END
@@ -87,7 +87,7 @@ EOF
     --remap-path-prefix=$GAME_DIR=/src"
   # `cargo rustc` passes the flags after `--` to the shroud binary only: the .res, and the GUI
   # subsystem with the normal entry point (no console window).
-  SMTP_USER= SMTP_PASS= memgate --profile release -- cargo xwin rustc --release -p game --bin shroud \
+  SMTP_USER= SMTP_PASS= cargo xwin rustc --release -p game --bin shroud \
     --no-default-features --target "$TARGET" -- \
     -C "link-arg=$RES_DIR/shroud.res" -C link-arg=/SUBSYSTEM:WINDOWS -C link-arg=/ENTRY:mainCRTStartup
 fi
@@ -112,18 +112,18 @@ EOF
 
 step "Stage $OUT"
 rm -rf "$OUT"; mkdir -p "$OUT"
-cp "$BIN" "$OUT/Shroud.exe"
+cp "$BIN" "$OUT/PatternOfLife.exe"
 # The engine finds the assets folder next to the exe.
 # models/metahuman is Epic content generated locally (MetaHuman license): never shipped; the
 # game falls back to the CC0 mannequin enemy and hands.
 rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' assets/ "$OUT/assets/"
 cp assets/CREDITS.md "$OUT/CREDITS.md"
 sed -e 's|__DATA_DIR__|%APPDATA%\\shroud\\data|' packaging/README.txt | perl -pe 's/\r?\n/\r\n/' >"$OUT/README.txt"
-if strings "$OUT/Shroud.exe" | grep -q "$GAME_DIR"; then
+if strings "$OUT/PatternOfLife.exe" | grep -q "$GAME_DIR"; then
   echo "note: the exe still contains the build folder path (GameInfo::assets_fallback); harmless" >&2
 fi
 
 step "Zip"
 rm -f "$ZIP"
-( cd "$DIST/windows" && zip -qr -X "$ZIP" Shroud )
+( cd "$DIST/windows" && zip -qr -X "$ZIP" PatternOfLife )
 step "Done: $ZIP ($(du -h "$ZIP" | cut -f1))"

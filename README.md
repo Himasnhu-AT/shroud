@@ -1,4 +1,6 @@
-# Shroud
+# Pattern of Life
+
+_Codename Shroud: the crates, the `shroud` binary and the save folder keep that name._
 
 A first-person shooter written in Rust where the enemies **evolve from your past matches**.
 Every match, the squad you face is bred from the squads that did best against *you*,
@@ -38,6 +40,6 @@ pick; evolution only improves how the squad plays.
 
 ## Quick start
 ```sh
-memgate -- cargo test -p brain     # AI tests
-memgate -- cargo run -p game       # play
+cargo test -p brain     # AI tests
+cargo run -p game       # play
 ```

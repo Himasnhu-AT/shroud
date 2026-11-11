@@ -2218,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "brain"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "rand 0.9.5",
  "rand_chacha",
@@ -3128,7 +3128,7 @@ dependencies = [
 
 [[package]]
 name = "game"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ashlar-control",
  "avian3d",

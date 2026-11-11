@@ -1,7 +1,7 @@
 # Perf monitor
 
 Code: the engine's `devtools/{perf, perf_sys, perf_stats, perf_overlay, session_log}` (moved out of
-Shroud in the engine port; Shroud adds the `ai` / `weapons` spans and its metrics keys in
+Pattern of Life in the engine port; Pattern of Life adds the `ai` / `weapons` spans and its metrics keys in
 `crates/game/src/dev/mod.rs`, dev builds only). Toggle the overlay with F2, start with `--perf`, or send `perf.overlay`. Use
 `perf.stats` for the latest snapshot and `perf.report` for the session summary. Every second a
 `perf` line goes to `<data>/logs/session-*.jsonl`.

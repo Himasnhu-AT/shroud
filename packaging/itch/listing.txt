@@ -1,11 +1,11 @@
-Title: Shroud
+Title: Pattern of Life
 Tagline (short description): A tactical shooter where the enemy squad learns how you play.
 Kind: Downloadable
 Pricing: No payments
 Classification: Games
 Genre: Shooter
 Release status: In development
-Tags: fps, tactical, shooter, artificial-intelligence, procedural-generation, singleplayer, first-person, 3d, bevy, rust
+Tags: fps, tactical, shooter, artificial-intelligence, singleplayer, first-person, 3d, bevy, rust
 Uploads: windows channel (Windows), osx channel (macOS), pushed by scripts/upload-itch.sh
 Screenshots: packaging/itch/screenshots/*.png (1920x1080, from the shipped CC0 build)
 Cover: packaging/itch/cover.png (630x500)

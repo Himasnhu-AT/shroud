@@ -1,4 +1,4 @@
-SHROUD
+PATTERN OF LIFE
 
 A first-person shooter where the enemy squad learns from how you play.
 
@@ -10,8 +10,10 @@ Controls
 How it works
   You fight a squad of 5 in best-of-3 rounds. After every match the squad
   evolves against a model of how YOU play: where you hold, which way you
-  peek, your range, your reactions. Each match should get harder.
-  The debrief screen shows what they learned about you.
+  peek, the ranges you fight at. Each match should get harder.
+  Their reaction time, aim and damage are fixed by the difficulty you
+  pick and never change: they get smarter, never faster.
+  The debrief screen leads with what the squad learned about you.
 
 Your progress and the AI's memory live in
   __DATA_DIR__

@@ -1,4 +1,5 @@
 import AppKit
+// Usage: swift make_cover.swift screenshots/01_squad_close.png cover.png
 let a = CommandLine.arguments
 let src = NSImage(contentsOfFile: a[1])!
 var rect = CGRect(x: 0, y: 0, width: 0, height: 0)
@@ -23,8 +24,15 @@ func draw(_ s: String, _ font: NSFont, _ color: NSColor, _ y: CGFloat, kern: CGF
     NSAttributedString(string: s, attributes: attrs).draw(at: NSPoint(x: 34, y: y))
 }
 let barlow = NSFont(name: "Barlow-Medium", size: 82) ?? NSFont.systemFont(ofSize: 82, weight: .heavy)
-draw("ADAPTIVE SQUAD SHOOTER", NSFont.systemFont(ofSize: 15, weight: .bold), NSColor(red: 0.98, green: 0.45, blue: 0.35, alpha: 1), 132, kern: 3)
-draw("SHROUD", NSFont.systemFont(ofSize: 86, weight: .black), .white, 36, kern: 4)
+// Title: the largest size up to 86pt that fits the cover width; the eyebrow sits just above it.
+let title = "PATTERN OF LIFE", titleKern: CGFloat = 2
+var titleFont = NSFont.systemFont(ofSize: 86, weight: .black)
+while titleFont.pointSize > 30 && NSAttributedString(string: title, attributes: [.font: titleFont, .kern: titleKern]).size().width > CGFloat(W) - 68 {
+    titleFont = NSFont.systemFont(ofSize: titleFont.pointSize - 1, weight: .black)
+}
+let titleY: CGFloat = 40
+draw("ADAPTIVE SQUAD SHOOTER", NSFont.systemFont(ofSize: 15, weight: .bold), NSColor(red: 0.98, green: 0.45, blue: 0.35, alpha: 1), titleY + titleFont.ascender + 10, kern: 3)
+draw(title, titleFont, .white, titleY, kern: titleKern)
 draw("They learn from you.", NSFont.systemFont(ofSize: 17, weight: .medium), NSColor(white: 0.9, alpha: 1), 22 - 4, kern: 0.5)
 NSGraphicsContext.restoreGraphicsState()
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: a[2]))

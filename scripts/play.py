@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch Shroud (windowed by default) under memgate with the control port, run a script of
+"""Launch Shroud (windowed by default) with the control port, run a script of
 commands, save screenshots, quit. For tests and visual checks; never grabs the mouse.
 
   python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N] [--no-build] [--exe BIN] [--extra ARG ...] [--menu]
@@ -7,7 +7,7 @@ commands, save screenshots, quit. For tests and visual checks; never grabs the m
 --exe BIN runs that binary instead of target/debug/shroud (implies --no-build): build, copy
 and check your binary first when sibling worktrees share the target dir and may overwrite it.
 
-Builds this checkout first (via memgate) and runs a private copy of the binary.
+Builds this checkout first and runs a private copy of the binary.
 
 Default is --offscreen: hidden window, camera renders to an image, so screenshots work even
 when another app is fullscreen. --onscreen shows the window instead.
@@ -39,12 +39,12 @@ def main():
     # another worktree's build can overwrite target/debug/shroud at any moment.
     src = args[args.index("--exe") + 1] if "--exe" in args else "/Users/himanshu/codes/game/engine/target/debug/shroud"
     if "--no-build" not in args and "--exe" not in args:
-        subprocess.run(["memgate", "--", "cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
+        subprocess.run(["cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
     exe = os.path.join(out, "shroud")
     import shutil
     shutil.copy2(src, exe)
     log = open(os.path.join(out, "game.log"), "w")
-    cmd = ["memgate", "--", exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
+    cmd = [exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
     if "--menu" in args:  # boot into the main menu like a normal launch (start with game.start)
         cmd.remove("--play")
     cmd.append("--mute")  # never make noise (the user may be in a meeting)
@@ -55,7 +55,7 @@ def main():
     env = dict(os.environ, SHROUD_DATA_DIR=os.environ.get("SHROUD_DATA_DIR", os.path.join(out, "data")))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log, text=True, cwd=root, env=env)
     port = key = None
-    deadline = time.time() + 900  # memgate may queue us
+    deadline = time.time() + 900  # first build can be slow
     while time.time() < deadline:
         line = proc.stdout.readline()
         if not line:

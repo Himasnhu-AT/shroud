@@ -8,7 +8,7 @@ Both now come from the **`engine` crate** (`~/codes/game/engine`, `engine::devto
 | **Control port** — **for testing only**: tests and agents drive the game | `ashlar-control`, `ashlar-command`, `ashlar-mcp` | automated playtests, AI regression tests, perf soaks; Claude tests the game over MCP |
 | **Crash & performance reporting** | `ashlar-trace` (+ `ashlar-trace-server` self-hosted) | panics, hangs, frame-time histograms, match events |
 
-Shroud's part lives in `crates/game/src/dev/`: its own commands (`commands.rs`, `ai_commands.rs`),
+Pattern of Life's part lives in `crates/game/src/dev/`: its own commands (`commands.rs`, `ai_commands.rs`),
 perf spans, metrics keys and session-log events (`mod.rs`). Note: `game/src/telemetry.rs` is
 the *player-habit* recorder for the AI — a different thing.
 
@@ -18,7 +18,7 @@ the *player-habit* recorder for the AI — a different thing.
 
 **Purpose:** let automated tests and agents (including Claude via MCP) drive and inspect the game. It is **not** a player feature.
 
-- Behind Shroud's cargo feature `dev` (= `engine/devtools` + `engine/trace`), on by default for
+- Behind Pattern of Life's cargo feature `dev` (= `engine/devtools` + `engine/trace`), on by default for
   `cargo run` / `cargo test`. Ship builds use `--no-default-features`: no port, no MCP, no trace,
   the engine ignores its debug flags, and `cargo tree -p game --no-default-features -e normal | grep ashlar`
   prints nothing (`scripts/test-game.sh` and `scripts/package-macos.sh` check it).
@@ -54,7 +54,7 @@ Engine (generic): `engine.state`, `engine.start`, `engine.menu`, `engine.pause`,
 Old names kept as aliases: `game.quit` → `engine.quit`, `game.pause` → `engine.pause`,
 `game.resume` → `engine.resume`, `capture.screenshot` → `screenshot`.
 
-Shroud:
+Pattern of Life:
 | Command | Params | Result |
 |---|---|---|
 | `game.state` | — | `{state (Menu/Playing/Evolving/Debrief), paused, time_scale, frame, seed, player:{pos, hp, ammo, yaw, pitch, crouched, grounded}}` |
@@ -81,7 +81,7 @@ Shroud:
 | `sim.run` | `{generations, seed}` | headless trainer fitness curve |
 | `debug.overlay` | `{on}` | enemy debug view (F3) |
 
-Settings keys for `ui.setting`: Shroud's `difficulty`, `map`, `show_callouts`, `crosshair_color`,
+Settings keys for `ui.setting`: Pattern of Life's `difficulty`, `map`, `show_callouts`, `crosshair_color`,
 `crosshair_size`, and the engine's `sensitivity`, `invert_y`, `quality`, `fov_deg` (was `fov`),
 `window_mode`, `vsync`, `show_fps`, `ui_scale`, `master_volume`, `sfx_volume`, `ambience_volume`.
 
@@ -106,14 +106,14 @@ Settings keys for `ui.setting`: Shroud's `difficulty`, `map`, `show_callouts`, `
 The engine's `TracePlugin` (feature `dev`) builds the tracer from `SHROUD_TRACE_ENDPOINT` /
 `SHROUD_TRACE_KEY` (a no-op tracer without both), arms hang detection on the first in-game
 frame, reports frame times and `perf.hitch`, installs the panic hook and handles `--crash-test`.
-Shroud declares its events in `dev::DevPlugin` (`match.start`, `match.end`, `round.end`,
+Pattern of Life declares its events in `dev::DevPlugin` (`match.start`, `match.end`, `round.end`,
 `player.died`, `ai.evolved`, `ai.reset`, `bomb.*`, `career.objectives`, `career.objective`,
 `career.credited`, `career.promoted`) and records them with `dev::Dev::trace` /
 `dev::trace` (no-ops in ship builds).
 
 Perf monitor: `ai` (`EnemySet`) and `weapons` (`WeaponSet`) are perf spans; physics is timed by
 the engine. The overlay is on F2 (`PerfOverlayKey`; F3 is the enemy debug view). Metrics window
-(F4, dev runs): Shroud records `ai.think_ms`, `ai.squad_ms`, `enemies.alive`, `enemies.engaged`,
+(F4, dev runs): Pattern of Life records `ai.think_ms`, `ai.squad_ms`, `enemies.alive`, `enemies.engaged`,
 `match.round` and labels each run with `map` and `difficulty`.
 
 ### Privacy

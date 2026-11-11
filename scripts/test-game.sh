@@ -4,8 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-memgate -- cargo test -p game
-memgate -- cargo check -p game --no-default-features
+cargo test -p game
+cargo check -p game --no-default-features
 if cargo tree -p game --no-default-features -e normal | grep ashlar; then
   echo "test-game: ship build still depends on ashlar crates" >&2
   exit 1

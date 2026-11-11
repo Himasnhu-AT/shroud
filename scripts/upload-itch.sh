@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Push Shroud to itch.io (https://himanshuat.itch.io/shroud) with butler.
+# Push Pattern of Life to itch.io (https://himanshuat.itch.io/patternoflife) with butler.
+# ITCH_TARGET overrides the user/game (default himanshuat/patternoflife).
 #
 #   scripts/upload-itch.sh            # push both platforms
 #   scripts/upload-itch.sh --dry-run
@@ -8,23 +9,23 @@
 # butler must be logged in once (`butler login`). Channels: windows, osx.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-TARGET="${ITCH_TARGET:-himanshuat/shroud}"
+TARGET="${ITCH_TARGET:-himanshuat/patternoflife}"
 VERSION="${VERSION:-$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)}"
 BUTLER="${BUTLER:-$(command -v butler || echo "$HOME/.local/bin/butler")}"
 DRY=""; [ "${1:-}" = --dry-run ] && DRY="--dry-run"
 
-[ -f dist/windows/Shroud/Shroud.exe ] || { echo "error: dist/windows/Shroud missing (scripts/package-windows.sh)" >&2; exit 1; }
-[ -d dist/Shroud.app ] || { echo "error: dist/Shroud.app missing (scripts/package-macos.sh)" >&2; exit 1; }
+[ -f dist/windows/PatternOfLife/PatternOfLife.exe ] || { echo "error: dist/windows/PatternOfLife missing (scripts/package-windows.sh)" >&2; exit 1; }
+[ -d "dist/Pattern of Life.app" ] || { echo "error: dist/Pattern of Life.app missing (scripts/package-macos.sh)" >&2; exit 1; }
 
-cat >dist/windows/Shroud/.itch.toml <<'T'
+cat >dist/windows/PatternOfLife/.itch.toml <<'T'
 [[actions]]
 name = "play"
-path = "Shroud.exe"
+path = "PatternOfLife.exe"
 T
-"$BUTLER" push $DRY dist/windows/Shroud "$TARGET:windows" --userversion "$VERSION"
+"$BUTLER" push $DRY dist/windows/PatternOfLife "$TARGET:windows" --userversion "$VERSION"
 # Only the stapled .app (plus the readme), not the DMG or other dist files.
 STAGE="$(mktemp -d)"
-ditto dist/Shroud.app "$STAGE/Shroud.app"
+ditto "dist/Pattern of Life.app" "$STAGE/Pattern of Life.app"
 sed 's|__DATA_DIR__|~/Library/Application Support/shroud|' packaging/README.txt >"$STAGE/README.txt"
 "$BUTLER" push $DRY "$STAGE" "$TARGET:osx" --userversion "$VERSION"
 rm -rf "$STAGE"

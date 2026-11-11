@@ -1,4 +1,4 @@
-# Shroud: CS2-style tactical loop + bodycam roadmap
+# Pattern of Life: CS2-style tactical loop + bodycam roadmap
 
 Started 2026-11-03. Two sources:
 - **Ask A (chat):** CS2-like maps, operator skins, guns, buy menu, simple menu
@@ -172,6 +172,6 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
 - Spec §7 checks for the bodycam: 1 (0.20 APIs, required components) yes; 2 (decoupled aim, ADS
   aligns the sight) yes; 3 (true barrel) yes; 4 (wall compression) yes; 5 optics yes, flash light
   yes but unshadowed and too short to move the auto exposure much.
-- The bodycam stamp uses a fictional device id (`SHROUD BODY 4`), not the spec's real brand.
+- The bodycam stamp uses a fictional device id (`PATTERN BODY 4`), not the spec's real brand.
 - Spec asks for `bevy_mod_inverse_kinematics`/rapier; we stay on avian3d 0.8 and a hand-written
   2-bone IK if needed (pinned deps).

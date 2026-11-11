@@ -25,7 +25,7 @@ TEX=()
 [ -f "$T/head_color.png" ] && TEX+=(--skin-guide "$T/head_color.png")
 [ -f "$T/skin_micro_normal.png" ] && TEX+=(--skin-micro-normal "$T/skin_micro_normal.png")
 [ -f "$T/iris.png" ] && [ -f "$T/sclera.png" ] && TEX+=(--iris "$T/iris.png" --sclera "$T/sclera.png")
-CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/codes/game/engine/target}" memgate -- cargo run -q --manifest-path "$PKG/Cargo.toml" -p dna2gltf -- \
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/codes/game/engine/target}" cargo run -q --manifest-path "$PKG/Cargo.toml" -p dna2gltf -- \
   --clips "$CLIPS" --body "$BODY" --head "$HEAD" --body-lod 1 --head-lod 1 \
   --anim assets/models/enemy.glb --anim assets/models/ual2/UAL2_Standard.glb \
   ${TEX[@]+"${TEX[@]}"} --hands-out assets/models/metahuman/hands_mh.glb --name MetaHumanEnemy -o assets/models/metahuman/enemy_mh.glb

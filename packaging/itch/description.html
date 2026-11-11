@@ -1,13 +1,13 @@
 <p><strong>A tactical shooter where the enemy squad learns how you play.</strong></p>
-<p>You against a squad of five, first to 3 rounds. After every match the squad evolves against a model of <em>you</em>: where you hold, which way you peek, the ranges you fight at, how fast you react. The next squad is bred from the ones that did best against you, and it plays differently.</p>
-<h2>What's in this build (v0.1.1)</h2>
+<p>You against a squad of five, first to 3 rounds. After every match the squad evolves against a model of <em>you</em>: where you hold, which way you peek, the ranges you fight at. The next squad is bred from the ones that did best against you, and it plays differently.</p>
+<h2>What's in this build (v0.2.0)</h2>
 <ul>
-<li><strong>An evolving squad:</strong> traits (aggression, flanking, cover use, reaction time) evolve with a genetic algorithm, combat moves (strafing, peeking, when to shoot) with NEAT neural nets, and tactics adapt to where they predict you'll be.</li>
-<li><strong>Fair by design:</strong> hard limits on reaction time and aim error loosen slowly, so they get smarter, not aimbots.</li>
+<li><strong>An evolving squad:</strong> traits (aggression, flanking, cover use, range) evolve with a genetic algorithm, combat moves (strafing, peeking, when to shoot) with NEAT neural nets, and tactics adapt to where they predict you'll be.</li>
+<li><strong>Fair by design:</strong> reaction time, aim error and damage are fixed by difficulty and never change. They get smarter, never faster.</li>
 <li><strong>Squad tactics:</strong> roles (rifleman, rusher, breacher, marksman), callouts, flanks, frag and flash grenades, and lights shot out over a player who camps.</li>
 <li><strong>A round economy:</strong> money, freeze time and a buy menu with 8 guns (pistols, SMG, shotgun, rifles, scout and sniper), armor and grenades. Survive and you keep your gear. The squad runs its own economy.</li>
-<li><strong>6 maps:</strong> Sirocco (whitewashed hill town), Gantry (harbour rail yard), Township (a town block with eight enterable buildings), Depot (three lanes, two sites), Office (close quarters, every room flankable) and Foundry (open industrial yard).</li>
-<li><strong>Debrief:</strong> after each match, see what they learned about you and how the squad changed.</li>
+<li><strong>6 maps:</strong> Sirocco, Gantry, Township, Depot, Ledger and Foundry.</li>
+<li><strong>Debrief:</strong> after each match it leads with what the squad learned about you, what they tried, whether it worked and what they'll do next time, then how the squad changed.</li>
 <li><strong>Bodycam mode</strong> (Settings → Video): wide-lens chest-cam look, off by default.</li>
 </ul>
 <h2>Controls</h2>
@@ -18,11 +18,11 @@
 </ul>
 <h2>Install</h2>
 <ul>
-<li><strong>Windows 10/11 (64-bit):</strong> unzip and run <code>Shroud.exe</code>. No installer, no extra runtimes.</li>
-<li><strong>macOS (Apple Silicon and Intel):</strong> unzip and open <code>Shroud.app</code>. Signed and notarized.</li>
+<li><strong>Windows 10/11 (64-bit):</strong> unzip and run <code>PatternOfLife.exe</code>. No installer, no extra runtimes.</li>
+<li><strong>macOS (Apple Silicon and Intel):</strong> unzip and open <code>Pattern of Life.app</code>. Signed and notarized.</li>
 <li>The itch app installs and launches either one.</li>
 </ul>
 <p>Your progress and the squad's memory are saved locally; delete the save folder (see README.txt) to start over.</p>
 <h2>Early build</h2>
-<p>Shroud is in development. Feedback is very welcome in the comments: what felt unfair, what felt smart, what broke.</p>
+<p>Pattern of Life is in development. Feedback is very welcome in the comments: what felt unfair, what felt smart, what broke.</p>
 <p>Made in Rust with Bevy. Art and sound are CC0 (Quaternius, Kenney and others; full credits in CREDITS.md in the download).</p>

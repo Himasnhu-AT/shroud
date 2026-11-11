@@ -48,14 +48,14 @@ UI kit, mouse look + cursor capture, the FPS controller, audio volumes and the s
 quality presets, data/assets folders, the render budget and (feature `dev`) the control port,
 offscreen capture, perf overlay, metrics window, session log and crash/perf trace.
 
-Shroud keeps only the game: `main` (`engine::app(..)` + plugins), `state` (`GameState` sub-state of
+Pattern of Life keeps only the game: `main` (`engine::app(..)` + plugins), `state` (`GameState` sub-state of
 `InGame`: Playing → Evolving → Debrief), `settings` (`ShroudSettings`: difficulty, map, crosshair,
 callouts, and their settings rows), `menu` (menu items, match setup screen, Enemy-brain card,
 pause score line, crosshair preview), `map`, `player` (controller tuning, health, trigger),
 `weapon`, `telemetry` (player habits for the AI), `match_flow`, `evolving`, `trainer_task`,
 `enemy/{mod, animation, gun, grenade, debug}`, `ui/{hud, feedback, callouts, debrief}`, `gfx`
-(Shroud's look: exposure, fog, sky, FX textures), `audio` (which sounds play when), and `dev`
-(feature `dev`: Shroud's control commands, perf spans, metrics keys, session-log events; see
+(Pattern of Life's look: exposure, fog, sky, FX textures), `audio` (which sounds play when), and `dev`
+(feature `dev`: Pattern of Life's control commands, perf spans, metrics keys, session-log events; see
 [CONTROL_AND_TELEMETRY.md](CONTROL_AND_TELEMETRY.md)).
 
 ## Key design rule: one mind, two worlds

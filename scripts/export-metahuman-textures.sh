@@ -7,6 +7,6 @@ cd "$(dirname "$0")/.."
 UE="${UE_ROOT:-/Users/Shared/Epic Games/UE_5.8}"
 export MH_TEX_OUT="$PWD/assets/models/metahuman/textures"
 mkdir -p "$MH_TEX_OUT"
-memgate -- "$UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$PWD/scripts/metahuman/TexExport.uproject" \
+"$UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$PWD/scripts/metahuman/TexExport.uproject" \
   -run=pythonscript -script="$PWD/scripts/metahuman/export_textures.py" -unattended -nullrhi -nosplash -nosound -stdout 2>&1 | grep -E "TEXEXPORT|Error" || true
 ls "$MH_TEX_OUT"

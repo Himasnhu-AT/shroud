@@ -1,10 +1,10 @@
-# Learning One Player: Architecture for an Adaptive Enemy Squad in Shroud
+# Learning One Player: Architecture for an Adaptive Enemy Squad in Pattern of Life
 
 *Research report, October 2026. Scope: `crates/brain` and the parts of `crates/game` that feed it.*
 
 ## Abstract
 
-Shroud's enemy squad is supposed to get better at beating one particular player from match to match. Right now it doesn't do that convincingly. Players win 2–0 again and again at generation 8, and the debrief insights are things like "you hold the south yard 70%". This report reviews published work on learned and adaptive game agents: NVIDIA's ACE and GPU simulation work, DeepMind's Capture the Flag agents, GT Sophy, OpenAI Five, Forza's Drivatars, learned bots at Ubisoft and EA, Microsoft's WHAM, neuroevolution and quality diversity, player modelling, dynamic difficulty, shipped tactical FPS AI, and bot believability. The main conclusion is that **none of the systems that reached human or superhuman level did it with a handful of games of data.** They used hundreds of thousands of games (FTW: 450K [8]), days of console time (GT Sophy: 10–21 PS4s for 7–12 days [10]), or months of distributed self-play (OpenAI Five: 10 months [11]). Shroud gets roughly 2–3 rounds of real data per match. The project's own measurement shows where the current loop breaks. Against the default scripted ghost, the squad's simulated win rate climbs from about 4% to 90–100% by generation 8, yet the real player still wins every generation 2–0. Simulation progress does not transfer. So the architecture should not try to learn a policy from the player's matches. It should **learn a model of the player** from those matches, then spend cheap, unlimited simulation **planning and evolving against that model**, and pick among a diverse archive of ready-made squad styles using a sample-efficient online bandit. The central recommendation is a **high-fidelity player clone for training**. It is behaviour-cloned from the player's recorded trajectories and duels, calibrated so that clone-versus-squad outcomes match real outcomes, and validated each generation by the gap between simulated and real win rate. Around it we propose: a situation-conditioned Bayesian player model; a real squad layer (shared belief, roles, bounding overwatch, crossfires, and Killzone-style position evaluation whose weights evolve); a lower-noise training loop built on a MAP-Elites archive and an opponent pool; optional small-scale RL; explicit fairness limits; and a CPU-first compute plan for a 24 GB Apple M5 laptop. We also give an evaluation protocol that separates "smarter" from "stronger", a method for producing statistically sound counterfactual debrief insights, and a prioritised roadmap mapped onto the existing modules.
+Pattern of Life's enemy squad is supposed to get better at beating one particular player from match to match. Right now it doesn't do that convincingly. Players win 2–0 again and again at generation 8, and the debrief insights are things like "you hold the south yard 70%". This report reviews published work on learned and adaptive game agents: NVIDIA's ACE and GPU simulation work, DeepMind's Capture the Flag agents, GT Sophy, OpenAI Five, Forza's Drivatars, learned bots at Ubisoft and EA, Microsoft's WHAM, neuroevolution and quality diversity, player modelling, dynamic difficulty, shipped tactical FPS AI, and bot believability. The main conclusion is that **none of the systems that reached human or superhuman level did it with a handful of games of data.** They used hundreds of thousands of games (FTW: 450K [8]), days of console time (GT Sophy: 10–21 PS4s for 7–12 days [10]), or months of distributed self-play (OpenAI Five: 10 months [11]). Pattern of Life gets roughly 2–3 rounds of real data per match. The project's own measurement shows where the current loop breaks. Against the default scripted ghost, the squad's simulated win rate climbs from about 4% to 90–100% by generation 8, yet the real player still wins every generation 2–0. Simulation progress does not transfer. So the architecture should not try to learn a policy from the player's matches. It should **learn a model of the player** from those matches, then spend cheap, unlimited simulation **planning and evolving against that model**, and pick among a diverse archive of ready-made squad styles using a sample-efficient online bandit. The central recommendation is a **high-fidelity player clone for training**. It is behaviour-cloned from the player's recorded trajectories and duels, calibrated so that clone-versus-squad outcomes match real outcomes, and validated each generation by the gap between simulated and real win rate. Around it we propose: a situation-conditioned Bayesian player model; a real squad layer (shared belief, roles, bounding overwatch, crossfires, and Killzone-style position evaluation whose weights evolve); a lower-noise training loop built on a MAP-Elites archive and an opponent pool; optional small-scale RL; explicit fairness limits; and a CPU-first compute plan for a 24 GB Apple M5 laptop. We also give an evaluation protocol that separates "smarter" from "stronger", a method for producing statistically sound counterfactual debrief insights, and a prioritised roadmap mapped onto the existing modules.
 
 ---
 
@@ -32,7 +32,7 @@ Reading `evolve.rs`, `sim.rs`, `mind.rs`, `utility.rs` and `player_model.rs` tur
 | D5 | **The behaviour space lacks the behaviours players read as smart.** Evolution tunes 10 scalars and a 14→4 micro net. The tactics themselves are hand-written utility curves. Coordination is now a radio blackboard (sightings shared every 0.35 s), reload-punish pushes and crossfire-aware flank selection (recently added in `mind.rs`/`utility.rs`), plus the ≤ 2 flanker cap and spacing. | `utility.rs`, `mind.rs` | Bounding overwatch, trading, pinning with suppression, pre-aiming the player's favourite angle, and collapsing on a sound can't be discovered because they can't be expressed. |
 | D6 | **Adaptation is invisible.** There are no callouts, and the debrief doesn't show what the squad tried. | game UI | Even real adaptation goes unnoticed. Shipped games (Section 3.6) show that perceived intelligence depends heavily on legibility. |
 
-The literature below explains why D1–D3 matter most, and D1 most of all. Every successful learned-agent system either had a faithful simulator of its opponent (the real game, self-play) or enormous amounts of data. Shroud has neither, so the fidelity of the player model is the bottleneck.
+The literature below explains why D1–D3 matter most, and D1 most of all. Every successful learned-agent system either had a faithful simulator of its opponent (the real game, self-play) or enormous amounts of data. Pattern of Life has neither, so the fidelity of the player model is the bottleneck.
 
 ---
 
@@ -50,14 +50,14 @@ Primary sources were read where possible: arXiv papers, journal pages, and the o
 
 - **ACE autonomous game characters (CES 2025)** [1]. The pitch is characters that "perceive, plan, and act like human players". The stack is on-device models: Mistral-NeMo-Minitron language models at 8B, 4B and 2B (the 2B "fits in as little as 1.5GB of VRAM"), plus audio, vision and retrieval models. The only adaptation claim is marketing copy saying MIR5 bosses "continuously learn from player behavior" **[unverified: no technical source]**.
 - **PUBG Ally (KRAFTON, beta June 2026)** [2]. A quantised 2B language model (*System 2*) interprets speech and events and issues intents. A behaviour tree (*System 1*) does movement, aiming and combat, so "reflex-level actions never have to wait for the model". Cross-match adaptation is *memory* (preferred weapons, drop spots). There is no RL or imitation of combat. (The CES page names 8B for Ally [1]; the 2026 write-up says 2B.) *Lesson:* the useful part is the fast/slow split and grounded memory. ACE is not a way to make a squad tactically smarter.
-- **Isaac Gym** [3] runs simulation and training together on the GPU and reports 2–3 orders of magnitude speed-ups for robot RL. The transferable idea is batched simulation, also applied to game-style ECS by Madrona [51]. Section 4.6 explains why it mostly doesn't pay off for Shroud.
+- **Isaac Gym** [3] runs simulation and training together on the GPU and reports 2–3 orders of magnitude speed-ups for robot RL. The transferable idea is batched simulation, also applied to game-style ECS by Madrona [51]. Section 4.6 explains why it mostly doesn't pay off for Pattern of Life.
 - **Research that is relevant, but not to squads:**
   - **ASE** [4]: adversarial imitation of motion clips into reusable skills.
   - **Eureka** [5]: an LLM evolves reward code, beating human-written rewards on 83% of 29 tasks.
   - **Voyager** [6]: a GPT-4 Minecraft agent.
   - **NitroGen** [7]: a ~500M-parameter vision-to-gamepad model behaviour-cloned from ~40,000 h of video across 1,000+ games, with up to 52% relative gain on unseen games.
 
-  Together they show that imitation scales with *data*, which is the one thing Shroud doesn't have for a single player.
+  Together they show that imitation scales with *data*, which is the one thing Pattern of Life doesn't have for a single player.
 
 ### 3.2 Population RL and self-play at scale
 
@@ -68,7 +68,7 @@ Primary sources were read where possible: arXiv papers, journal pages, and the o
 - **OpenAI Five** [11] trained for 10 months. Self-play split 80% against the latest policy and 20% against past versions. Its "team spirit" τ blends individual and team-mean reward, r_i = (1−τ)ρ_i + τρ̄, annealed toward 1. Average reaction time was 217 ms.
 - **AlphaStar** [12] used a league of main agents, *main exploiters* that target the current main agent, and *league exploiters*, under negotiated limits on action rate.
 
-*Lessons for Shroud:*
+*Lessons for Pattern of Life:*
 - Select on winning and let shaping evolve (FTW).
 - Curate training scenarios (Sophy).
 - Play past opponents and use team spirit (Five).
@@ -93,8 +93,8 @@ Forza's Drivatar is the closest shipped analogue [13][14]. The original Microsof
 
 - **Player modelling** is surveyed in [29][30], and opponent modelling in [36].
 - **Position prediction:** Hladky and Bulitko learned models from Counter-Strike: Source records that predict hidden opponents' positions, using only what a human could know, with "similar or better accuracy than human experts" [35]. This supports a **belief-state** squad.
-- **Few-shot individual models:** fine-tuned per-player chess models predict and even identify individuals [38]. The 2025 follow-up says those needed about 5,000 games; its Maia4All method needs **about 20**, by initialising a per-player embedding from population prototypes [39]. *This is the template for a Shroud player clone:* a population prior plus a small per-player embedding.
-- **Fast selection from a library:** Bayesian Policy Reuse [37] keeps a belief over which known task type it is facing and picks the policy from a library that handles it best, converging within a few episodes. For Shroud, the library is the squad archive and the task is this player.
+- **Few-shot individual models:** fine-tuned per-player chess models predict and even identify individuals [38]. The 2025 follow-up says those needed about 5,000 games; its Maia4All method needs **about 20**, by initialising a per-player embedding from population prototypes [39]. *This is the template for a Pattern of Life player clone:* a population prior plus a small per-player embedding.
+- **Fast selection from a library:** Bayesian Policy Reuse [37] keeps a belief over which known task type it is facing and picks the policy from a library that handles it best, converging within a few episodes. For Pattern of Life, the library is the squad archive and the task is this player.
 - **Dynamic difficulty adjustment:**
   - Hunicke argued for DDA in games [31], and her Hamlet system for Half-Life adjusted item supply [32]. Chen's flow framing ties challenge to ability [33].
   - Spronck's **dynamic scripting** [34] adapted online within tens of encounters, and shipped as a *Neverwinter Nights* demonstration. It managed this because it learns only **weights over a fixed set of sensible tactics**.
@@ -107,11 +107,11 @@ Forza's Drivatar is the closest shipped analogue [13][14]. The original Microsof
 - **Halo** [44] playtests: "very intelligent" ratings rose from 8% for weak enemies to 43% for tough ones ("Tougher = Smarter"). The game had 166 dialogue types and 5,147 lines of combat chatter. Halo 2 introduced behaviour trees ([45], secondary source).
 - **Left 4 Dead's Director** [46] tracks survivor "intensity" (damage, incapacitation, nearby kills; decays when not engaged). It cycles Build Up → Sustain Peak (3–5 s) → Peak Fade → Relax (30–45 s). It adjusts difficulty through *pacing*, not stats.
 
-*Synthesis:* squads that ship and feel smart are **good positional reasoning, simple coordination and legibility**. These are the things Shroud can't currently express (D5, D6).
+*Synthesis:* squads that ship and feel smart are **good positional reasoning, simple coordination and legibility**. These are the things Pattern of Life can't currently express (D5, D6).
 
 ### 3.7 Neuroevolution and quality diversity
 
-- **NEAT** [24] complexifies topologies, with speciation to protect new structure. **rtNEAT/NERO** [25] evolved combat teams *during* play under player-set fitness sliders. It is Shroud's direct ancestor, and it worked because fitness was dense and player-directed.
+- **NEAT** [24] complexifies topologies, with speciation to protect new structure. **rtNEAT/NERO** [25] evolved combat teams *during* play under player-set fitness sliders. It is Pattern of Life's direct ancestor, and it worked because fitness was dense and player-directed.
 - **Novelty search** [27] shows that pure objective search gets trapped by deception.
 - **MAP-Elites** [26] keeps the best solution per cell of a behaviour space. **CMA-ME** [28] found stronger and more diverse Hearthstone decks than either CMA-ES or MAP-Elites.
 
@@ -137,7 +137,7 @@ Forza's Drivatar is the closest shipped analogue [13][14]. The original Microsof
 
 ---
 
-## 4. Proposed architecture for Shroud
+## 4. Proposed architecture for Pattern of Life
 
 **Principle:** *Real matches are for **measuring the player**. Simulation is for **learning to beat them**. Deployment is a **bandit** over a diverse archive.*
 
@@ -177,7 +177,7 @@ Forza's Drivatar is the closest shipped analogue [13][14]. The original Microsof
 
 ### 4.1.1 L3: a calibrated player clone for training (central recommendation)
 
-The measured gap (D1) means every hour of training so far has optimised against the wrong opponent. A squad that wins 90–100% against the ghost and 0 of the real rounds has learned to beat the ghost. **Nothing else in this report pays off until the training opponent behaves, and loses, like the player.** The clone is that opponent. Every successful system in Section 3 had a faithful opponent, either the real game in self-play or a large dataset. For one player, Shroud has to build it from a few matches.
+The measured gap (D1) means every hour of training so far has optimised against the wrong opponent. A squad that wins 90–100% against the ghost and 0 of the real rounds has learned to beat the ghost. **Nothing else in this report pays off until the training opponent behaves, and loses, like the player.** The clone is that opponent. Every successful system in Section 3 had a faithful opponent, either the real game in self-play or a large dataset. For one player, Pattern of Life has to build it from a few matches.
 
 **What the clone is.** A simulated player whose *decisions* are fitted to the player's recorded behaviour (behaviour cloning) and whose *outcomes* are then calibrated so that it wins and loses against squads at the rate the real player does. It is built in two stages.
 
@@ -490,7 +490,7 @@ Written after player feedback asking for an enemy that is more aggressive and pe
 - ViZDoom [A15] is a fast testbed.
 - Raycast "sensors" were enough for human-like imitation-learned shooter bots [A16]. That matches our 2D sim's sensor budget.
 
-### What Shroud now does (`perception.rs`, `mind.rs`, `squad.rs`, `utility.rs`)
+### What Pattern of Life now does (`perception.rs`, `mind.rs`, `squad.rs`, `utility.rs`)
 
 1. **Alert states.**
    - Each enemy and the squad blackboard carry `Alert::{Unaware, Suspicious, Combat}`.

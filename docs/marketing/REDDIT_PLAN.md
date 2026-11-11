@@ -1,9 +1,9 @@
-# Reddit plan and post drafts: {GAME} (working title Shroud)
+# Reddit plan and post drafts: Pattern of Life (codename Shroud)
 
 Drafted 11 Nov 2026. Drafting only: nothing posted, nobody contacted.
 Binding inputs: `company-context/founder/gtm-and-fundraise-2026-11.md` and the research brief (two accounts, max one self-promo post per sub per week, reply within 2 h, no paid ads, no "CS2-like" in titles). Targets: 300 stranger downloads by 15 Dec 2026; 500 wishlists before Next Fest (registration closes 10 Jan 2027, fest 22 Feb - 1 Mar 2027).
 
-**Placeholders.** `{GAME}` everywhere. "Shroud" is a famous FPS streamer's name: rename before the first player-sub post (week 2). Rule sources in the research brief are third-party mirrors, so read each sidebar on the day you post.
+**Name.** The game is **Pattern of Life** (renamed from the codename Shroud, a famous FPS streamer's name; owner approved 11 Nov 2026). Rule sources in the research brief are third-party mirrors, so read each sidebar on the day you post.
 
 **Accounts.** Studio = S (player subs). Personal = P (r/rust, r/bevy, r/rust_gamedev, r/MachineLearning). S and P never vote on, comment on or crosspost each other's threads.
 
@@ -55,14 +55,14 @@ Capture with `crates/game/src/dev/cinema.rs` (capture + camera path) or `scripts
 **Title:** I played it twice. The second time, the bots knew exactly where I like to hold.
 **Body:** none (video only). Clip A.
 **First comment:**
-> Dev here. {GAME} is a single-player tactical defusal shooter (first to 3 rounds, buy menu, grenades) where the enemy squad studies how you play between matches. It doesn't get faster or more accurate; it gets smarter about where it stands and how it peeks.
+> Dev here. Pattern of Life is a single-player tactical defusal shooter (first to 3 rounds, buy menu, grenades) where the enemy squad studies how you play between matches. It doesn't get faster or more accurate; it gets smarter about where it stands and how it peeks.
 > Destroy it, please: (1) did the first 30 seconds tell you what the game is? (2) could you read the radio calls? (3) does the look feel cheap or fine? Free build on itch if you want to try it: {ITCH_URL_UTM}
 > {Cut note if applicable.}
 
 ### 3.2 r/playmygame (S)
-**Title:** [Windows/Mac] Free build: a bomb-defusal shooter where the enemy squad learns your habits ({GAME})
+**Title:** [Windows/Mac] Free build: a bomb-defusal shooter where the enemy squad learns your habits (Pattern of Life)
 **Body:**
-> I'm a solo dev. {GAME} is a first-person shooter: you attack, a squad defends two sites, first to 3 rounds, with a round economy, buy menu and grenades. Between matches the squad trains on a ghost of you and comes back with counters to what it saw: hold an angle and they jiggle-peek and flash, reload early and someone rushes the sound of your mag.
+> I'm a solo dev. Pattern of Life is a first-person shooter: you attack, a squad defends two sites, first to 3 rounds, with a round economy, buy menu and grenades. Between matches the squad trains on a ghost of you and comes back with counters to what it saw: hold an angle and they jiggle-peek and flash, reload early and someone rushes the sound of your mag.
 > Fixed by difficulty, never by evolution: their reaction time, aim error and damage. They get smarter, not faster.
 > **Play it:** {ITCH_URL_UTM} (free, Windows and macOS, about {N} min per match)
 > **What I want to know:** 1) Is Recruit fair? An early tester found the default too hard. 2) Did you notice the squad change between matches? When? 3) Where did you quit, and why? 4) Crashes or slow frames: tell me your hardware.
@@ -93,7 +93,7 @@ Capture with `crates/game/src/dev/cinema.rs` (capture + camera path) or `scripts
 ### 3.5 r/bevy (P)
 **Title:** Shipping a Bevy 0.20 FPS on laptops: the performance rules that mattered (merged level meshes, nearest-K lamp shadows, pipeline warm-up)
 **Body:**
-> {GAME} is a first-person shooter on Bevy 0.20.1 and avian3d 0.8. What moved frame time for us:
+> Pattern of Life is a first-person shooter on Bevy 0.20.1 and avian3d 0.8. What moved frame time for us:
 > - Plain level blocks are merged per material into a few meshes.
 > - Static scenery vs pooled, moving FX are separate (`Scenery` / `Actor`), so culling and batching treat them differently.
 > - Lamp shadows only for the nearest K lights, with K driven by a render-budget governor.
@@ -130,7 +130,7 @@ Reply within 2 h. Short, concrete, never combative. Replies to a downvoted threa
 
 ## 5. Tracking
 
-**Links.** `?utm_source=reddit&utm_medium=social&utm_campaign=shroud_nov26&utm_content=<sub>_<post#>` (example `dmg_1`, `pmg_1`). itch's dashboard shows referrer domains but, as far as I know, not per-post UTM breakdown ({VERIFY}). To split by post, use per-post paths on a studio-owned domain that redirect to itch (`/go/pmg1`) and count hits. Steam's traffic reports do support UTM: use the same scheme once the page is live.
+**Links.** `?utm_source=reddit&utm_medium=social&utm_campaign=pattern_of_life_nov26&utm_content=<sub>_<post#>` (example `dmg_1`, `pmg_1`). itch's dashboard shows referrer domains but, as far as I know, not per-post UTM breakdown ({VERIFY}). To split by post, use per-post paths on a studio-owned domain that redirect to itch (`/go/pmg1`) and count hits. Steam's traffic reports do support UTM: use the same scheme once the page is live.
 
 **Log per post** (sheet): date/time (ET and IST), sub, account, title, clip, flair, upvotes and ratio at 2 h/24 h/72 h, comments, replies given within 2 h (Y/N), itch views, downloads, download rate, any removal and its stated reason, themes of top 3 comments, Steam wishlists (after page live).
 
@@ -147,7 +147,7 @@ Reply within 2 h. Short, concrete, never combative. Replies to a downvoted threa
 
 ## 6. Blocked on owner
 
-1. **Final name** (before week 2 S posts).
+1. ~~**Final name**~~ Resolved 11 Nov 2026: Pattern of Life.
 2. **Generative assets?** Any shipped art, voice lines (including squad radio) or text. Decides the optional line, Steam disclosure and reply 2.
 3. **Capture clips A-D**, the diagram and the debrief screenshot; confirm the radio lines shown are what the build prints.
 4. **Telemetry disclosure wording** for the itch page and the playmygame post.
@@ -155,6 +155,6 @@ Reply within 2 h. Short, concrete, never combative. Replies to a downvoted threa
 6. **Mac:** is the .dmg native Apple Silicon, and measured fps on a base chip? (Gates r/macgaming and reply 4.)
 7. **Technical claims to re-verify:** 54% -> 77% sim win rates, and exact limit values.
 8. **Bevy performance numbers** for r/bevy.
-9. **Engine wording:** is the engine layer called Hull, and is Shroud's code public?
+9. **Engine wording:** is the engine layer called Hull, and is the game's code public?
 10. **Price intent** for reply 5.
 11. **r/rust mods' answer** on commercial write-ups; read every sidebar on the day.
