@@ -210,10 +210,14 @@ fn swap_pickup(
     mut player: Query<(&Transform, &mut Weapon, &mut Arsenal, &mut Armed), With<Player>>,
     cams: Query<&Transform, (With<engine::gfx::MainCamera>, Without<Player>, Without<Pickup>)>,
     pickups: Query<(Entity, &Transform, &Pickup)>,
+    bomb: Option<Res<crate::bomb::Bomb>>,
     mut focus: ResMut<PickupFocus>,
     mut events: MessageWriter<GunEvent>,
 ) {
     let Ok((ptf, mut w, mut a, mut armed)) = player.single_mut() else { return };
+    // Carrying the bomb inside a site: E plants, so no gun takes the focus (a defender's rifle
+    // dropped at your feet would otherwise turn the plant into a swap).
+    let plant_zone = bomb.is_some_and(|b| b.phase == crate::bomb::BombPhase::Carried && b.in_site.is_some());
     let cam = cams.single().map(|c| ptf.mul_transform(*c)).unwrap_or(*ptf);
     let eye = cam.translation;
     let fwd = *cam.forward();
@@ -221,7 +225,7 @@ fn swap_pickup(
     // Best candidate: close and near the middle of the view.
     let best = pickups
         .iter()
-        .filter(|(_, _, p)| !carried(p.gun.kind) && p.gun.kind != WeaponKind::Pistol)
+        .filter(|(_, _, p)| !plant_zone && !carried(p.gun.kind) && p.gun.kind != WeaponKind::Pistol)
         .filter_map(|(e, tf, p)| {
             let to = tf.translation - eye;
             let d = to.length();
@@ -239,6 +243,11 @@ fn swap_pickup(
             spawn_pickup(&mut commands, assets.as_deref(), old, tf.translation.with_y(0.0));
         }
         commands.entity(e).despawn();
+        // Holding the sidearm: its live state (magazine, reserve) goes back in its slot first.
+        let active = a.active;
+        if active != 0 {
+            a.slots[active] = Some(w.state());
+        }
         a.slots[0] = Some(gun);
         if a.active != 0 {
             a.last = a.active;
@@ -272,5 +281,67 @@ fn animate_pickups(time: Res<Time>, mut q: Query<(Entity, &mut Pickup, &mut Tran
         let rot = Quat::from_rotation_y(p.spin);
         tf.translation.y = y;
         tf.rotation = rot;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bomb::{Bomb, BombPhase};
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// Player at the origin looking down -Z (E held), a rifle at his feet, sidearm or primary out.
+    fn swap_world(active: usize, in_site: Option<usize>) -> (World, Entity, Entity) {
+        let mut world = World::new();
+        world.init_resource::<Time>();
+        world.insert_resource(WeaponInput { interact: true, ..default() });
+        world.init_resource::<PickupFocus>();
+        world.init_resource::<Messages<GunEvent>>();
+        let mut bomb = Bomb::default();
+        bomb.phase = BombPhase::Carried;
+        bomb.in_site = in_site;
+        world.insert_resource(bomb);
+        let mut a = Arsenal::new(WeaponKind::Smg);
+        a.active = active;
+        let mut w = Weapon::new(a.slots[active].unwrap());
+        w.ammo = 3;
+        let p = world.spawn((Player, Transform::from_xyz(0.0, 1.6, 0.0), w, a, Armed(WeaponKind::Smg))).id();
+        let gun = GunState::full(WeaponKind::Rifle);
+        let g = world.spawn((Pickup { gun, age: 0.0, y: 0.08, spin: 0.0 }, Transform::from_xyz(0.0, 0.08, -0.5))).id();
+        (world, p, g)
+    }
+
+    #[test]
+    fn gun_at_feet_in_a_plant_site_does_not_take_e() {
+        // Arrange: carrying the bomb inside site A.
+        let (mut world, _, _) = swap_world(0, Some(0));
+        // Act
+        world.run_system_once(swap_pickup).unwrap();
+        // Assert: E is left to planting.
+        assert_eq!(world.resource::<PickupFocus>().target, None);
+    }
+
+    #[test]
+    fn gun_at_feet_outside_a_site_is_focused() {
+        // Arrange
+        let (mut world, _, g) = swap_world(0, None);
+        // Act
+        world.run_system_once(swap_pickup).unwrap();
+        // Assert
+        assert_eq!(world.resource::<PickupFocus>().target, Some((g, WeaponKind::Rifle)));
+    }
+
+    #[test]
+    fn swapping_with_the_sidearm_out_keeps_the_pistol_magazine() {
+        // Arrange: pistol in hand with 3 rounds, the hold on the rifle just complete.
+        let (mut world, p, g) = swap_world(1, None);
+        world.insert_resource(PickupFocus { target: Some((g, WeaponKind::Rifle)), hold: 1.0 });
+        // Act
+        world.run_system_once(swap_pickup).unwrap();
+        // Assert
+        let a = world.get::<Arsenal>(p).unwrap();
+        assert_eq!(a.active, 0);
+        assert_eq!(a.slots[0].map(|g| g.kind), Some(WeaponKind::Rifle));
+        assert_eq!(a.slots[1].map(|g| g.ammo), Some(3), "the pistol keeps its magazine");
     }
 }

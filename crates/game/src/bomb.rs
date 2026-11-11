@@ -1,7 +1,7 @@
 //! Bomb defusal, the game side of [`brain::objective`] (its doc comment is the rule set).
 //!
 //! The player always starts a round carrying the bomb. Holding E inside a site (standing, round
-//! live, nothing else on E: a gun pickup in reach wins) plants it in [`PLANT_S`]; the gun lowers
+//! live; inside a site E plants, gun pickups there don't take the focus) plants it in [`PLANT_S`]; the gun lowers
 //! and the player can't move or fire meanwhile, and letting go resets. The planted bomb sits at
 //! the player's feet: a primitive charge with a keypad and a red LED that blinks with each beep,
 //! beeping faster as the fuse runs. After [`FUSE_S`] it explodes (fireball, flash, smoke, camera
@@ -32,7 +32,6 @@ use crate::player::{Player, PlayerIntent, PlayerSet};
 use crate::state::{GameState, has_visuals, not_paused};
 use crate::telemetry::Telemetry;
 use crate::weapon::arsenal::WeaponInput;
-use crate::weapon::pickups::PickupFocus;
 use crate::weapon::{Damage, DamageCause, Health, WeaponSet};
 
 /// Where the bomb is in its life this round.
@@ -210,7 +209,6 @@ fn plant_input(
     flow: Res<MatchFlow>,
     phase: Res<RoundPhase>,
     mut input: ResMut<WeaponInput>,
-    focus: Res<PickupFocus>,
     mut bomb: ResMut<Bomb>,
     mut intent: ResMut<PlayerIntent>,
     mut players: Query<(&Transform, &FpsMotor, &FpsController, &Health, &mut FpsInput), With<Player>>,
@@ -221,7 +219,7 @@ fn plant_input(
     let ground = to_ground(tf.translation);
     let dead = hp.is_dead();
     bomb.in_site = if bomb.phase == BombPhase::Carried && !dead { site_at(&arena.0.sites, ground) } else { None };
-    bomb.can_plant = bomb.in_site.is_some() && !phase.frozen() && flow.round_over.is_none() && motor.grounded && focus.target.is_none();
+    bomb.can_plant = bomb.in_site.is_some() && !phase.frozen() && flow.round_over.is_none() && motor.grounded;
     let holding = bomb.can_plant && input.interact;
     if let Some(fuse) = bomb.request.take()
         && bomb.phase == BombPhase::Carried

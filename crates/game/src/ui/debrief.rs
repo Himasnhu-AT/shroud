@@ -1,6 +1,7 @@
 //! `GameState::Debrief`: match result, the squad's plan and how it changed (the game's hook,
 //! always first), what to work on, then a compact career strip.
-//! Buttons: next match (Enter) | main menu (Esc) | retire this squad (R: reset the AI).
+//! Buttons: next match (Enter) | main menu (Esc) | retire this squad (resets the AI: click
+//! twice, see [`RetireStep`]; deliberately no key shortcut, R is reload).
 
 use bevy::prelude::*;
 
@@ -10,13 +11,15 @@ use brain::career::{Award, Rank};
 use crate::save::{Brain, LastEvolve};
 use super::theme::*;
 use crate::state::{AppState, GameState, Headless};
-use engine::ui::prelude::{MenuAction, MenuEvent, NavBack, action_button};
+use engine::ui::prelude::{MenuAction, MenuEvent, NavBack, Toast, UiAction, action_button};
 
 pub struct DebriefPlugin;
 
 impl Plugin for DebriefPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Debrief), spawn_debrief)
+        // Every visit starts un-armed (a click armed before "Next match" doesn't carry over).
+        app.init_resource::<RetireStep>()
+            .add_systems(OnEnter(GameState::Debrief), (spawn_debrief, |mut r: ResMut<RetireStep>| *r = RetireStep::Idle))
             .add_systems(Update, (input, animate_xp).run_if(in_state(GameState::Debrief)));
     }
 }
@@ -170,7 +173,7 @@ fn spawn_debrief(
                         });
                 });
             screen.spawn((Node::default(), Pickable::IGNORE)).with_children(|f| {
-                spawn_footer(f, &Theme::default(), &[("ENTER", "Next match"), ("ESC", "Main menu"), ("R", "Retire this squad")]);
+                spawn_footer(f, &Theme::default(), &[("ENTER", "Next match"), ("ESC", "Main menu")]);
             });
         });
 }
@@ -381,12 +384,62 @@ fn card_panel() -> impl Bundle {
     )
 }
 
+/// Seconds the first "Retire this squad" click stays armed.
+const RETIRE_CONFIRM_S: f32 = 4.0;
+const RETIRE_LABEL: &str = "Retire this squad";
+
+/// Retiring the squad wipes the evolved brain, so it asks twice: the first click arms it (the
+/// button reads "Click again to retire") for [`RETIRE_CONFIRM_S`]; a second click in that window
+/// retires it. The button then reads "Retiring…" for a couple of frames before the blocking
+/// retrain, so the freeze isn't silent.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+enum RetireStep {
+    #[default]
+    Idle,
+    /// Seconds left to confirm.
+    Armed(f32),
+    /// Frames left before the reset runs.
+    Running(u8),
+}
+
+impl RetireStep {
+    /// After a click on the button.
+    fn click(self) -> Self {
+        match self {
+            RetireStep::Idle => RetireStep::Armed(RETIRE_CONFIRM_S),
+            RetireStep::Armed(_) => RetireStep::Running(2),
+            r => r,
+        }
+    }
+    /// After `dt` seconds (one frame). `true` when the reset should run now.
+    fn tick(self, dt: f32) -> (Self, bool) {
+        match self {
+            RetireStep::Armed(t) if t - dt <= 0.0 => (RetireStep::Idle, false),
+            RetireStep::Armed(t) => (RetireStep::Armed(t - dt), false),
+            RetireStep::Running(0) => (RetireStep::Idle, true),
+            RetireStep::Running(n) => (RetireStep::Running(n - 1), false),
+            RetireStep::Idle => (RetireStep::Idle, false),
+        }
+    }
+    fn label(self) -> String {
+        match self {
+            RetireStep::Idle => engine::ui::tl(RETIRE_LABEL).to_uppercase(),
+            RetireStep::Armed(_) => engine::ui::tl("Click again to retire").to_uppercase(),
+            RetireStep::Running(_) => engine::ui::tl("Retiring…").to_uppercase(),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn input(
     mut commands: Commands,
     time: Res<Time>,
     headless: Res<Headless>,
     mut auto: Option<ResMut<HeadlessAdvance>>,
-    keys: Option<Res<ButtonInput<KeyCode>>>,
+    mut retire: ResMut<RetireStep>,
+    brain: Res<Brain>,
+    buttons: Query<(&engine::ui::widgets::ActionButton, &Children)>,
+    mut texts: Query<&mut Text>,
     mut events: MessageReader<MenuEvent>,
     mut backs: MessageReader<NavBack>,
     mut flow: ResMut<MatchFlow>,
@@ -401,18 +454,40 @@ fn input(
         }
         return;
     }
-    // Enter / clicks go through the buttons (engine UI kit); Esc and R are shortcuts.
-    let mut reset = keys.is_some_and(|k| k.just_pressed(KeyCode::KeyR));
-    let to_menu = backs.read().count() > 0;
+    // Enter / clicks go through the buttons (engine UI kit); Esc is a shortcut. Retiring the
+    // squad has no key: R is reload, too easy to hit by habit.
+    let before = *retire;
+    let (step, reset) = retire.tick(time.delta_secs());
+    *retire = step;
+    let busy = matches!(*retire, RetireStep::Running(_));
+    let to_menu = backs.read().count() > 0 && !busy;
     for MenuEvent(id) in events.read() {
+        if busy {
+            continue;
+        }
         match *id {
             "next_match" => next.set(GameState::Playing),
-            "reset_ai" => reset = true,
+            "reset_ai" => *retire = retire.click(),
             _ => {}
         }
     }
+    if std::mem::discriminant(&before) != std::mem::discriminant(&*retire) {
+        let label = retire.label();
+        for (b, children) in &buttons {
+            if b.0 != UiAction::Menu(MenuAction::Custom("reset_ai")) {
+                continue;
+            }
+            for c in children.iter() {
+                if let Ok(mut t) = texts.get_mut(c) {
+                    t.0 = label.clone();
+                }
+            }
+        }
+    }
     if reset {
+        let generation = brain.state.generation;
         commands.queue(crate::save::reset_brain);
+        commands.write_message(Toast::new("Squad retired").body(format!("Generation {generation} backed up. A fresh squad is ready.")));
         app_state.set(AppState::MainMenu);
     } else if to_menu {
         flow.abandon();
@@ -423,6 +498,31 @@ fn input(
 #[cfg(test)]
 mod tests {
     use brain::weapons::WeaponKind;
+
+    #[test]
+    fn retire_needs_a_second_click_in_time() {
+        use super::{RETIRE_CONFIRM_S, RetireStep};
+        // Arrange / Act: one click, then the window runs out.
+        let armed = RetireStep::Idle.click();
+        let (expired, ran) = armed.tick(RETIRE_CONFIRM_S + 0.1);
+        // Assert
+        assert!(matches!(armed, RetireStep::Armed(_)), "the first click only arms it");
+        assert_eq!((expired, ran), (RetireStep::Idle, false), "no second click: nothing happens");
+        // Act: two clicks, then frames pass.
+        let mut step = RetireStep::Idle.click().click();
+        let mut frames = 0;
+        let ran = loop {
+            let (s, ran) = step.tick(0.016);
+            step = s;
+            frames += 1;
+            if ran || frames > 10 {
+                break ran;
+            }
+        };
+        // Assert: runs only after the "Retiring…" label had a frame to show, and ends idle.
+        assert!(ran && frames > 1);
+        assert_eq!(step, RetireStep::Idle);
+    }
 
     #[test]
     fn loadout_summary_counts_roles() {
