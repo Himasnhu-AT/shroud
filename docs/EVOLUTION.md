@@ -43,7 +43,7 @@ A scripted opponent with its parameters taken from the player model:
   "history": [ { "match": 6, "player_won": true, "rounds": [2, 1], "avg_fitness": 113.2, "insights": [...] } ]
 }
 ```
-Corrupt or old-version file → back it up as `brain.json.bak` and start fresh. A menu option "Reset AI" does the same on purpose.
+Corrupt or old-version file → moved aside (`brain.json.corrupt-*`, `brain.json.v<N>.bak`) and start fresh. "Retire this squad" on the debrief (click twice to confirm) starts over on purpose, backing the old brain up as `brain.json.bak-<unix secs>` (never overwriting an earlier backup).
 
 ## Success criterion (testable without a human)
 In the sim, against a fixed ghost, **gen-10 squads beat gen-0 squads** (higher win rate and damage dealt, seed-averaged).
