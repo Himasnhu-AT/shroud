@@ -103,8 +103,8 @@ Settings keys for `ui.setting`: Pattern of Life's `difficulty`, `map`, `show_cal
 
 ## 2. Crash & performance reporting (`ashlar-trace`, via the engine)
 
-The engine's `TracePlugin` (feature `dev`) builds the tracer from `SHROUD_TRACE_ENDPOINT` /
-`SHROUD_TRACE_KEY` (a no-op tracer without both), arms hang detection on the first in-game
+The engine's `TracePlugin` (feature `telemetry`, part of `dev`) builds the tracer from `SHROUD_TRACE_ENDPOINT` /
+`SHROUD_TRACE_KEY`, else the values a release build baked in (a no-op tracer without both), arms hang detection on the first in-game
 frame, reports frame times and `perf.hitch`, installs the panic hook and handles `--crash-test`.
 Pattern of Life declares its events in `dev::DevPlugin` (`match.start`, `match.end`, `round.end`,
 `player.died`, `ai.evolved`, `ai.reset`, `bomb.*`, `career.objectives`, `career.objective`,
@@ -116,9 +116,21 @@ the engine. The overlay is on F2 (`PerfOverlayKey`; F3 is the enemy debug view).
 (F4, dev runs): Pattern of Life records `ai.think_ms`, `ai.squad_ms`, `enemies.alive`, `enemies.engaged`,
 `match.round` and labels each run with `map` and `difficulty`.
 
+### Release builds with reports (`telemetry` feature)
+`scripts/release.sh` builds macOS and Windows with `--no-default-features --features telemetry`:
+the engine's `trace` only (`ashlar-trace` + proto; `scripts/ship-features.sh` fails the build if any
+other ashlar crate is in the tree), no control port, MCP or devtools. The server address and the
+`shroud` app's write key are baked in at compile time (`SHROUD_BUILD_TRACE_ENDPOINT`,
+`SHROUD_BUILD_TRACE_KEY` → `GameInfo::trace`), along with the commit (`SHROUD_BUILD_SHA`, so the
+dashboard counts these sessions as releases). Server: `https://api.marlstudio.com`; the key is
+`SHROUD_WRITE_KEY` in the backend's `infra/secrets/keys.env`, made and registered by its
+`infra/deploy-backend.sh`. `release.sh` checks the server's health and the key first, and both
+packagers check the binaries carry the address. `--upload` then pushes to itch.io.
+Plain `package-*.sh` (no `TELEMETRY=1`) still makes a build that carries no ashlar crate at all.
+
 ### Privacy
 - Nothing is sent until the first-run notice in the Menu is shown (`tracer.notice_shown()`).
-- Settings toggles per category; `DO_NOT_TRACK=1` honoured. No player names; player-model data is **not** uploaded.
+- Settings > Gameplay > "Send crash and performance reports" switches crash, performance and usage reports off together (saved by the tracer); `DO_NOT_TRACK=1` honoured. No player names; player-model data is **not** uploaded.
 
 ### Dev setup
 Run `ashlar-trace-server` locally; point `TRACE_ENDPOINT` at it via env (see `/Users/himanshu/.claude/bin/env-keys` for checking `.env`). The dashboard shows crash groups, frame-time percentiles per version, hitches, match/evolve events.

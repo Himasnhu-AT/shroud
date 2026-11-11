@@ -4,6 +4,8 @@
 #   scripts/package-macos.sh            # build, sign, notarize, staple
 #   NOTARIZE=0 scripts/package-macos.sh # skip notarization (local test)
 #   FULL_TEXTURES=1 scripts/package-macos.sh # ship the 4K textures (default cuts them to 2K)
+#   TELEMETRY=1 scripts/package-macos.sh     # crash/perf/match reports on (use scripts/release.sh,
+#                                            # which bakes in the server and write key)
 #
 # Env: SIGN_ID (Developer ID Application identity), NOTARY_PROFILE (notarytool keychain profile),
 #      BUNDLE_ID, VERSION. Output: dist/PatternOfLife-<version>.dmg, and
@@ -25,8 +27,10 @@ export MACOSX_DEPLOYMENT_TARGET=12.0
 
 step() { printf '\n==> %s\n' "$*"; }
 
-step "Check: no dev tooling (ashlar-*) in the ship build"
-if cargo tree -p game --no-default-features -e normal | grep ashlar; then echo "ashlar crates in the ship build" >&2; exit 1; fi
+. scripts/ship-features.sh   # FEATURES, check_ship_tree, SHROUD_BUILD_SHA
+
+step "Check: no dev tooling in the ship build ($SHIP_KIND)"
+check_ship_tree
 
 step "Build release (no dev tooling) for arm64 and x86_64"
 # The executable inside the bundle stays `shroud` (the cargo binary name).
@@ -36,8 +40,10 @@ export RUSTFLAGS="${RUSTFLAGS:-} \
   --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME/.rustup=/rustup \
   --remap-path-prefix=$GAME_DIR=/src"
 for t in aarch64-apple-darwin x86_64-apple-darwin; do
-  SMTP_USER= SMTP_PASS= cargo build --release -p game --no-default-features --target "$t"
+  SMTP_USER= SMTP_PASS= cargo build --release -p game "${FEATURES[@]}" --target "$t"
 done
+
+for t in aarch64-apple-darwin x86_64-apple-darwin; do check_baked "$TARGET_DIR/$t/release/shroud"; done
 
 step "Assemble Pattern of Life.app"
 rm -rf "$APP" "$DMG"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

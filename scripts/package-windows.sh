@@ -7,6 +7,7 @@
 #   scripts/package-windows.sh                # build and zip
 #   scripts/package-windows.sh --skip-build   # re-zip what the target dir holds
 #   FULL_TEXTURES=1 scripts/package-windows.sh # ship the 4K textures (default cuts them to 2K)
+#   TELEMETRY=1 scripts/package-windows.sh     # crash/perf/match reports on (use scripts/release.sh)
 #
 # Needs: cargo-xwin (cargo install cargo-xwin), rustup target x86_64-pc-windows-msvc,
 # llvm-rc (brew install llvm). The exe is a GUI app (no console window) with a static CRT, so it
@@ -31,6 +32,7 @@ die() { echo "error: $*" >&2; exit 1; }
 VERSION="${VERSION:-$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+. scripts/ship-features.sh   # FEATURES, check_ship_tree, SHROUD_BUILD_SHA
 TARGET=x86_64-pc-windows-msvc
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')"
 BIN="$TARGET_DIR/$TARGET/release/shroud.exe"
@@ -45,8 +47,8 @@ if [ "$SKIP_BUILD" = 0 ]; then
   RC="${RC_PATH:-$(command -v llvm-rc || echo /opt/homebrew/opt/llvm/bin/llvm-rc)}"
   [ -x "$RC" ] || die "llvm-rc not found (brew install llvm, or set RC_PATH)"
 
-  step "Check: no dev tooling (ashlar-*) in the ship build"
-  if cargo tree -p game --no-default-features -e normal --target "$TARGET" | grep ashlar; then die "ashlar crates in the ship build"; fi
+  step "Check: no dev tooling in the ship build ($SHIP_KIND)"
+  check_ship_tree --target "$TARGET"
 
   step "Resources: icon + version info"
   mkdir -p "$RES_DIR"
@@ -89,11 +91,12 @@ EOF
   # `cargo rustc` passes the flags after `--` to the shroud binary only: the .res, and the GUI
   # subsystem with the normal entry point (no console window).
   SMTP_USER= SMTP_PASS= cargo xwin rustc --release -p game --bin shroud \
-    --no-default-features --target "$TARGET" -- \
+    "${FEATURES[@]}" --target "$TARGET" -- \
     -C "link-arg=$RES_DIR/shroud.res" -C link-arg=/SUBSYSTEM:WINDOWS -C link-arg=/ENTRY:mainCRTStartup
 fi
 
 [ -f "$BIN" ] || die "$BIN missing (build first, or drop --skip-build)"
+check_baked "$BIN"
 
 step "Check the exe: x64, GUI subsystem, version info, no MSVC runtime DLLs"
 python3 -I - "$BIN" <<'EOF'

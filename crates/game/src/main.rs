@@ -43,6 +43,9 @@ fn info() -> GameInfo {
         .tagline("They learn from you.\nThey never aim faster. They play smarter.")
         .version(env!("CARGO_PKG_VERSION"))
         .assets_fallback(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets"))
+        // Packaged builds: the commit, and the telemetry server (scripts/release.sh sets these).
+        .build(option_env!("SHROUD_BUILD_SHA"))
+        .trace(option_env!("SHROUD_BUILD_TRACE_ENDPOINT"), option_env!("SHROUD_BUILD_TRACE_KEY"))
 }
 
 fn main() {

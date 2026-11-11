@@ -38,5 +38,11 @@ Your progress and the AI's memory live in
   __DATA_DIR__
   (delete that folder to start over)
 
+Crash and performance reports
+  The game sends crash reports, frame times and match results (map,
+  difficulty, round scores) to the developer, with no name attached. What
+  the squad learns about you is never sent. Turn it off in Settings >
+  Gameplay, or set DO_NOT_TRACK=1.
+
 Feedback welcome on the itch.io page: what felt unfair, what felt smart,
 what broke.

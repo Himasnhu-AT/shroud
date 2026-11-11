@@ -1,7 +1,8 @@
 //! Dev-only glue (feature `dev`, on for `cargo run` / `cargo test`): Shroud's control commands
 //! on the engine's control port, perf spans, metrics keys and labels, session-log events and
 //! crash/perf trace events. In ship builds (`--no-default-features`) the helpers here are no-ops
-//! and none of the engine's devtools are compiled in.
+//! and none of the engine's devtools are compiled in. Trace events alone also work in release
+//! builds with the `telemetry` feature (no devtools).
 
 #[cfg(feature = "dev")]
 mod ai_commands;
@@ -18,16 +19,16 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use serde_json::Value;
 
-/// A trace event property (mirrors `engine::trace::Prop`, which only exists in dev builds).
+/// A trace event property (mirrors `engine::trace::Prop`, which only exists with `telemetry`).
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(not(feature = "dev"), allow(dead_code))]
+#[cfg_attr(not(feature = "telemetry"), allow(dead_code))]
 pub enum Prop {
     Bool(bool),
     Int(i64),
     Float(f64),
 }
 
-#[cfg(feature = "dev")]
+#[cfg(feature = "telemetry")]
 fn props(p: &[(&'static str, Prop)]) -> Vec<(&'static str, engine::trace::Prop)> {
     use engine::trace::Prop as P;
     p.iter()
@@ -42,12 +43,12 @@ fn props(p: &[(&'static str, Prop)]) -> Vec<(&'static str, engine::trace::Prop)>
         .collect()
 }
 
-/// Records a crash/perf trace event (declared in [`DevPlugin`]). No-op without `dev` or when
-/// tracing is off.
+/// Records a crash/perf trace event (declared in [`DevPlugin`]). No-op without `telemetry` or
+/// when tracing is off.
 pub fn trace(world: &World, name: &'static str, p: &[(&'static str, Prop)]) {
-    #[cfg(feature = "dev")]
+    #[cfg(feature = "telemetry")]
     engine::trace::trace_event(world, name, &props(p));
-    #[cfg(not(feature = "dev"))]
+    #[cfg(not(feature = "telemetry"))]
     let _ = (world, name, p);
 }
 
@@ -56,7 +57,7 @@ pub fn trace(world: &World, name: &'static str, p: &[(&'static str, Prop)]) {
 pub struct Dev<'w> {
     #[cfg(feature = "dev")]
     log: Option<Res<'w, engine::devtools::SessionLog>>,
-    #[cfg(feature = "dev")]
+    #[cfg(feature = "telemetry")]
     tracer: Option<Res<'w, engine::trace::GameTracer>>,
     _p: PhantomData<&'w ()>,
 }
@@ -73,11 +74,11 @@ impl Dev<'_> {
     }
 
     pub fn trace(&self, name: &'static str, p: &[(&'static str, Prop)]) {
-        #[cfg(feature = "dev")]
+        #[cfg(feature = "telemetry")]
         if let Some(t) = &self.tracer {
             engine::trace::trace_event(t, name, &props(p));
         }
-        #[cfg(not(feature = "dev"))]
+        #[cfg(not(feature = "telemetry"))]
         let _ = (name, p);
     }
 }
@@ -86,15 +87,40 @@ pub struct DevPlugin;
 
 impl Plugin for DevPlugin {
     fn build(&self, _app: &mut App) {
+        #[cfg(feature = "telemetry")]
+        build_telemetry(_app);
         #[cfg(feature = "dev")]
         build_dev(_app);
     }
 }
 
+/// Match events for crash/perf reports, and the Settings toggle that lets players switch
+/// reporting off (dev and release builds with `telemetry`).
+#[cfg(feature = "telemetry")]
+fn build_telemetry(app: &mut App) {
+    use engine::settings::{FieldDef, FieldKind, RegisterSettings};
+    use engine::trace::{GameTracer, TraceAppExt, reporting, set_reporting};
+
+    app.declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset", "bomb.planted", "bomb.defused", "bomb.exploded", "career.objectives", "career.objective", "career.credited", "career.promoted"])
+        .register_setting(FieldDef {
+            key: "send_reports",
+            tab: "Gameplay",
+            label: "Send crash and performance reports",
+            hint: "Crashes, frame times and match results, with no name attached. What the squad learns about you never leaves this computer.",
+            kind: FieldKind::Toggle,
+            // No tracer in the world = "Reset tab"'s scratch world: the default is on.
+            get: |w| w.get_resource::<GameTracer>().map_or(1.0, |t| reporting(t) as u8 as f32),
+            set: |w, v| {
+                if let Some(t) = w.get_resource::<GameTracer>() {
+                    set_reporting(t, v > 0.5);
+                }
+            },
+        });
+}
+
 #[cfg(feature = "dev")]
 fn build_dev(app: &mut App) {
     use engine::devtools::{AddControlCommand, PerfAppExt, PerfOverlayKey};
-    use engine::trace::TraceAppExt;
 
     use crate::enemy::EnemySet;
     use crate::weapon::WeaponSet;
@@ -103,7 +129,6 @@ fn build_dev(app: &mut App) {
     app.insert_resource(PerfOverlayKey(KeyCode::F2))
         .perf_span(FixedUpdate, EnemySet, "ai")
         .perf_span(Update, WeaponSet, "weapons")
-        .declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset", "bomb.planted", "bomb.defused", "bomb.exploded", "career.objectives", "career.objective", "career.credited", "career.promoted"])
         .add_systems(Update, watch_events);
     commands::register(app);
     ai_commands::register(app);

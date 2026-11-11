@@ -27,7 +27,13 @@ libc = "0.2"
 # metrics window, crash/perf tracing. Ship builds use `--no-default-features`: none of it (and
 # no `ashlar-*` crate) is in the binary.
 default = ["dev"]
-dev = ["engine/devtools", "engine/trace"]
+dev = ["engine/devtools", "telemetry"]
+# Crash, performance and match reports to the studio's server (engine `trace`, i.e. `ashlar-trace`
+# only: no control port, MCP or devtools). Release builds turn it on with
+# `--no-default-features --features telemetry` (scripts/release.sh); it sends only when the build
+# baked a server address and write key in (SHROUD_BUILD_TRACE_ENDPOINT / SHROUD_BUILD_TRACE_KEY) or
+# SHROUD_TRACE_ENDPOINT / SHROUD_TRACE_KEY are set, and players can switch it off in Settings.
+telemetry = ["engine/trace"]
 
 [dev-dependencies]
 # Same git rev as the engine's, so tests share its control client and build on any machine.

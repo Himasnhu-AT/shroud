@@ -38,3 +38,9 @@ Write a coherent chunk, then test it. Don't rebuild after every small edit.
 ## Parallel work
 Teammates work in separate git worktrees (see [TASKS.md](TASKS.md)), all using the shared target dir and memgate.
 Keep it to ≤ 3 concurrent agents, and only one doing Bevy builds at a time if RAM is tight.
+
+## Releases
+- `scripts/release.sh [--upload]`: macOS (signed, notarized) and Windows builds with crash,
+  performance and match reports on, then (with `--upload`) itch.io. See
+  [CONTROL_AND_TELEMETRY](CONTROL_AND_TELEMETRY.md#release-builds-with-reports-telemetry-feature).
+- `scripts/package-macos.sh` / `scripts/package-windows.sh` alone: builds that never send anything.
