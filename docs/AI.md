@@ -266,3 +266,42 @@ Technique only: no gene, no aim or reaction change.
 - Tests: `crates/brain/tests/objective.rs` (both sites held and spots reached on every map,
   stacking by plant history, unopposed defuse, save, defuser re-pick, waiting while watched,
   fake-proof rotation, sim outcomes).
+
+## Squad rush (`Play::Rush`)
+
+`brain::squad::rush` (retake variant in `squad/bomb.rs`). Lethality comes from coordination and
+timing only: aim error, reaction and damage stay as difficulty sets them.
+
+- **Target**: his last known spot on the shared board, or where the mag-out was heard. Never his
+  true position. A fresh squad sighting during the rush moves the target there.
+- **Who**: every living member within `RUSH_REACH_S` (9 s) of sprinting by path; at least two.
+  The rest close in behind (`Role::Collapser`).
+- **Angles and timing**: members further than `RUSH_STAGE_FROM_M` (18 m) first sprint to distinct
+  encirclement sectors around the spot (spread from the members already close). Staging ends when
+  everyone is set, on contact, or at the slowest stager's ETA + 1.5 s. At "go" the remaining paths
+  are measured and the near ones wait so everyone arrives together. With a flash in the budget,
+  the member with the longest wait throws it first and the runs land just after it pops. A heard
+  reload is a fast rush: no staging, `diverse_vias` routes, waits capped at 1 s.
+- **Commitment**: `Role::Rusher` + `Goal::Push` orders are sticky. The mind keeps pushing under
+  fire and when hurt (no Retreat, no posts), sprints through doorways and never crouches.
+- **Triggers** (18 s cooldown after a rush): a heard mag-out when the reload counter is >= 0.6 or
+  the squad is rush-minded (otherwise the doctrine's one or two rushers); his health (as last
+  seen) <= 0.25 + 0.2 s; 3+ alive and his health <= 0.5 + 0.3 s; the bandit's fifth arm `Rush`
+  (prior 0.02 + 0.4 s x (1 - his hp)). s = 0.3 + 0.7 x the squad's mean **rush gene**
+  (`TraitGenome::rush`, seeded for old saves). An arm that has lost three times or more
+  (mean < -0.25) turns the health and numbers triggers off for this player.
+- **Retake rush**: bomb planted and the fuse below the slowest member's travel + `DEFUSE_S` +
+  `RETAKE_RUSH_S` (6 s): the defuser goes straight in and the rest sprint at him (or the bomb's
+  angle).
+- **Difficulty**: plays need coordination, so Recruit never rushes; Regular rushes without a
+  flash (no utility), Veteran/Elite with one.
+- **Readability**: callouts ("Rush on my call - get in position", "We've got the numbers - rush
+  him!", "He's reloading - go go go, rush him!"), `ai.tactic {to: rush, reason, members}`
+  (log, session log, trace `ai.rush`), F3 panel `PLAY rush  RUSH (reason, phase, n in)` with
+  rings and arrows, `ai.squad` / `ai.doctrine` `rush` object, debrief line ("They rushed you 3
+  times, mostly when they heard you reload; one of them won the round.").
+- **Trainer**: the sim runs the same coordinator, so rushes (and the gene / arm) are trained.
+- **Saves**: `bandit::ARMS` is append-only; a four-arm save loads and grows the fifth.
+- Tests: `crates/brain/tests/rush.rs`. In game: `scripts/rush-lowhp.json` (Veteran, Sirocco B:
+  numbers rush at 7.9 s, player dead ~1 s later), `scripts/rush-reload.json` (early reloads, then
+  `ai.play rush`: four members converge from both sides of B).

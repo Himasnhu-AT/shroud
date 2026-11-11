@@ -276,6 +276,12 @@ pub struct MatchTelemetry {
     /// Bombs planted per site (`Arena::sites` order: A, B).
     #[serde(default)]
     pub plant_sites: [f32; 2],
+    /// Squad rushes started this match per `squad::RushReason` (`RushReason::ALL` order), and
+    /// rounds the squad won while rushing.
+    #[serde(default, deserialize_with = "crate::pad::zeros")]
+    pub rushes: [f32; 6],
+    #[serde(default)]
+    pub rush_wins: f32,
     #[serde(default)]
     last_route: Option<usize>,
 }
@@ -309,6 +315,8 @@ impl Default for MatchTelemetry {
             style_time: [0.0; crate::doctrine::DOCTRINE_GENES],
             style_play_s: 0.0,
             plant_sites: [0.0; 2],
+            rushes: [0.0; 6],
+            rush_wins: 0.0,
             last_route: None,
         }
     }

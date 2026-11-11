@@ -84,6 +84,11 @@ pub struct TraitGenome {
     /// `fill_loadout` seeds them.
     #[serde(default = "unset_doctrine", deserialize_with = "crate::pad::unset")]
     pub doctrine: [f32; DOCTRINE_GENES],
+    /// Rush propensity in [0, 1] (`squad::rush`): how readily the squad commits to a
+    /// coordinated rush (thresholds, the bandit's prior). Technique, not mechanics. Older saves
+    /// have none: -1 until `fill_loadout` seeds it.
+    #[serde(default = "unset_gene")]
+    pub rush: f32,
     pub fitness: f32,
     /// How many evaluations contributed to `fitness` (for averaging).
     pub evals: u32,
@@ -112,6 +117,8 @@ pub struct Traits {
     pub loadout: [f32; PREF_COUNT],
     /// Doctrine genes in [0, 1] (`doctrine::strength`), `doctrine::Archetype` order.
     pub doctrine: [f32; DOCTRINE_GENES],
+    /// Rush propensity in [0, 1] (`squad::rush`).
+    pub rush: f32,
 }
 
 impl Traits {
@@ -135,6 +142,17 @@ pub const UNSET_DOCTRINE: [f32; DOCTRINE_GENES] = [-1.0; DOCTRINE_GENES];
 
 fn unset_doctrine() -> [f32; DOCTRINE_GENES] {
     UNSET_DOCTRINE
+}
+
+fn unset_gene() -> f32 {
+    -1.0
+}
+
+/// The rush gene derived from the trait genes (its own stream, so adding it changed no other
+/// gene a seed produces). Old saves get theirs from this too.
+pub fn seeded_rush(genes: &[f32; GENE_COUNT]) -> f32 {
+    let seed = genes.iter().fold(0x0072_0058_u64, |h, g| h.rotate_left(5) ^ f32::to_bits(*g) as u64);
+    crate::math::rng_from_seed(seed).random()
 }
 
 /// Doctrine genes derived from the trait genes (their own stream, so adding them changed no
@@ -181,13 +199,20 @@ impl TraitGenome {
         }
         let loadout = seeded_loadout(&genes);
         let doctrine = seeded_doctrine(&genes);
-        TraitGenome { genes, pef, loadout, doctrine, fitness: 0.0, evals: 0 }
+        let rush = seeded_rush(&genes);
+        TraitGenome { genes, pef, loadout, doctrine, rush, fitness: 0.0, evals: 0 }
     }
 
     /// Old saves: give genomes without weapon (or doctrine) genes their seeded ones.
     pub fn fill_loadout(&mut self) {
         self.loadout = self.filled_loadout();
         self.doctrine = self.filled_doctrine();
+        self.rush = self.filled_rush();
+    }
+
+    /// The rush gene, seeded if unset (old saves).
+    fn filled_rush(&self) -> f32 {
+        if self.rush < 0.0 { seeded_rush(&self.genes) } else { self.rush.min(1.0) }
     }
 
     /// The doctrine genes with any unset entries seeded (set genes are kept).
@@ -239,6 +264,7 @@ impl TraitGenome {
             prediction_trust: g(Gene::PredictionTrust),
             pef: self.pef.map(|w| 2.0 * w),
             doctrine: self.filled_doctrine(),
+            rush: self.filled_rush(),
         }
     }
 
@@ -260,12 +286,13 @@ impl TraitGenome {
         let loadout = if rng.random::<bool>() { la.loadout } else { lb.loadout };
         // Doctrine genes cross one by one (each counter is its own technique).
         let doctrine = std::array::from_fn(|i| if rng.random::<bool>() { la.doctrine[i] } else { lb.doctrine[i] });
-        TraitGenome { genes, pef, loadout, doctrine, fitness: 0.0, evals: 0 }
+        let rush = if rng.random::<bool>() { la.rush } else { lb.rush };
+        TraitGenome { genes, pef, loadout, doctrine, rush, fitness: 0.0, evals: 0 }
     }
 
     pub fn mutate(&mut self, rate: f32, sigma: f32, rng: &mut BrainRng) {
         self.fill_loadout();
-        for g in self.genes.iter_mut().chain(self.pef.iter_mut()).chain(self.loadout.iter_mut()).chain(self.doctrine.iter_mut()) {
+        for g in self.genes.iter_mut().chain(self.pef.iter_mut()).chain(self.loadout.iter_mut()).chain(self.doctrine.iter_mut()).chain(std::iter::once(&mut self.rush)) {
             if rng.random::<f32>() < rate {
                 *g = (*g + gauss(rng) * sigma).clamp(0.0, 1.0);
             }

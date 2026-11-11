@@ -694,6 +694,12 @@ impl EnemyMind {
                     self.post = None;
                 }
             }
+            // A rush is a commitment: under fire or hurt it keeps pushing (no fall-back, no
+            // post); the trade comes from the others arriving at the same time.
+            if self.order.is_some_and(|od| od.role == squad::Role::Rusher && od.goal == Goal::Push) {
+                new_goal = Goal::Push;
+                self.post = None;
+            }
             let post_dest = self.post.and(post_dest);
             // Commit: hold a fresh goal briefly (being hit or ordered overrides).
             let ordered = self.order.is_some_and(|od| od.goal == new_goal);
@@ -1065,7 +1071,9 @@ impl EnemyMind {
         // (Never through a doorway at a run: the pie gets sliced at a walk. Unless he was just
         // seen well away from this door and the order is a race to cut him off.)
         let door_far_from_him = self.door.is_some_and(|(d, _)| d.pos.dist(o.player_pos) > 12.0) && o.time_since_seen < 2.0;
-        let sprint = (!near_door || sticky && far && door_far_from_him)
+        // A rusher runs through doorways too: speed is the point.
+        let rushing = self.following().is_some_and(|od| od.role == squad::Role::Rusher && od.goal == Goal::Push);
+        let sprint = (!near_door || rushing || sticky && far && door_far_from_him)
             && (dash
                 || posting == Some(PostPhase::Move) && far
                 || (matches!(self.goal, Goal::Flank | Goal::Retreat | Goal::Push) || self.goal == Goal::Hold && far || combat && self.goal == Goal::Hunt)

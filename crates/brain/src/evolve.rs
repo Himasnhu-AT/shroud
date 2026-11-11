@@ -710,8 +710,15 @@ impl BrainState {
             insights: {
                 let mut v = self.player_model.insights_with_history(arena, Some(&report.telemetry), prev.as_ref(), &posts, self.squad_reaction_ms());
                 // The adaptive doctrine's line first ("They noticed you hold angles; ...").
-                if let Some(l) = crate::doctrine::debrief_line(&report.telemetry) {
+                let doctrine_line = crate::doctrine::debrief_line(&report.telemetry);
+                let lead = doctrine_line.is_some() as usize;
+                if let Some(l) = doctrine_line {
                     v.insert(0, l);
+                    v.truncate(4);
+                }
+                // Then the rushes ("They rushed you 3 times, mostly when they heard you reload").
+                if let Some(l) = crate::squad::rush_debrief_line(&report.telemetry) {
+                    v.insert(lead.min(v.len()), l);
                     v.truncate(4);
                 }
                 v

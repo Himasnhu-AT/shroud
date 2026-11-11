@@ -37,7 +37,11 @@ use std::cell::RefCell;
 use std::f32::consts::{PI, TAU};
 
 mod bomb;
+mod rush;
 pub use bomb::{Duty, SiteState, save_spot, site_dist as bomb_site_dist};
+pub use rush::{
+    debrief_line as rush_debrief_line, RUSH_ARRIVED_M, RUSH_COOLDOWN_S, RUSH_FAST_LAG_S, RUSH_PACE, RUSH_PUSH_S, RUSH_REACH_S, RUSH_STAGE_FROM_M, Rush, RushEvent, RushPhase, RushReason, RushStats,
+};
 
 // ---------------------------------------------------------------------------------------------
 // Position evaluation functions.
@@ -375,6 +379,9 @@ pub enum Play {
     Setup,
     /// Bomb defusal, bomb planted: converge on the site, one defuses, the rest cover (or save).
     Retake,
+    /// Everyone who can make it commits to his last known spot at once, from several sides,
+    /// timed to arrive together (`rush`).
+    Rush,
 }
 
 impl Play {
@@ -392,6 +399,7 @@ impl Play {
             Play::Encircle => "encircle",
             Play::Setup => "site setup",
             Play::Retake => "retake",
+            Play::Rush => "rush",
         }
     }
 }
@@ -418,7 +426,8 @@ pub enum Role {
     Anchor,
     /// Throwing utility (winding up a frag or flashbang).
     Breacher,
-    /// Doctrine vs a reloader: rushing him on the mag-out sound.
+    /// Rushing him: the doctrine's mag-out rush, or a squad rush (`Play::Rush`). Committed:
+    /// sprints, keeps pushing under fire.
     Rusher,
     /// Doctrine vs an angle holder: jiggle-peeking his angle to bait shots.
     Jiggler,
@@ -832,6 +841,12 @@ pub struct SquadCoordinator {
     pub objective: bool,
     /// Objective state (pre-plant setup, rotations, retake, save): `bomb.rs`.
     pub site: bomb::SiteState,
+    /// The squad rush in progress (`rush.rs`), when the next may start, events for the log and
+    /// this round's counts.
+    pub rush: Option<Rush>,
+    rush_next: f32,
+    rush_events: Vec<RushEvent>,
+    pub rush_stats: RushStats,
 }
 
 /// Stack and breach: the entry and its trader stack beside the door frame, utility goes in,
@@ -977,6 +992,10 @@ impl SquadCoordinator {
             defuser: None,
             objective: false,
             site: bomb::SiteState::default(),
+            rush: None,
+            rush_next: 0.0,
+            rush_events: Vec::new(),
+            rush_stats: RushStats::default(),
         }
     }
 
@@ -1105,6 +1124,9 @@ impl SquadCoordinator {
     pub fn end_round(&mut self, squad_won: bool) {
         if let Some(e) = self.episode.as_mut() {
             e.killed |= squad_won;
+        }
+        if squad_won && (self.rush.is_some() || self.site.rushing) {
+            self.rush_stats.won_in_rush += 1;
         }
         self.close_episode(None);
     }
@@ -1425,6 +1447,18 @@ impl SquadCoordinator {
         if !self.enabled || alive == 0 {
             return Play::Free;
         }
+        // A rush runs to its end; a trigger (heard reload, he's low, numbers) starts one.
+        if self.force_play.is_none() {
+            if self.rush.is_some() {
+                return Play::Rush;
+            }
+            if let Some((why, at)) = self.rush_trigger(members)
+                && self.start_rush(why, at, members, arena)
+            {
+                self.mag_out = None;
+                return Play::Rush;
+            }
+        }
         let known = self.board.age < KNOWN_S;
         // Before the plant, with him unknown: hold the sites instead of hunting him.
         if self.objective && !known && arena.sites.len() >= 2 && self.force_play.is_none() {
@@ -1444,7 +1478,7 @@ impl SquadCoordinator {
         }
         // A fresh contact is encircled first: the spotter shoots, the rest cut off his exits.
         // Once they are in position (or it took too long) the bandit picks the play.
-        let fresh = !matches!(self.play, Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait | Play::Encircle);
+        let fresh = !matches!(self.play, Play::Crossfire | Play::Trade | Play::PinFlank | Play::Bait | Play::Encircle | Play::Rush);
         // He broke out of the ring (moved well away from where it was set): encircle again.
         let relocated = self.play != Play::Encircle && self.play_t > MIN_PLAY_S && self.board.pos.dist(self.encircle_at) > RELOCATED_M;
         let fresh = fresh || relocated;
@@ -1458,14 +1492,33 @@ impl SquadCoordinator {
         let avg = |f: fn(&Traits) -> f32| members.iter().filter(|m| m.alive).map(|m| f(&m.traits)).sum::<f32>() / k;
         let (aggr, flank, coh, pred) = (avg(|t| t.aggression), avg(|t| t.flank_bias), avg(|t| t.team_cohesion), avg(|t| t.prediction_trust));
         // The hand weights are the bandit's prior (they fade as an arm gathers rewards).
-        let mut prior = [Some(0.35 + 0.4 * coh), Some(0.2 + 0.6 * flank), Some(0.15 + 0.5 * aggr), (alive >= 3).then(|| 0.05 + 0.5 * pred * model.confidence())];
+        // Rush: low unless he's hurt; the gene and what the arm learns move it.
+        let rush_ok = alive >= 3 && self.time >= self.rush_next && self.board.age < 1.5;
+        let rush_s = Self::rush_strength(members);
+        let mut prior = [
+            Some(0.35 + 0.4 * coh),
+            Some(0.2 + 0.6 * flank),
+            Some(0.15 + 0.5 * aggr),
+            (alive >= 3).then(|| 0.05 + 0.5 * pred * model.confidence()),
+            rush_ok.then(|| 0.02 + 0.4 * rush_s * (1.0 - self.player_hp)),
+        ];
         if let Some(k) = bandit::arm_of(self.play) {
             prior[k] = prior[k].map(|p| p + 0.15);
         }
         let x = self.context(members, arena, model);
         self.last_scores = self.tactics.scores(&x, &prior);
         self.last_ctx = x;
-        self.tactics.choose(&x, &prior).unwrap_or(Play::Crossfire)
+        match self.tactics.choose(&x, &prior).unwrap_or(Play::Crossfire) {
+            Play::Rush => {
+                let at = self.board.pos;
+                if self.start_rush(RushReason::Learned, at, members, arena) {
+                    Play::Rush
+                } else {
+                    Play::Crossfire
+                }
+            }
+            p => p,
+        }
     }
 
     fn plan(&mut self, members: &[MemberView], arena: &Arena, model: &PlayerModel, full: bool) {
@@ -1515,9 +1568,19 @@ impl SquadCoordinator {
             }
             return;
         }
-        self.plan_anchor(members, arena);
-        self.plan_utility(members, arena);
-        self.plan_doctrine(members, arena);
+        if self.play == Play::Rush {
+            // The rush owns the orders: only its own flash winds up on top.
+            self.anchor = None;
+            self.mag_out = None;
+            self.mag_listeners.clear();
+            if self.pending_throw.is_some() {
+                self.plan_utility(members, arena);
+            }
+        } else {
+            self.plan_anchor(members, arena);
+            self.plan_utility(members, arena);
+            self.plan_doctrine(members, arena);
+        }
         if self.episode.is_none() && self.force_play.is_none() && bandit::arm_of(self.play).is_some() {
             self.episode = Some(Episode {
                 arm: self.play,
@@ -1873,6 +1936,9 @@ impl SquadCoordinator {
             self.breach = None;
             self.breach_throw = None;
             self.breach_for = None;
+            if play != Play::Rush {
+                self.end_rush();
+            }
         }
 
         let dead = |s: Option<usize>| s.is_none_or(|i| !members.get(i).is_some_and(|m| m.alive));
@@ -1901,6 +1967,7 @@ impl SquadCoordinator {
             Play::Encircle => return self.plan_encircle(members, arena, full, changed),
             Play::Setup => return self.plan_setup(members, arena, changed),
             Play::Retake => return self.plan_retake(members, arena, changed),
+            Play::Rush => return self.plan_rush(members, arena),
             _ => {}
         }
         let target = match play {
@@ -1915,7 +1982,7 @@ impl SquadCoordinator {
         let hold = |dest: Option<V2>, role: Role| Order { role, goal: Goal::Hold, dest, watch: Some(target), threat: Some(target), sticky: false, via: None, prefire: None };
 
         match play {
-            Play::Free | Play::Search | Play::Encircle | Play::Setup | Play::Retake => {}
+            Play::Free | Play::Search | Play::Encircle | Play::Setup | Play::Retake | Play::Rush => {}
             Play::Crossfire => {
                 if full || changed {
                     self.assign_positions(&by_dist, members, arena, model, target, None);

@@ -390,6 +390,19 @@ fn collect_inbox(
 /// the tactic indices, and the info log a line.
 fn log_doctrine(mut squad: ResMut<Squad>, dev: crate::dev::Dev) {
     let Some(coord) = squad.coord.as_mut() else { return };
+    // Squad rushes log like the doctrine's switches (`ai.tactic`, to: rush).
+    for r in coord.drain_rush_events() {
+        info!("ai.tactic {{ to: rush, reason: {}, members: {:?}, at: ({:.1}, {:.1}) }} at {:.1} s", r.reason.label(), r.members, r.target.x, r.target.y, r.t);
+        dev.log("ai.tactic", || serde_json::json!({ "to": "rush", "reason": r.reason.label(), "members": r.members, "target": [r.target.x, r.target.y], "t": r.t }));
+        dev.trace(
+            "ai.rush",
+            &[
+                ("reason", crate::dev::Prop::Int(r.reason.index() as i64)),
+                ("members", crate::dev::Prop::Int(r.members.len() as i64)),
+                ("t", crate::dev::Prop::Float(r.t as f64)),
+            ],
+        );
+    }
     for c in coord.drain_tactic_changes() {
         info!("ai.tactic {{ from: {}, to: {}, reason: {} }} at {:.1} s ({:?})", c.from.name(), c.to.name(), c.reason, c.t, c.active.labels());
         dev.log("ai.tactic", || {
@@ -903,6 +916,11 @@ fn finish_round(
             *t += s;
         }
         telemetry.0.style_play_s += c.doctrine.play_time;
+        // Rushes this round (the debrief's "They rushed you ..." line).
+        for (t, n) in telemetry.0.rushes.iter_mut().zip(c.rush_stats.started) {
+            *t += n as f32;
+        }
+        telemetry.0.rush_wins += c.rush_stats.won_in_rush as f32;
     }
 }
 
