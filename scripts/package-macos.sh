@@ -3,6 +3,7 @@
 #
 #   scripts/package-macos.sh            # build, sign, notarize, staple
 #   NOTARIZE=0 scripts/package-macos.sh # skip notarization (local test)
+#   FULL_TEXTURES=1 scripts/package-macos.sh # ship the 4K textures (default cuts them to 2K)
 #
 # Env: SIGN_ID (Developer ID Application identity), NOTARY_PROFILE (notarytool keychain profile),
 #      BUNDLE_ID, VERSION. Output: dist/PatternOfLife-<version>.dmg, and
@@ -42,16 +43,9 @@ step "Assemble Pattern of Life.app"
 rm -rf "$APP" "$DMG"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create -output "$APP/Contents/MacOS/shroud" \
   "$TARGET_DIR/aarch64-apple-darwin/release/shroud" "$TARGET_DIR/x86_64-apple-darwin/release/shroud"
-# models/metahuman is Epic content generated locally (MetaHuman license): never shipped; the
-# game falls back to the CC0 mannequin enemy and hands.
-# Source JPGs are dead weight once a set is cooked: the engine loads color/normal/orm.ktx2
-# when color.ktx2 exists. Sets that aren't cooked yet keep their JPGs.
-COOKED_JPGS="$(mktemp)"
-for set in assets/textures/*/; do
-  [ -f "${set}color.ktx2" ] && find "$set" -maxdepth 1 -name '*.jpg' | sed 's|^assets/||' >>"$COOKED_JPGS"
-done
-rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' --exclude-from="$COOKED_JPGS" assets/ "$APP/Contents/Resources/assets/"
-rm -f "$COOKED_JPGS"
+# Shipped assets: no MetaHuman, no source JPGs of cooked sets, KTX2s over 2048 px cut to 2K
+# (FULL_TEXTURES=1 keeps 4K). See scripts/stage-assets.sh.
+scripts/stage-assets.sh "$APP/Contents/Resources/assets"
 cp assets/CREDITS.md "$APP/Contents/Resources/CREDITS.md"
 sed -e "s/__BUNDLE_ID__/$BUNDLE_ID/" -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" packaging/Info.plist > "$APP/Contents/Info.plist"
 [ -f packaging/AppIcon.icns ] && cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
