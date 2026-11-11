@@ -110,6 +110,25 @@ fn angle_holder_needs_four_seconds_still_on_one_angle() {
     assert!(!p.detect(on).has(Archetype::AngleHolder));
 }
 
+/// No wallhack: time nobody sees him ages the windows but builds no angle hold; seen time on
+/// the same angle before and after the gap still adds up.
+#[test]
+fn unseen_time_builds_no_angle_hold() {
+    let mut p = PlayerStyleProfile::default();
+    let at = V2::new(3.0, 4.0);
+    still(&mut p, at, 1.0, 2.0);
+    let mut t = 0.0;
+    while t < 10.0 {
+        t += DT;
+        p.unseen(DT);
+    }
+    assert!(p.clock > 11.9, "clock {:.1}", p.clock);
+    assert!(p.stationary_angle_hold_secs < 2.1, "unseen time counted: {:.1} s", p.stationary_angle_hold_secs);
+    assert!(!p.detect(Archetypes::NONE).has(Archetype::AngleHolder), "12 s camping, only 2 s of it seen");
+    still(&mut p, at, 1.0, 2.2);
+    assert!(p.detect(Archetypes::NONE).has(Archetype::AngleHolder), "4.2 s seen on one angle: {:.1} s", p.stationary_angle_hold_secs);
+}
+
 #[test]
 fn entry_fragger_runs_through_doors() {
     let a = Arena::build(MapId::Office);

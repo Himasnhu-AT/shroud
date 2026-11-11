@@ -716,7 +716,8 @@ pub struct SquadCoordinator {
     pub tactics: TacticsLearner,
     /// Update the bandit from rewards (off: choose only).
     pub learn: bool,
-    /// The player's health 0..1 (set by the caller each tick; part of the context).
+    /// The player's health 0..1 when a member last saw him (set by the caller; part of the
+    /// context).
     pub player_hp: f32,
     /// Last bandit scores (debug / control port) and the context they used.
     pub last_scores: Vec<ArmScore>,
@@ -1005,6 +1006,11 @@ impl SquadCoordinator {
     /// the ghost). Call before `tick`.
     pub fn observe_player(&mut self, arena: &Arena, t: StyleTick) {
         self.style.tick(Some(arena), t);
+    }
+
+    /// A tick in which no member saw him: the profile ages without learning his movement.
+    pub fn player_unseen(&mut self, dt: f32) {
+        self.style.unseen(dt);
     }
 
     /// He fired (once per trigger pull); `ads`: aiming down sights.

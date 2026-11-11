@@ -140,6 +140,18 @@ impl PlayerStyleProfile {
         self.refresh();
     }
 
+    /// Advance `dt` with nobody seeing him: windows age, but movement and angle holds learn
+    /// nothing (no wallhack). A hold seen again at the same spot and angle keeps its seen time;
+    /// a doorway isn't counted as crossed across the gap.
+    pub fn unseen(&mut self, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        self.clock += dt;
+        self.last_pos = None;
+        self.refresh();
+    }
+
     /// He fired a shot (once per trigger pull).
     pub fn shot(&mut self, ads: bool) {
         self.shots.push_back((self.clock, ads));

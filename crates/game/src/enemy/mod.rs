@@ -199,6 +199,9 @@ pub struct Squad {
     pub difficulty: Difficulty,
     pub params: Option<DifficultyParams>,
     pub limits: Option<Limits>,
+    /// The player's look angle when a member last saw him (the squad's shared memory; his
+    /// health is `SquadCoordinator::player_hp`). No wallhack: unseen, minds get these.
+    pub seen_facing: f32,
 }
 
 struct Visuals {
@@ -228,6 +231,7 @@ pub fn spawn_squad(
     }
     squad.dead_reports.clear();
     squad.coord = None;
+    squad.seen_facing = 0.0;
     let model_path = enemy_model(&assets_dir);
     let model_scale = enemy_model_scale(model_path);
     let model = match (&asset_server, headless.0) {
@@ -454,7 +458,7 @@ fn think_and_act(
     let Ok((player, ptf, motor, php, rifle)) = players.single() else { return };
     let AiScratch { sounds, heard_events, reveals, snapshot, allies_buf, rng } = &mut *scratch;
     let rng = rng.get_or_insert_with(|| brain::math::rng_from_seed(0x5407));
-    let player_reloading = rifle.is_some_and(|r| r.reloading.is_some());
+    let rifle_reloading = rifle.is_some_and(|r| r.reloading.is_some());
     let p_center = ptf.translation;
     let p_ground = to_ground(p_center);
     // Aim inside the capsule (its very top grazes): ~1.45 m standing, ~0.95 m crouched.
@@ -480,7 +484,7 @@ fn think_and_act(
     if steps > 0.0 {
         sounds.push((Sound::Footstep, p_ground, steps));
     }
-    if player_reloading {
+    if rifle_reloading {
         sounds.push((Sound::Reload, p_ground, RELOAD_RANGE));
     }
     heard_events.clear();
@@ -530,8 +534,8 @@ fn think_and_act(
         }
     }
     let limits = squad.limits.unwrap_or_else(|| brain.state.limits());
+    let seen_facing = squad.seen_facing;
     let Some(coord) = squad.coord.as_mut() else { return };
-    coord.player_hp = php.hp / php.max;
     let views: Vec<MemberView> = views.into_iter().map(|v| v.unwrap_or_else(MemberView::gone)).collect();
     for &slot in reveals.iter() {
         coord.reveal(slot, p_ground, &arena.0);
@@ -540,15 +544,23 @@ fn think_and_act(
         coord.hear(*slot, h, &arena.0);
     }
     // Adaptive doctrine: profile how he plays (movement, holds, shots, reloads); a mag-out
-    // heard nearby can start a rush.
-    coord.observe_player(&arena.0, StyleTick { dt, pos: p_ground, vel: p_vel, yaw: p_facing });
+    // heard nearby can start a rush. Only from what the squad sensed: his movement and holds
+    // while a member saw him (last frame), a reload when one saw or heard it.
+    let squad_sees = views.iter().any(|v| v.alive && v.last_seen <= 0.0);
+    if squad_sees {
+        coord.observe_player(&arena.0, StyleTick { dt, pos: p_ground, vel: p_vel, yaw: p_facing });
+    } else {
+        coord.player_unseen(dt);
+    }
     for _ in player_shots {
         coord.player_shot(inbox.ads);
     }
     for &(_, head) in hits {
         coord.player_hit(head);
     }
-    if let Some(frac) = inbox.reload_started {
+    if let Some(frac) = inbox.reload_started
+        && views.iter().any(|v| v.alive && (v.last_seen <= 0.0 || perception::hear(&arena.0, p_ground, v.pos, RELOAD_RANGE).is_some()))
+    {
         coord.player_reload(frac);
     }
     if inbox.mag_out {
@@ -580,6 +592,9 @@ fn think_and_act(
     }
     let board = coord.board;
     let tokens = coord.tokens.clone();
+    // What the squad knows of his facing and health: live while seen, else the last sighting
+    // (a member's sighting this frame reaches the rest at once, like `last_known` on the board).
+    let mut known = (seen_facing, coord.player_hp);
     let cx = MindCtx { arena: &arena.0, model: &brain.state.player_model, limits };
     let mut player_hp_left = php.hp;
     let mut dealt = 0.0;
@@ -630,6 +645,7 @@ fn think_and_act(
         if sees {
             c.last_seen = 0.0;
             c.last_known = p_ground;
+            known = (p_facing, php.hp / php.max);
         } else {
             c.last_seen += dt;
         }
@@ -649,8 +665,8 @@ fn think_and_act(
             player_visible: sees,
             player_pos: shared.0,
             player_vel: if sees { p_vel } else { V2::ZERO },
-            player_hp: php.hp / php.max,
-            player_facing: p_facing,
+            player_hp: known.1,
+            player_facing: known.0,
             time_since_seen: shared.1,
             heard_shot: c.heard,
             allies: {
@@ -661,7 +677,8 @@ fn think_and_act(
                 v
             },
             taking_fire: c.hit_t < 0.6,
-            player_reloading,
+            // Seen, or the reload heard (`RELOAD_RANGE`, walls muffle it).
+            player_reloading: rifle_reloading && (sees || perception::hear(&arena.0, p_ground, pos, RELOAD_RANGE).is_some()),
             player_hurt,
             squad_alert: board.alert,
             token_denied: slots.get(e).is_ok_and(|en| !tokens.get(en.slot).copied().unwrap_or(true)),
@@ -834,10 +851,12 @@ fn think_and_act(
             }
         }
     }
-    if dealt > 0.0
-        && let Some(coord) = squad.coord.as_mut()
-    {
-        coord.player_damaged(dealt);
+    squad.seen_facing = known.0;
+    if let Some(coord) = squad.coord.as_mut() {
+        coord.player_hp = known.1;
+        if dealt > 0.0 {
+            coord.player_damaged(dealt);
+        }
     }
 }
 
@@ -864,14 +883,17 @@ struct AiOut<'w> {
 }
 
 /// Round over: reward the open engagement window and keep the bandit for the next round/match.
+/// An abandoned round (pause menu restart / main menu: no result) teaches nothing.
 fn finish_round(
     mut squad: ResMut<Squad>,
     mut brain: ResMut<Brain>,
     flow: Res<crate::match_flow::MatchFlow>,
     mut telemetry: ResMut<crate::telemetry::Telemetry>,
 ) {
+    if !flow.round_decided() {
+        return;
+    }
     // The round's result, not "the player is dead": after a plant he can die and still win.
-    // An abandoned round (no result) counts as no win.
     let squad_won = squad_won_round(flow.end);
     if let Some(c) = squad.coord.as_mut() {
         c.end_round(squad_won);
