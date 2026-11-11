@@ -1,0 +1,741 @@
+[
+ {
+  "sleep": 14
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Sirocco"
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 1300
+  }
+ },
+ {
+  "sleep": 1.4
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": -3,
+   "z": 36,
+   "face": [
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": 3,
+   "z": 36,
+   "face": [
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 2,
+   "x": -6,
+   "z": 35,
+   "face": [
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 3,
+   "x": 6,
+   "z": 35,
+   "face": [
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 30.0,
+   "z": -2.0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    46,
+    1.5,
+    -2
+   ]
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    24.5,
+    1.5,
+    -20.0
+   ]
+  }
+ },
+ {
+  "sleep": 4.4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": 26.33,
+   "z": -8.2,
+   "face": [
+    30.0,
+    -2.0
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": 28.76,
+   "z": -10.51,
+   "face": [
+    30.0,
+    -2.0
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 2,
+   "x": 23.83,
+   "z": -10.57,
+   "face": [
+    30.0,
+    -2.0
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 3,
+   "x": 26.59,
+   "z": -13.51,
+   "face": [
+    30.0,
+    -2.0
+   ]
+  }
+ },
+ {
+  "sleep": 0.1
+ },
+ {
+  "shot": "02_callout_a"
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "02_callout_b"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "shot": "02_callout_c"
+ },
+ {
+  "cmd": "ai.doctrine"
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 20
+  }
+ },
+ {
+  "sleep": 1.0
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "econ.set_money",
+  "params": {
+   "money": 4750
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 33
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    2,
+    2.2,
+    10
+   ]
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "buy.menu",
+  "params": {
+   "open": true
+  }
+ },
+ {
+  "sleep": 1.0
+ },
+ {
+  "shot": "03_buy_menu"
+ },
+ {
+  "cmd": "buy.menu",
+  "params": {
+   "open": false
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": -19.54,
+   "z": -16.08,
+   "face": [
+    -16.8,
+    -14.2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": -19.08,
+   "z": -18.81,
+   "face": [
+    -16.8,
+    -14.2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 2,
+   "x": -22.05,
+   "z": -15.81,
+   "face": [
+    -16.8,
+    -14.2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 3,
+   "x": -22.8,
+   "z": -19.35,
+   "face": [
+    -16.8,
+    -14.2
+   ]
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -16.8,
+   "z": -14.2
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -20.49,
+    1.45,
+    -18.93
+   ]
+  }
+ },
+ {
+  "sleep": 2.0
+ },
+ {
+  "shot": "01_squad_aim"
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "01_squad_f1"
+ },
+ {
+  "sleep": 0.08
+ },
+ {
+  "shot": "01_squad_f2"
+ },
+ {
+  "cmd": "hud.visible",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": 26,
+   "z": -10.5,
+   "face": [
+    30,
+    -2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": 28.5,
+   "z": -12.5,
+   "face": [
+    30,
+    -2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 2,
+   "x": 23.5,
+   "z": -12.5,
+   "face": [
+    30,
+    -2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 3,
+   "x": 26.5,
+   "z": -14.5,
+   "face": [
+    30,
+    -2
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.list"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 24
+  }
+ },
+ {
+  "cmd": "camera.path",
+  "params": {
+   "from": {
+    "pos": [
+     31,
+     3.4,
+     -1
+    ],
+    "look": [
+     22,
+     1.0,
+     -24
+    ]
+   },
+   "seconds": 0.1,
+   "fov": 52
+  }
+ },
+ {
+  "sleep": 2.0
+ },
+ {
+  "shot": "05_vista_a"
+ },
+ {
+  "cmd": "camera.path",
+  "params": {
+   "from": {
+    "pos": [
+     30,
+     2.0,
+     -2
+    ],
+    "look": [
+     23,
+     1.6,
+     -24
+    ]
+   },
+   "seconds": 0.1,
+   "fov": 55
+  }
+ },
+ {
+  "sleep": 2.0
+ },
+ {
+  "shot": "05_vista_b"
+ },
+ {
+  "cmd": "camera.release"
+ },
+ {
+  "cmd": "hud.visible",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "sleep": 2.0
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 24
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": -0.9,
+   "z": 20.5,
+   "face": [
+    0,
+    24
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": 1.4,
+   "z": 18.6,
+   "face": [
+    0,
+    24
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 2,
+   "x": -3.1,
+   "z": 19.2,
+   "face": [
+    0,
+    24
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 3,
+   "x": -1.4,
+   "z": 16.0,
+   "face": [
+    0,
+    24
+   ]
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0.35,
+    1.3,
+    10
+   ]
+  }
+ },
+ {
+  "sleep": 2.0
+ },
+ {
+  "shot": "06_bodycam_idle"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "fire": true,
+   "ms": 500
+  }
+ },
+ {
+  "sleep": 0.12
+ },
+ {
+  "shot": "06_bodycam_f1"
+ },
+ {
+  "shot": "06_bodycam_f2"
+ },
+ {
+  "sleep": 0.12
+ },
+ {
+  "shot": "06_bodycam_f3"
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "classic"
+  }
+ }
+]
