@@ -562,7 +562,8 @@ pub(crate) fn banner_root(c: &mut Commands, life: Option<f32>, top_pct: f32) -> 
 }
 
 fn round_start_banner(mut commands: Commands, flow: Res<MatchFlow>, settings: Res<ShroudSettings>) {
-    let root = banner_root(&mut commands, Some(2.6), 22.0);
+    // Long enough to read the objective lines (freeze time is longer).
+    let root = banner_root(&mut commands, Some(3.6), 22.0);
     commands.entity(root).insert(RoundStartBanner);
     let mp = flow.round > 1 && (flow.player_rounds + 1 >= ROUNDS_TO_WIN || flow.enemy_rounds + 1 >= ROUNDS_TO_WIN);
     let sub = if mp {
@@ -574,6 +575,9 @@ fn round_start_banner(mut commands: Commands, flow: Res<MatchFlow>, settings: Re
         b.spawn(text(sub, label(SIZE_LABEL + 2.0), if mp { ACCENT } else { TEXT_MUTED }));
         b.spawn((text(format!("ROUND {}", flow.round.max(1)), display(88.0), TEXT), TextShadow::default()));
         b.spawn((Node { width: px(120), height: px(3), ..default() }, BackgroundColor(ACCENT), Pickable::IGNORE));
+        // The objective, every round: strangers don't read the README.
+        b.spawn((text("You attack: plant the bomb at A or B (hold E)", body_bold(SIZE_BODY + 2.0), TEXT), TextShadow::default()));
+        b.spawn((text("B to buy during freeze time  \u{b7}  Tab for the scoreboard", body(SIZE_BODY), TEXT_MUTED), TextShadow::default()));
     });
 }
 
