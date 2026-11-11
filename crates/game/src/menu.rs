@@ -18,6 +18,12 @@ use crate::ui::hud::spawn_crosshair;
 
 pub struct MenuPlugin;
 
+/// The perf overlay (F2) is an engine devtool: ship builds (no `dev`) only have F3.
+#[cfg(feature = "dev")]
+const DEBUG_KEYS: (&str, &str) = ("Perf / enemy debug view", "F2 / F3");
+#[cfg(not(feature = "dev"))]
+const DEBUG_KEYS: (&str, &str) = ("Enemy debug view", "F3");
+
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(wrap_map_cards);
@@ -27,12 +33,13 @@ impl Plugin for MenuPlugin {
                 ("Aim down sights", "Right mouse (hold)"),
                 ("Reload", "R"),
                 ("Primary / sidearm", "1 / 2, mouse wheel"),
-                ("Buy menu", "B (freeze time / buy zone)"),
-                ("Last weapon", "Q"),
-                ("Inspect", "V"),
-                ("Pick up gun", "E (hold)"),
-                ("Perf overlay", "F2"),
-                ("Enemy debug view", "F3"),
+                ("Last weapon / inspect", "Q / V"),
+                ("Plant bomb (A / B) / pick up", "E (hold)"),
+                ("Grenade: equip / next", "4 or G"),
+                ("Throw: over / under", "Left / right mouse"),
+                ("Buy menu", "B (freeze time)"),
+                ("Scoreboard", "Tab (hold)"),
+                DEBUG_KEYS,
             ] {
                 b.set(action, keys);
             }

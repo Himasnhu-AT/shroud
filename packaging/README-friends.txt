@@ -3,12 +3,15 @@ PATTERN OF LIFE - review build
 Install: drag Pattern of Life into Applications, then open it.
 
 Controls
-  WASD move, Shift sprint, Space jump, Ctrl or C crouch
-  Mouse look, Left click shoot, R reload, Esc release the mouse
-  F2 performance stats, F3 see what the enemies are planning
+  WASD move, Shift sprint, Space jump, Ctrl or C crouch, mouse look
+  Left mouse shoot, Right mouse aim, R reload, 1 / 2 switch guns
+  E (hold) plant the bomb in site A or B, or pick up a gun
+  4 or G grenades (Left mouse overhand, Right mouse underhand)
+  B buy menu, Tab scoreboard, Esc pause, F3 see what the enemies plan
 
 How it works
-  You fight a squad of 5 in best-of-3 rounds. After every match the squad
+  Bomb defusal, first to 3 rounds: plant at A or B before the clock runs
+  out. The squad has 3 to 6 players depending on difficulty (Recruit 3). After every match the squad
   evolves against a model of how YOU play: where you hold, which way you
   peek, the ranges you fight at. Each match should get harder.
   Their reaction time, aim and damage are fixed by the difficulty you

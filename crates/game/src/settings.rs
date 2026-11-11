@@ -72,7 +72,8 @@ impl CameraStyle {
 impl Default for ShroudSettings {
     fn default() -> Self {
         ShroudSettings {
-            difficulty: Difficulty::default(),
+            // New players start on the easiest level; a saved choice is kept.
+            difficulty: Difficulty::Recruit,
             map: MapId::default(),
             crosshair_color: [0.4, 1.0, 0.6],
             crosshair_size: 1.0,
