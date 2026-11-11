@@ -15,18 +15,25 @@ BUTLER="${BUTLER:-$(command -v butler || echo "$HOME/.local/bin/butler")}"
 DRY=""; [ "${1:-}" = --dry-run ] && DRY="--dry-run"
 
 [ -f dist/windows/PatternOfLife/PatternOfLife.exe ] || { echo "error: dist/windows/PatternOfLife missing (scripts/package-windows.sh)" >&2; exit 1; }
-[ -d "dist/Pattern of Life.app" ] || { echo "error: dist/Pattern of Life.app missing (scripts/package-macos.sh)" >&2; exit 1; }
+MAC_ZIP="dist/pattern-of-life-$VERSION-macos-universal.zip"
+[ -f "$MAC_ZIP" ] || { echo "error: $MAC_ZIP missing (scripts/package-macos.sh)" >&2; exit 1; }
+# Something on this Mac drops Finder `Icon\r` files into new folders; they break the app's
+# code seal and have no place in a Windows build either. Strip them right before each push.
+clean() { find "$1" -name $'Icon\r' -delete; xattr -cr "$1"; }
 
 cat >dist/windows/PatternOfLife/.itch.toml <<'T'
 [[actions]]
 name = "play"
 path = "PatternOfLife.exe"
 T
-"$BUTLER" push $DRY dist/windows/PatternOfLife "$TARGET:windows" --userversion "$VERSION"
-# Only the stapled .app (plus the readme), not the DMG or other dist files.
+clean dist/windows/PatternOfLife
+"$BUTLER" push $DRY dist/windows/PatternOfLife "$TARGET:windows" --userversion "$VERSION" --ignore "Icon?" --ignore "**/Icon?"
+# Only the stapled .app (plus the readme), from the verified zip, not the DMG or other dist files.
 STAGE="$(mktemp -d)"
-ditto "dist/Pattern of Life.app" "$STAGE/Pattern of Life.app"
+ditto -x -k "$MAC_ZIP" "$STAGE"
 sed 's|__DATA_DIR__|~/Library/Application Support/shroud|' packaging/README.txt >"$STAGE/README.txt"
-"$BUTLER" push $DRY "$STAGE" "$TARGET:osx" --userversion "$VERSION"
+clean "$STAGE"
+codesign --verify --strict --deep "$STAGE/Pattern of Life.app"
+"$BUTLER" push $DRY "$STAGE" "$TARGET:osx" --userversion "$VERSION" --ignore "Icon?" --ignore "**/Icon?"
 rm -rf "$STAGE"
 "$BUTLER" status "$TARGET"

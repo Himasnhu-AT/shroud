@@ -50,6 +50,10 @@ sed -e "s/__BUNDLE_ID__/$BUNDLE_ID/" -e "s/__VERSION__/$VERSION/" -e "s/__BUILD_
 [ -f packaging/AppIcon.icns ] && cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
+# Something on this Mac drops Finder `Icon\r` files and FinderInfo into new folders; they break
+# the code seal. Strip them before signing, and zip from a clean copy below.
+find "$APP" -name $'Icon\r' -delete; xattr -cr "$APP"
+
 step "Sign (hardened runtime, secure timestamp)"
 codesign --force --timestamp --options runtime --entitlements packaging/entitlements.plist --sign "$SIGN_ID" "$APP/Contents/MacOS/shroud"
 codesign --force --timestamp --options runtime --entitlements packaging/entitlements.plist --sign "$SIGN_ID" "$APP"
@@ -69,9 +73,15 @@ if [ "$NOTARIZE" = "1" ]; then
   xcrun stapler staple "$DMG"
   xcrun stapler staple "$APP"
   spctl -a -t open --context context:primary-signature -vv "$DMG"
+  find "$APP" -name $'Icon\r' -delete; xattr -cr "$APP"
   spctl -a -t exec -vv "$APP"
 fi
 step "Zip the app for itch.io"
 rm -f "$ZIP"
-( cd "$DIST" && ditto -c -k --keepParent "Pattern of Life.app" "$ZIP" )
+ZSTAGE="$(mktemp -d)"
+ditto --norsrc --noextattr --noqtn "$APP" "$ZSTAGE/Pattern of Life.app"
+find "$ZSTAGE" -name $'Icon\r' -delete; xattr -cr "$ZSTAGE"
+codesign --verify --strict --deep "$ZSTAGE/Pattern of Life.app"
+( cd "$ZSTAGE" && ditto -c -k --norsrc --noextattr --noqtn --keepParent "Pattern of Life.app" "$ZIP" )
+rm -rf "$ZSTAGE"
 step "Done: $DMG ($(du -h "$DMG" | cut -f1)), $ZIP ($(du -h "$ZIP" | cut -f1))"
