@@ -44,7 +44,14 @@ lipo -create -output "$APP/Contents/MacOS/shroud" \
   "$TARGET_DIR/aarch64-apple-darwin/release/shroud" "$TARGET_DIR/x86_64-apple-darwin/release/shroud"
 # models/metahuman is Epic content generated locally (MetaHuman license): never shipped; the
 # game falls back to the CC0 mannequin enemy and hands.
-rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' assets/ "$APP/Contents/Resources/assets/"
+# Source JPGs are dead weight once a set is cooked: the engine loads color/normal/orm.ktx2
+# when color.ktx2 exists. Sets that aren't cooked yet keep their JPGs.
+COOKED_JPGS="$(mktemp)"
+for set in assets/textures/*/; do
+  [ -f "${set}color.ktx2" ] && find "$set" -maxdepth 1 -name '*.jpg' | sed 's|^assets/||' >>"$COOKED_JPGS"
+done
+rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' --exclude-from="$COOKED_JPGS" assets/ "$APP/Contents/Resources/assets/"
+rm -f "$COOKED_JPGS"
 cp assets/CREDITS.md "$APP/Contents/Resources/CREDITS.md"
 sed -e "s/__BUNDLE_ID__/$BUNDLE_ID/" -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" packaging/Info.plist > "$APP/Contents/Info.plist"
 [ -f packaging/AppIcon.icns ] && cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"

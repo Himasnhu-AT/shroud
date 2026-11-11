@@ -116,7 +116,14 @@ cp "$BIN" "$OUT/PatternOfLife.exe"
 # The engine finds the assets folder next to the exe.
 # models/metahuman is Epic content generated locally (MetaHuman license): never shipped; the
 # game falls back to the CC0 mannequin enemy and hands.
-rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' assets/ "$OUT/assets/"
+# Source JPGs are dead weight once a set is cooked: the engine loads color/normal/orm.ktx2
+# when color.ktx2 exists. Sets that aren't cooked yet keep their JPGs.
+COOKED_JPGS="$(mktemp)"
+for set in assets/textures/*/; do
+  [ -f "${set}color.ktx2" ] && find "$set" -maxdepth 1 -name '*.jpg' | sed 's|^assets/||' >>"$COOKED_JPGS"
+done
+rsync -a --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' --exclude-from="$COOKED_JPGS" assets/ "$OUT/assets/"
+rm -f "$COOKED_JPGS"
 cp assets/CREDITS.md "$OUT/CREDITS.md"
 sed -e 's|__DATA_DIR__|%APPDATA%\\shroud\\data|' packaging/README.txt | perl -pe 's/\r?\n/\r\n/' >"$OUT/README.txt"
 if strings "$OUT/PatternOfLife.exe" | grep -q "$GAME_DIR"; then
