@@ -33,7 +33,7 @@ use crate::state::{GameState, has_visuals, not_paused};
 use crate::telemetry::Telemetry;
 use crate::weapon::arsenal::WeaponInput;
 use crate::weapon::pickups::PickupFocus;
-use crate::weapon::{Damage, Health, WeaponSet};
+use crate::weapon::{Damage, DamageCause, Health, WeaponSet};
 
 /// Where the bomb is in its life this round.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -209,7 +209,7 @@ fn plant_input(
     arena: Res<ArenaRes>,
     flow: Res<MatchFlow>,
     phase: Res<RoundPhase>,
-    input: Res<WeaponInput>,
+    mut input: ResMut<WeaponInput>,
     focus: Res<PickupFocus>,
     mut bomb: ResMut<Bomb>,
     mut intent: ResMut<PlayerIntent>,
@@ -258,6 +258,20 @@ fn plant_input(
             fin.crouch = true;
         }
     }
+    // Dead (after a plant the round goes on without him): no reloading, switching or aiming
+    // either. Grenades are held in `weapon::throwing`.
+    if dead {
+        if intent.reload {
+            intent.reload = false;
+        }
+        if input.select.is_some() || input.cycle != 0 || input.last || input.inspect || input.ads {
+            input.select = None;
+            input.cycle = 0;
+            input.last = false;
+            input.inspect = false;
+            input.ads = false;
+        }
+    }
     let target = if still { 1.0 } else { 0.0 };
     let lower = bomb.lower + (target - bomb.lower) * (1.0 - (-12.0 * dt).exp());
     if (lower - bomb.lower).abs() > 1e-4 {
@@ -275,7 +289,6 @@ fn feet_of(tf: &Transform, motor: &FpsMotor, ctl: &FpsController) -> Vec3 {
 struct PlantOut<'w> {
     wallet: ResMut<'w, PlayerWallet>,
     telemetry: ResMut<'w, Telemetry>,
-    brain: ResMut<'w, crate::save::Brain>,
     events: MessageWriter<'w, BombEvent>,
     assets: Option<Res<'w, BombAssets>>,
     dev: Dev<'w>,
@@ -297,9 +310,9 @@ impl PlantOut<'_> {
             ..Bomb::default()
         };
         self.wallet.0.earn(brain::economy::PLANT_BONUS);
+        // The squad learns which site he favours from this when the match is over
+        // (`PlayerModel::ingest`), never mid-match: abandoned matches teach it nothing.
         self.telemetry.0.plant(site);
-        // The squad learns which site he favours.
-        self.brain.state.player_model.record_plant(site);
         self.events.write(BombEvent::Planted { at: pos, site: letter });
         self.dev.trace("bomb.planted", &[("site", Prop::Int(site as i64))]);
         info!("bomb planted on {letter} at ({:.1}, {:.1})", pos.x, pos.z);
@@ -328,6 +341,10 @@ fn tick_bomb(
         if let Some(c) = squad.coord.as_mut() {
             c.set_bomb(None);
         }
+        // Nobody is defusing a bomb that isn't planted (or once the round is over).
+        if bomb.defuser.is_some() {
+            bomb.defuser = None;
+        }
         return;
     }
     let at = bomb.pos;
@@ -355,12 +372,14 @@ fn tick_bomb(
     bomb.defuse = defuse_step(bomb.defuse, on_it.is_some(), dt);
     if bomb.defuse >= 1.0 {
         bomb.phase = BombPhase::Defused;
+        bomb.defuser = None;
         events.write(BombEvent::Defused { at });
         dev.trace("bomb.defused", &[("slot", Prop::Int(on_it.unwrap_or(0) as i64))]);
         info!("bomb defused by squad slot {:?}", on_it);
     } else if bomb.fuse_left <= 0.0 {
         bomb.fuse_left = 0.0;
         bomb.phase = BombPhase::Exploded;
+        bomb.defuser = None;
         events.write(BombEvent::Exploded { at });
         dev.trace("bomb.exploded", &[("site", Prop::Int(bomb.site as i64))]);
         info!("bomb exploded");
@@ -374,7 +393,7 @@ fn tick_bomb(
             let head = ptf.translation.y + if motor.crouched { 0.25 } else { 0.55 };
             let amount = blast_at(d, clear(p, ptf.translation.y) || clear(p, head));
             if amount > 0.5 {
-                damage.write(Damage { target: pe, amount, source, headshot: false });
+                damage.write(Damage { target: pe, amount, source, headshot: false, cause: DamageCause::Bomb });
             }
             fx.shake_and_flash(d, clear(p, head));
         }
@@ -385,7 +404,7 @@ fn tick_bomb(
             let p = to_ground(etf.translation);
             let amount = blast_at(core.dist(p), clear(p, 0.95) || clear(p, if c.crouched { 1.15 } else { 1.6 }));
             if amount > 0.5 {
-                damage.write(Damage { target: ee, amount, source, headshot: false });
+                damage.write(Damage { target: ee, amount, source, headshot: false, cause: DamageCause::Bomb });
             }
         }
         fx.explode(&mut commands, at);

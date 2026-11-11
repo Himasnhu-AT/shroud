@@ -248,10 +248,10 @@ fn career_logs_plants_and_credits_a_finished_match_with_promotion() {
     exec(&mut c, "enemy.freeze", json!({"on": true}));
     exec(&mut c, "player.god", json!({"on": true}));
     let set = exec(&mut c, "career.set_xp", json!({"xp": 900}));
-    assert_eq!(set["rank"], json!("Recruit"), "{set}");
+    assert_eq!(set["rank"], json!("Cadet"), "{set}");
     let s = exec(&mut c, "career.state", json!({}));
     let n = s["objectives"].as_array().map_or(0, Vec::len);
-    assert_eq!(n, 3, "a Recruit gets 3 objectives: {s}");
+    assert_eq!(n, 3, "a Cadet gets 3 objectives: {s}");
     assert_eq!(s["rounds_logged"], json!(1), "{s}");
 
     // Act: win three rounds by letting the bomb go off on A.

@@ -19,7 +19,7 @@ use crate::map::ArenaRes;
 use crate::player::Player;
 use engine::fps::FpsMotor;
 use crate::state::{GameState, has_visuals, not_paused};
-use crate::weapon::{Damage, WeaponSet};
+use crate::weapon::{Damage, DamageCause, WeaponSet};
 
 const GRAVITY: f32 = 9.81;
 const RADIUS: f32 = 0.07;
@@ -312,7 +312,7 @@ fn detonate(
                     // The squad's difficulty scales its own frags, not the player's.
                     let amount = frag_exposure(&spatial, at, center, head, &shields) * if by_player { 1.0 } else { damage_mult };
                     if amount > 0.5 {
-                        damage.write(Damage { target: pe, amount, source: gr.thrower, headshot: false });
+                        damage.write(Damage { target: pe, amount, source: gr.thrower, headshot: false, cause: DamageCause::Grenade });
                         if !by_player {
                             if let Some(c) = squad.coord.as_mut() {
                                 c.player_damaged(amount);
@@ -333,7 +333,7 @@ fn detonate(
                         let head = etf.translation + Vec3::Y * if c.crouched { 1.15 } else { 1.6 };
                         let amount = frag_exposure(&spatial, at, center, head, &shields);
                         if amount > 0.5 {
-                            damage.write(Damage { target: ee, amount, source: gr.thrower, headshot: false });
+                            damage.write(Damage { target: ee, amount, source: gr.thrower, headshot: false, cause: DamageCause::Grenade });
                         }
                     }
                 }

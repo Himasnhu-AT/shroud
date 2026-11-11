@@ -5,11 +5,11 @@ import Ticks from '../../components/Ticks.astro';
 import Plan from '../../components/Plan.astro';
 import { maps } from '../../data/site';
 ---
-<Base title="Maps" description="Shroud's three maps, Foundry, Depot and Office. Each has seven enemy spawn points, and the map changes with every match.">
+<Base title="Maps" description="Three of Shroud's six bomb-defusal maps up close: Foundry, Depot and Ledger. You pick the map before each match.">
   <header class="page-head">
-    <p class="label" data-split="lines" data-intro>Seven enemy spawns each</p>
+    <p class="label" data-split="lines" data-intro>Two bomb sites each</p>
     <h1 class="page-title" data-split="chars" data-intro>Maps</h1>
-    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">Three arenas, all inside the same 64 metre square the squad brain reasons about. The map changes every match, so the squad has to learn you on all of them.</p>
+    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">Shroud has six bomb-defusal maps: Sirocco, Gantry, Depot, Township, Ledger and Foundry. Three of them up close here. You pick one before each match, and the squad brain reasons about every one on the same flat plan you see below.</p>
   </header>
   <ul class="mapgrid">
     {maps.map((m, i) => (

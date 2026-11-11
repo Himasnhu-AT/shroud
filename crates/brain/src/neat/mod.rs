@@ -29,6 +29,16 @@ const TARGET_SPECIES_MAX: usize = 10;
 const THRESHOLD_STEP: f32 = 0.3;
 const THRESHOLD_MIN: f32 = 0.3;
 
+/// Set a non-finite value to 0 (JSON can't hold NaN or infinity). Returns 1 if it changed.
+pub(crate) fn fix_finite(v: &mut f32) -> usize {
+    if v.is_finite() {
+        0
+    } else {
+        *v = 0.0;
+        1
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NeatConfig {
     pub weight_mutate_rate: f32,
@@ -161,6 +171,59 @@ impl Genome {
     /// True if the connection graph (enabled genes) has no cycle.
     pub fn is_acyclic(&self) -> bool {
         self.build().is_acyclic()
+    }
+
+    /// Check a genome loaded from disk before it is used: the input/bias/output layout that
+    /// `Network::activate` indexes by position, unique node ids, connections between existing
+    /// nodes, and finite weights and fitness.
+    ///
+    /// ```ignore
+    /// genome.validate(NEAT_INPUTS, NEAT_OUTPUTS)?;
+    /// ```
+    pub fn validate(&self, inputs: usize, outputs: usize) -> Result<(), String> {
+        if self.num_inputs != inputs || self.num_outputs != outputs {
+            return Err(format!("genome is {}x{}, expected {inputs}x{outputs}", self.num_inputs, self.num_outputs));
+        }
+        if self.nodes.len() < inputs + 1 + outputs {
+            return Err(format!("genome has {} nodes, needs at least {}", self.nodes.len(), inputs + 1 + outputs));
+        }
+        if let Some(i) = (0..inputs).find(|&i| self.nodes[i].kind != NodeKind::Input) {
+            return Err(format!("node {i} should be an input"));
+        }
+        if self.nodes[inputs].kind != NodeKind::Bias {
+            return Err(format!("node {inputs} should be the bias"));
+        }
+        let n_out = self.nodes.iter().filter(|n| n.kind == NodeKind::Output).count();
+        if n_out != outputs {
+            return Err(format!("genome has {n_out} output nodes, expected {outputs}"));
+        }
+        let mut ids: Vec<u32> = self.nodes.iter().map(|n| n.id).collect();
+        ids.sort_unstable();
+        if ids.windows(2).any(|w| w[0] == w[1]) {
+            return Err("duplicate node id".into());
+        }
+        for c in &self.conns {
+            if ids.binary_search(&c.in_node).is_err() || ids.binary_search(&c.out_node).is_err() {
+                return Err(format!("connection {} -> {} refers to a missing node", c.in_node, c.out_node));
+            }
+            if !c.weight.is_finite() {
+                return Err(format!("connection {} has a non-finite weight", c.innovation));
+            }
+        }
+        if !self.fitness.is_finite() {
+            return Err("non-finite genome fitness".into());
+        }
+        Ok(())
+    }
+
+    /// Replace non-finite weights with 0 and a non-finite fitness with 0. Returns how many
+    /// values were fixed.
+    pub fn sanitize(&mut self) -> usize {
+        let mut fixed = fix_finite(&mut self.fitness);
+        for c in &mut self.conns {
+            fixed += fix_finite(&mut c.weight);
+        }
+        fixed
     }
 
     fn has_node(&self, id: u32) -> bool {
@@ -600,6 +663,46 @@ impl Population {
         self.species = kept;
         self.genomes = next;
         self.generation += 1;
+    }
+
+    /// Check a population loaded from disk: at least one genome, every genome (and species
+    /// representative, and the stored best) valid for this population's shape, and a finite
+    /// compatibility threshold.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.genomes.is_empty() {
+            return Err("NEAT population is empty".into());
+        }
+        if !self.threshold.is_finite() {
+            return Err("non-finite NEAT threshold".into());
+        }
+        let (i, o) = (self.num_inputs, self.num_outputs);
+        for (k, g) in self.genomes.iter().enumerate() {
+            g.validate(i, o).map_err(|e| format!("NEAT genome {k}: {e}"))?;
+        }
+        for s in &self.species {
+            s.representative.validate(i, o).map_err(|e| format!("NEAT species {}: {e}", s.id))?;
+        }
+        self.best.validate(i, o).map_err(|e| format!("NEAT best: {e}"))
+    }
+
+    /// [`Genome::sanitize`] over every genome, species and the stored best; a non-finite
+    /// threshold goes back to the config's. Returns how many values were fixed.
+    pub fn sanitize(&mut self) -> usize {
+        let mut fixed: usize = self.genomes.iter_mut().map(Genome::sanitize).sum();
+        for s in &mut self.species {
+            fixed += s.representative.sanitize();
+            // `f32::MIN` is the "unset" marker (finite, so JSON keeps it).
+            if !s.best_fitness.is_finite() {
+                s.best_fitness = f32::MIN;
+                fixed += 1;
+            }
+        }
+        fixed += self.best.sanitize();
+        if !self.threshold.is_finite() {
+            self.threshold = self.cfg.compat_threshold;
+            fixed += 1;
+        }
+        fixed
     }
 
     /// Fittest genome of the last evaluated generation (champion).

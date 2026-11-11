@@ -729,6 +729,9 @@ impl PlayerModel {
 
     /// Blend one match into the model (EMA).
     pub fn ingest(&mut self, t: &MatchTelemetry) {
+        // Plants count even in a short match (a plant is never noise). Only finished matches
+        // get here, so an abandoned one teaches the squad nothing.
+        self.ingest_plants(&t.plant_sites);
         if t.samples < 10.0 {
             return;
         }
@@ -819,6 +822,20 @@ impl PlayerModel {
 
     pub fn accuracy_at(&self, dist: f32) -> f32 {
         self.accuracy[range_bin(dist)]
+    }
+
+    /// A match's plants per site ([`MatchTelemetry::plant_sites`]), as if recorded one by one
+    /// with [`Self::record_plant`]: everything before fades x0.85 per plant, then the match's
+    /// plants count in full (their order within the match is not kept).
+    pub fn ingest_plants(&mut self, counts: &[f32; 2]) {
+        let n: f32 = counts.iter().map(|c| c.max(0.0)).sum();
+        if n <= 0.0 {
+            return;
+        }
+        let fade = 0.85f32.powf(n);
+        for (p, c) in self.plants.iter_mut().zip(counts) {
+            *p = *p * fade + c.max(0.0);
+        }
     }
 
     /// He planted the bomb on site `site` (0 = A, 1 = B). Older plants fade (x0.85 each).

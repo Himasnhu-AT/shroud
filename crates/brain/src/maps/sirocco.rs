@@ -18,12 +18,17 @@
 //!            south (attackers)
 //! ```
 //!
-//! Routes: **A long** (west street, a tall arched gate halfway), **A short** (an alley off
-//! mid that turns north into A, or through **the A house** from long), **mid** (the sniper
-//! lane from the defender spawn through the mid doors down to the spawn wall), **B short**
-//! (an L-shaped alley off mid), **B tunnels** (two roofed corridors with a cross-link on
-//! the east). Defenders rotate between sites through **A connector** and **B connector**
-//! either side of their spawn. The player (attacker) spawns south; the squad holds north.
+//! Routes (callout names): **the lower street** then **the high street** (west, through the
+//! tall arched town gate halfway), **the vine alley** (off the procession road under a
+//! pergola, turning north into A, or through **the baker's house** from the high street),
+//! **the procession road** (the sniper lane from the defender spawn through **the bell arch**
+//! down to the spawn wall), **the dog-leg** (an L-shaped alley off the road), **the cellars**
+//! (two roofed corridors with a cross-link on the east, opening at **the cellar mouth**).
+//! Defenders rotate between sites through **the west arch** and **the east arch** either side
+//! of their spawn. The player (attacker) spawns south; the squad holds north.
+//!
+//! The lane layout is up for a rework: today's shape sits too close to a well-known defusal
+//! map. The callout names stay.
 
 use crate::arena::{Arena, BuildingUse, Builder, FloorSkin, Header, LampStyle, MapId, Paint, Skin, zone};
 use crate::building::{Building, Opening, Side, STOREY};
@@ -54,8 +59,8 @@ pub fn sirocco() -> Arena {
     b.low(-24.0, 29.0, -22.8, 30.2, Barrel);
     b.low(-30.0, 31.0, -27.0, 31.6, Stucco);
 
-    // ------------------------------------------------------------------ west: A long, the A house, A short
-    // The houses between A long and mid: a tall row (south) and a lower one (north).
+    // ------------------------------------------------------------------ west: the high street, the baker's house, the vine alley
+    // The houses between the high street and the procession road: a tall row (south) and a lower one (north).
     b.tall(-27.0, 17.0, -15.0, 26.0, 7.5, Stucco);
     b.tall(-27.0, 9.0, -15.0, 13.0, 6.0, Stucco);
     b.tall(-15.0, 9.0, -5.0, 13.0, 7.0, Stucco);
@@ -66,15 +71,15 @@ pub fn sirocco() -> Arena {
     b.low(-20.0, 13.4, -18.8, 14.6, Crate);
     b.low(18.0, 15.6, 19.2, 16.8, Barrel);
     b.tall(-17.0, -2.0, -5.0, 9.0, 5.5, Stucco);
-    // The A house: a two-room house between long and the alley (a third way into A short).
-    Building::new("the A house", BuildingUse::House, -27.0, -2.0, -17.0, 9.0, STOREY, Plaster)
+    // The baker's house: two rooms between the high street and the vine alley (a third way in).
+    Building::new("the baker's house", BuildingUse::House, -27.0, -2.0, -17.0, 9.0, STOREY, Plaster)
         .door(Side::West, 3.0)
         .windows(Side::West, &[6.5], 1.4)
         .door(Side::North, -21.0)
         .windows(Side::North, &[-18.6], 1.2)
         .partition_z(5.0, -26.6, -17.4, &[Opening::door(-20.0)])
-        .room("the A house", -26.6, -1.6, -17.4, 4.85, Some(FloorSkin::Wood))
-        .room("the A house kitchen", -26.6, 5.15, -17.4, 8.6, Some(FloorSkin::Tiles))
+        .room("the baker's house", -26.6, -1.6, -17.4, 4.85, Some(FloorSkin::Wood))
+        .room("the bakery", -26.6, 5.15, -17.4, 8.6, Some(FloorSkin::Tiles))
         .low(-26.6, 7.6, -23.0, 8.6, Desk)
         .low(-25.6, -0.4, -23.6, 0.8, Desk)
         .tall(-18.2, 1.8, -17.4, 3.6, 2.0, Cabinet)
@@ -111,7 +116,7 @@ pub fn sirocco() -> Arena {
     b.tall(1.6, -15.0, 5.0, -13.5, 4.8, Stucco);
     arch(&mut b, -1.6, -15.0, 1.6, -13.5, 2.8, 4.8);
 
-    // ------------------------------------------------------------------ east: B short, B tunnels
+    // ------------------------------------------------------------------ east: the dog-leg, the cellars
     b.tall(5.0, 17.0, 15.0, 26.0, 6.5, Stucco);
     b.tall(5.0, 8.0, 15.0, 13.0, 7.0, Stucco);
     b.tall(15.0, 17.0, 26.0, 26.0, 8.0, Stucco);
@@ -123,7 +128,7 @@ pub fn sirocco() -> Arena {
     b.low(16.2, 5.0, 17.4, 6.2, Crate);
     b.low(14.6, -6.0, 15.8, -4.8, Barrel);
     b.decor.roofs.push(crate::arena::Roof { min: V2::new(14.0, -4.0), max: V2::new(18.0, 2.0), bottom: 3.0, thickness: 0.12 });
-    // B tunnels: two roofed corridors split by a wall with a cross-link; the lower one
+    // The cellars: two roofed corridors split by a wall with a cross-link; the lower one
     // joins the upper before the exit.
     b.roof(26.0, -4.0, 39.0, 20.0, 3.4);
     b.tall(31.0, -1.0, 32.0, 6.0, 3.45, Stucco);
@@ -226,20 +231,21 @@ pub fn sirocco() -> Arena {
 
     let zones = vec![
         zone("attacker spawn", -39.0, 26.0, 39.0, 39.0),
-        zone("outside long", -39.0, 1.4, -27.0, 26.0),
-        zone("A long", -39.0, -12.0, -27.0, 1.4),
-        zone("A short", -27.0, -12.0, -5.0, -2.0),
+        // "A site" / "B site" are load-bearing: `Builder::finish` finds the plant zones by name.
+        zone("the lower street", -39.0, 1.4, -27.0, 26.0),
+        zone("the high street", -39.0, -12.0, -27.0, 1.4),
+        zone("the vine alley", -27.0, -12.0, -5.0, -2.0),
         zone("A site", -39.0, -39.0, -14.0, -12.0),
-        zone("A connector", -14.0, -34.0, -10.0, -29.6),
+        zone("the west arch", -14.0, -34.0, -10.0, -29.6),
         zone("defender spawn", -10.0, -39.0, 10.0, -23.0),
-        zone("mid doors", -10.0, -23.0, 10.0, -13.5),
-        zone("mid", -5.0, -13.5, 5.0, 26.0),
-        zone("west mid alley", -27.0, 13.0, -5.0, 17.0),
-        zone("east mid alley", 5.0, 13.0, 26.0, 17.0),
-        zone("B short", 5.0, -13.0, 18.0, 8.0),
-        zone("B connector", 10.0, -34.0, 14.0, -29.6),
-        zone("B tunnels", 26.0, -4.0, 39.0, 26.0),
-        zone("B entrance", 26.0, -13.0, 39.0, -4.0),
+        zone("the bell arch", -10.0, -23.0, 10.0, -13.5),
+        zone("the procession road", -5.0, -13.5, 5.0, 26.0),
+        zone("the west lane", -27.0, 13.0, -5.0, 17.0),
+        zone("the east lane", 5.0, 13.0, 26.0, 17.0),
+        zone("the dog-leg", 5.0, -13.0, 18.0, 8.0),
+        zone("the east arch", 10.0, -34.0, 14.0, -29.6),
+        zone("the cellars", 26.0, -4.0, 39.0, 26.0),
+        zone("the cellar mouth", 26.0, -13.0, 39.0, -4.0),
         zone("B site", 14.0, -39.0, 39.0, -13.0),
     ];
     b.finish(

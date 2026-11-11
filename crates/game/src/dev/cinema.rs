@@ -26,7 +26,7 @@ use bevy::render::view::window::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::time::TimeUpdateStrategy;
 use engine::devtools::offscreen::OffscreenTarget;
 use engine::devtools::{AddControlCommand, params};
-use engine::fps::FpsLook;
+use engine::fps::{FpsLook, FpsMotor};
 use engine::gfx::MainCamera;
 use engine::render_budget::{QualityGovernor, RenderBudget};
 use serde_json::{Value, json};
@@ -37,6 +37,9 @@ use crate::weapon::viewmodel::ViewRoot;
 
 /// Frames that may wait for PNG encoding before the main thread blocks.
 const MAX_QUEUED: u32 = 6;
+/// How long the main thread waits on the encoder before writing the oldest outstanding frames
+/// off as lost (a screenshot that never fires must not stall every later frame).
+const FRAME_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_PITCH: f32 = 1.54;
 
 // ---- capture ----
@@ -57,8 +60,12 @@ struct Job {
     armed: bool,
     saved: Arc<AtomicU32>,
     failed: Arc<AtomicU32>,
+    /// Frames written off after waiting `FRAME_TIMEOUT` for them (never captured or saved).
+    timed_out: u32,
     governor_was: Option<bool>,
     idle_skip_was: Option<bool>,
+    /// The time strategy before the capture (restored after it).
+    time_was: Option<TimeUpdateStrategy>,
 }
 
 impl Job {
@@ -70,6 +77,7 @@ impl Job {
             "fps": self.fps,
             "saved": self.saved.load(Ordering::Relaxed),
             "failed": self.failed.load(Ordering::Relaxed),
+            "timed_out": self.timed_out,
             "dir": self.dir.display().to_string(),
         })
     }
@@ -93,6 +101,7 @@ fn capture_frames(world: &mut World, p: Value) -> Result<Value, String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let governor_was = world.get_resource_mut::<QualityGovernor>().map(|mut g| std::mem::replace(&mut g.enabled, false));
     let idle_skip_was = world.get_resource_mut::<RenderBudget>().map(|mut b| std::mem::replace(&mut b.idle_skip, false));
+    let time_was = world.remove_resource::<TimeUpdateStrategy>();
     world.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(1.0 / fps)));
     let job = Job {
         dir,
@@ -102,8 +111,10 @@ fn capture_frames(world: &mut World, p: Value) -> Result<Value, String> {
         armed: false,
         saved: default(),
         failed: default(),
+        timed_out: 0,
         governor_was,
         idle_skip_was,
+        time_was,
     };
     let out = job.status(true);
     world.resource_mut::<Capture>().job = Some(job);
@@ -111,8 +122,8 @@ fn capture_frames(world: &mut World, p: Value) -> Result<Value, String> {
 }
 
 fn end_capture(world: &mut World) -> Option<Value> {
-    let job = world.resource_mut::<Capture>().job.take()?;
-    world.insert_resource(TimeUpdateStrategy::Automatic);
+    let mut job = world.resource_mut::<Capture>().job.take()?;
+    world.insert_resource(job.time_was.take().unwrap_or_default());
     if let (Some(was), Some(mut g)) = (job.governor_was, world.get_resource_mut::<QualityGovernor>()) {
         g.enabled = was;
     }
@@ -161,11 +172,18 @@ fn capture_frame(world: &mut World) {
             end_capture(world);
             return;
         }
-        // Back-pressure: don't let the PNG encoder fall far behind (8 MB per frame).
+        // Back-pressure: don't let the PNG encoder fall far behind (8 MB per frame). Frames
+        // still outstanding after `FRAME_TIMEOUT` are written off, so one lost screenshot
+        // costs one wait, not one per later frame.
+        let in_flight = |j: &Job| j.next.saturating_sub(j.saved.load(Ordering::Relaxed) + j.failed.load(Ordering::Relaxed) + j.timed_out);
         let t0 = std::time::Instant::now();
-        while job.next - job.saved.load(Ordering::Relaxed) - job.failed.load(Ordering::Relaxed) > MAX_QUEUED
-            && t0.elapsed() < Duration::from_secs(10)
-        {
+        while in_flight(job) > MAX_QUEUED {
+            if t0.elapsed() >= FRAME_TIMEOUT {
+                let lost = in_flight(job) - MAX_QUEUED;
+                warn!("capture: {lost} frame(s) not saved after {} s; counting them as lost", FRAME_TIMEOUT.as_secs());
+                job.timed_out += lost;
+                break;
+            }
             std::thread::sleep(Duration::from_millis(1));
         }
         let path = job.dir.join(format!("f_{:05}.png", job.next));
@@ -289,7 +307,7 @@ fn camera_release(world: &mut World, _: Value) -> Result<Value, String> {
     // The controller rewrites the camera's local pose every frame it runs; between rounds put
     // it back at the eye ourselves.
     let eye_y = world
-        .query_filtered::<&engine::fps::FpsMotor, With<Player>>()
+        .query_filtered::<&FpsMotor, With<Player>>()
         .iter(world)
         .next()
         .map(|m| m.eye_offset);
@@ -339,7 +357,9 @@ fn fly_camera(
 #[derive(Resource, Default)]
 struct HudHidden(bool);
 
-/// A root UI node's visibility before `hud.visible false`.
+/// What a root UI node's visibility should be once the HUD is shown again: its value before
+/// `hud.visible false`, updated whenever another system (e.g. hide-when-paused) sets it while
+/// hidden, so showing the HUD never restores a stale value.
 #[derive(Component)]
 struct HudStash(Visibility);
 
@@ -354,16 +374,21 @@ fn apply_hud(
     hidden: Res<HudHidden>,
     mut roots: Query<(Entity, &mut Visibility, Option<&HudStash>), (With<Node>, Without<ChildOf>)>,
 ) {
+    // `is_changed` here means another system wrote the visibility since this system last ran
+    // (this system's own writes don't count).
     for (e, mut vis, stash) in &mut roots {
         if hidden.0 {
-            if stash.is_none() {
+            if stash.is_none() || vis.is_changed() {
                 commands.entity(e).try_insert(HudStash(*vis));
             }
             if *vis != Visibility::Hidden {
                 *vis = Visibility::Hidden;
             }
         } else if let Some(s) = stash {
-            *vis = s.0;
+            // A value another system set this frame is newer than the stash.
+            if !vis.is_changed() && *vis != s.0 {
+                *vis = s.0;
+            }
             commands.entity(e).try_remove::<HudStash>();
         }
     }
@@ -389,19 +414,22 @@ struct Track {
     rate: f32,
 }
 
+/// Eye height above the player's origin when there is no `FpsMotor`.
+const EYE_FALLBACK: f32 = 0.8;
+
+/// The player's eye: body + the controller's eye offset. Not the main camera's transform,
+/// which `fly_camera` overwrites during `camera.path` (as `camera_release` does).
+fn eye_of(body: &Transform, motor: Option<&FpsMotor>) -> Vec3 {
+    body.translation + Vec3::Y * motor.map_or(EYE_FALLBACK, |m| m.eye_offset)
+}
+
 fn eye(world: &mut World) -> Result<Vec3, String> {
-    let body = world
-        .query_filtered::<&Transform, With<Player>>()
+    world
+        .query_filtered::<(&Transform, Option<&FpsMotor>), With<Player>>()
         .iter(world)
         .next()
-        .map(|t| t.translation)
-        .ok_or("no player")?;
-    let local = world
-        .query_filtered::<&Transform, With<MainCamera>>()
-        .iter(world)
-        .next()
-        .map_or(Vec3::Y * 0.8, |t| t.translation);
-    Ok(body + local)
+        .map(|(t, m)| eye_of(t, m))
+        .ok_or_else(|| "no player".to_string())
 }
 
 fn yaw_pitch(d: Vec3) -> Vec2 {
@@ -429,7 +457,8 @@ fn player_track(world: &mut World, p: Value) -> Result<Value, String> {
     let mut aim = world.resource_mut::<Aim>();
     aim.track = on.then(|| Track {
         enemy: p.get("enemy").and_then(Value::as_u64).map(|n| n as usize),
-        rate: p.get("rate").and_then(Value::as_f64).unwrap_or(6.0) as f32,
+        // A negative rate would make the easing diverge.
+        rate: (p.get("rate").and_then(Value::as_f64).unwrap_or(6.0) as f32).max(0.0),
     });
     Ok(json!({"on": on}))
 }
@@ -438,11 +467,10 @@ fn player_track(world: &mut World, p: Value) -> Result<Value, String> {
 fn drive_aim(
     time: Res<Time>,
     mut aim: ResMut<Aim>,
-    mut players: Query<(&Transform, &mut FpsLook), With<Player>>,
-    cams: Query<&Transform, (With<MainCamera>, Without<Player>)>,
+    mut players: Query<(&Transform, &mut FpsLook, Option<&FpsMotor>), With<Player>>,
     enemies: Query<(&Enemy, &Transform, &EnemyCombat), Without<Player>>,
 ) {
-    let Ok((body, mut look)) = players.single_mut() else { return };
+    let Ok((body, mut look, motor)) = players.single_mut() else { return };
     let dt = time.delta_secs();
     if let Some(t) = aim.turn.as_mut() {
         t.t = (t.t + dt).min(t.seconds);
@@ -456,7 +484,7 @@ fn drive_aim(
         return;
     }
     let Some(track) = aim.track.as_ref() else { return };
-    let eye = body.translation + cams.iter().next().map_or(Vec3::Y * 0.8, |t| t.translation);
+    let eye = eye_of(body, motor);
     let target = enemies
         .iter()
         .filter(|(e, _, c)| !c.dead && track.enemy.is_none_or(|s| s == e.slot))

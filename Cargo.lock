@@ -319,16 +319,6 @@ dependencies = [
 [[package]]
 name = "ashlar-command"
 version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "web-time",
-]
-
-[[package]]
-name = "ashlar-command"
-version = "0.1.0"
 source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 dependencies = [
  "serde",
@@ -340,21 +330,9 @@ dependencies = [
 [[package]]
 name = "ashlar-control"
 version = "0.1.0"
-dependencies = [
- "ashlar-command 0.1.0",
- "getrandom 0.4.3",
- "log",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "ashlar-control"
-version = "0.1.0"
 source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 dependencies = [
- "ashlar-command 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
+ "ashlar-command",
  "getrandom 0.4.3",
  "log",
  "serde",
@@ -372,8 +350,8 @@ name = "ashlar-mcp"
 version = "0.1.0"
 source = "git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530#561745aaf96e07a0efe2ed61f37b0a365f46a530"
 dependencies = [
- "ashlar-command 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
- "ashlar-control 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
+ "ashlar-command",
+ "ashlar-control",
  "ashlar-docs",
  "log",
  "serde",
@@ -2895,8 +2873,8 @@ dependencies = [
 name = "engine"
 version = "0.1.0"
 dependencies = [
- "ashlar-command 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
- "ashlar-control 0.1.0 (git+https://github.com/Himasnhu-AT/ashlar?rev=561745aaf96e07a0efe2ed61f37b0a365f46a530)",
+ "ashlar-command",
+ "ashlar-control",
  "ashlar-mcp",
  "ashlar-trace",
  "avian3d",
@@ -3152,7 +3130,7 @@ dependencies = [
 name = "game"
 version = "0.1.1"
 dependencies = [
- "ashlar-control 0.1.0",
+ "ashlar-control",
  "avian3d",
  "bevy",
  "brain",
@@ -5521,9 +5499,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -6599,9 +6577,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
 dependencies = [
  "rustls-pki-types",
 ]

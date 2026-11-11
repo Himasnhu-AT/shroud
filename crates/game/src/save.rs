@@ -18,7 +18,10 @@ pub struct Brain {
 impl Brain {
     pub fn load(dir: &DataDir, seed: u64, map: MapId) -> Self {
         let path = dir.file("brain.json");
-        let mut state = BrainState::load_or_new(&path, seed);
+        let (mut state, note) = BrainState::load_checked(&path, seed);
+        if let Some(note) = note {
+            warn!("brain: {note}");
+        }
         if state.generation == 0 && !state.evaluated {
             let t = std::time::Instant::now();
             state.bootstrap(&brain::arena::Arena::build(map), &brain::evolve::EvolveConfig::default());

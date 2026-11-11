@@ -2,8 +2,10 @@
 
 ## Phase 0: Brief
 
-- **Subject:** Shroud, a first-person shooter in Rust (Bevy 0.19 + avian3d). Solo player against
-  an AI squad, rounds, first to N. The squad learns from your past matches.
+- **Subject:** Shroud, a first-person shooter in Rust (Bevy 0.20 + avian3d). Solo player against
+  an AI squad, bomb-defusal rounds, first to 3. The squad learns from your past matches, but only
+  in technique: aim and reaction are fixed ("They get smarter, never faster"). (Written at Bevy
+  0.19 with three maps; the game now has six, and Office is called Ledger.)
 - **Audience:** FPS players who are tired of dumb bots; developers and Rust/gamedev people who
   will read how the AI works.
 - **Job:** launch microsite. Make people understand in 3 seconds that the enemies learn, show

@@ -24,9 +24,10 @@ use engine::input::CursorCaptured;
 
 use super::arsenal::{Phase, Weapon, WeaponInput, draw_time};
 use super::viewmodel::ViewRoot;
-use super::{WeaponSet, approach, ease};
+use super::{Health, WeaponSet, approach, ease};
 use crate::economy::{BuyMenu, PlayerGrenades, RoundLoadout, RoundPhase};
 use crate::enemy::grenade::ThrowGrenade;
+use crate::match_flow::MatchFlow;
 use crate::player::{Player, PlayerIntent, PlayerSet};
 use crate::state::{GameState, has_visuals};
 use crate::ui::hud::HideWhenPaused;
@@ -159,18 +160,28 @@ fn grenade_input(
     captured: Option<Res<CursorCaptured>>,
     buy: Res<BuyMenu>,
     phase: Res<RoundPhase>,
+    flow: Res<MatchFlow>,
     mut intent: ResMut<PlayerIntent>,
     mut input: ResMut<WeaponInput>,
     mut hand: ResMut<GrenadeHand>,
     mut ov: ResMut<GrenadeOverride>,
     mut bag: ResMut<PlayerGrenades>,
-    mut players: Query<(Entity, &Transform, &FpsMotor, Option<&mut Weapon>), With<Player>>,
+    mut players: Query<(Entity, &Transform, &FpsMotor, &Health, Option<&mut Weapon>), With<Player>>,
     cams: Query<&Transform, (With<MainCamera>, Without<Player>)>,
     spatial: SpatialQuery,
     mut throws: MessageWriter<ThrowGrenade>,
 ) {
-    let Ok((pe, ptf, motor, mut weapon)) = players.single_mut() else { return };
+    let Ok((pe, ptf, motor, hp, mut weapon)) = players.single_mut() else { return };
     let dt = time.delta_secs();
+    // Dead (a planted round goes on without him): nothing in hand, no requests.
+    if hp.is_dead() {
+        ov.equip = None;
+        ov.throw = None;
+        if hand.out() {
+            *hand = GrenadeHand { thrown: hand.thrown, ..default() };
+        }
+        return;
+    }
     let live = captured.is_none_or(|c| c.0);
     // 4 / G: equip, or the next kind carried.
     let key = !buy.open && live && keys.as_ref().is_some_and(|k| k.just_pressed(KeyCode::Digit4) || k.just_pressed(KeyCode::KeyG));
@@ -224,7 +235,13 @@ fn grenade_input(
         unequip(&mut hand, weapon.as_deref_mut());
         return;
     }
-    let frozen = phase.frozen();
+    // Freeze time, and the round-over pause (the kit he keeps was settled when the round ended):
+    // no pulling the pin, and a pin already pulled goes back in.
+    let frozen = phase.frozen() || flow.round_over.is_some();
+    if frozen && hand.cocked.is_some() {
+        hand.cocked = None;
+        hand.release = false;
+    }
     match hand.cocked {
         None => {
             if let Some(style) = throw_now.filter(|_| !frozen) {

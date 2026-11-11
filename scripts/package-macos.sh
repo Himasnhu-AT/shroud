@@ -27,6 +27,11 @@ step "Check: no dev tooling (ashlar-*) in the ship build"
 if cargo tree -p game --no-default-features -e normal | grep ashlar; then echo "ashlar crates in the ship build" >&2; exit 1; fi
 
 step "Build release (no dev tooling) for arm64 and x86_64"
+# Build-machine paths rewritten out of panic messages and debug info (as package-windows.sh).
+GAME_DIR="$(cd .. && pwd)"
+export RUSTFLAGS="${RUSTFLAGS:-} \
+  --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$HOME/.rustup=/rustup \
+  --remap-path-prefix=$GAME_DIR=/src"
 for t in aarch64-apple-darwin x86_64-apple-darwin; do
   SMTP_USER= SMTP_PASS= memgate --profile release -- cargo build --release -p game --no-default-features --target "$t"
 done

@@ -204,7 +204,7 @@ fn shatter(
         // Normal: the pane's thin axis.
         let n = if g.half.x < g.half.z { Vec3::X } else { Vec3::Z };
         let across = if n == Vec3::X { Vec3::Z } else { Vec3::X };
-        let mut seed = (c.x * 92.7 + c.z * 13.1 + c.y * 7.3).to_bits();
+        let mut seed = (c.x * 92.7 + c.z * 13.1 + c.y * 7.3).to_bits() | 1; // xorshift never leaves 0
         let mut rnd = move || {
             seed ^= seed << 13;
             seed ^= seed >> 17;

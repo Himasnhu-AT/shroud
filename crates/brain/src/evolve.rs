@@ -835,33 +835,240 @@ impl BrainState {
         Some(GenReport { rounds, champion: res.scores[best], mean_win: wins as f32 / rounds.max(1) as f32 })
     }
 
+    /// Save atomically (see [`write_atomic`]). Non-finite floats are replaced first (JSON
+    /// writes them as `null`, which would fail to load and reset the brain); if the file still
+    /// wouldn't load back, nothing is written and an `InvalidData` error is returned.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec(self).map_err(std::io::Error::other)?)?;
-        std::fs::rename(tmp, path)
+        write_atomic(path, &self.to_save_bytes()?)
     }
 
-    /// Load, or start fresh. A corrupt or old file is kept as `brain.json.bak`.
+    /// The bytes [`save`](Self::save) writes: sanitized JSON, checked to load back. Lets a
+    /// caller serialise off the main thread and write later.
+    pub fn to_save_bytes(&self) -> std::io::Result<Vec<u8>> {
+        let mut s = self.clone();
+        s.sanitize();
+        checked_json(&s)
+    }
+
+    /// Replace non-finite floats in the evolved data and the player model's main fields with
+    /// 0. Returns how many values were fixed.
+    pub fn sanitize(&mut self) -> usize {
+        let mut fixed = self.neat.sanitize();
+        fixed += self.traits.genomes.iter_mut().map(sanitize_trait).sum::<usize>();
+        if let Some(c) = &mut self.champion {
+            fixed += c.traits.iter_mut().map(sanitize_trait).sum::<usize>();
+            fixed += c.neat.iter_mut().map(neat::Genome::sanitize).sum::<usize>();
+            fixed += fix_slice(&mut [&mut c.score.shaping]);
+        }
+        for r in &mut self.replay {
+            fixed += r.traits.iter_mut().map(sanitize_trait).sum::<usize>();
+            fixed += r.neat.iter_mut().map(neat::Genome::sanitize).sum::<usize>();
+        }
+        let m = &mut self.player_model;
+        for v in [&mut m.heat, &mut m.routes, &mut m.death_spots, &mut m.kill_spots] {
+            fixed += v.iter_mut().map(neat::fix_finite).sum::<usize>();
+        }
+        for a in [&mut m.accuracy[..], &mut m.kill_share[..], &mut m.facing[..], &mut m.shots[..], &mut m.weapon_use[..], &mut m.plants[..]] {
+            fixed += a.iter_mut().map(neat::fix_finite).sum::<usize>();
+        }
+        fixed += fix_slice(&mut [
+            &mut m.strafe_bias,
+            &mut m.reaction_s,
+            &mut m.camping,
+            &mut m.crouch_rate,
+            &mut m.overall_accuracy,
+            &mut m.headshot_rate,
+            &mut m.ghost_skill,
+        ]);
+        let g = &mut m.ghost;
+        fixed += fix_slice(&mut [
+            &mut g.aim_sigma_deg,
+            &mut g.reaction_scale,
+            &mut g.turn_rate,
+            &mut g.flick_s,
+            &mut g.move_spread,
+            &mut g.track_spread,
+            &mut g.preaim,
+            &mut g.aggression,
+            &mut g.retreat_hp,
+            &mut g.peek_side,
+        ]);
+        fixed
+    }
+
+    /// Check a brain loaded from disk before anything indexes into it: save version, NEAT
+    /// shape and node/connection references, finite genes, squad and champion slots inside
+    /// the populations. `Err` says what is wrong.
+    ///
+    /// ```ignore
+    /// if let Err(why) = state.validate() { /* move the file aside, start fresh */ }
+    /// ```
+    pub fn validate(&self) -> Result<(), String> {
+        if self.version != SAVE_VERSION {
+            return Err(format!("save version {}, expected {SAVE_VERSION}", self.version));
+        }
+        if self.neat.num_inputs != NEAT_INPUTS || self.neat.num_outputs != NEAT_OUTPUTS {
+            return Err(format!("NEAT population is {}x{}, expected {NEAT_INPUTS}x{NEAT_OUTPUTS}", self.neat.num_inputs, self.neat.num_outputs));
+        }
+        self.neat.validate()?;
+        if self.traits.genomes.is_empty() {
+            return Err("trait population is empty".into());
+        }
+        for (k, g) in self.traits.genomes.iter().enumerate() {
+            validate_trait(g).map_err(|e| format!("trait genome {k}: {e}"))?;
+        }
+        let (nt, nn) = (self.traits.genomes.len(), self.neat.genomes.len());
+        let slot_ok = |s: &SquadSlot| s.trait_id < nt && s.neat_id < nn;
+        if let Some(s) = self.squad.iter().find(|s| !slot_ok(s)) {
+            return Err(format!("squad slot {s:?} is outside the populations ({nt} traits, {nn} NEAT)"));
+        }
+        if let Some(c) = &self.champion {
+            if c.traits.len() != c.neat.len() {
+                return Err("champion has mismatched trait and NEAT counts".into());
+            }
+            for g in &c.traits {
+                validate_trait(g).map_err(|e| format!("champion: {e}"))?;
+            }
+            for g in &c.neat {
+                g.validate(NEAT_INPUTS, NEAT_OUTPUTS).map_err(|e| format!("champion: {e}"))?;
+            }
+            if let Some(slots) = &c.slots
+                && let Some(s) = slots.iter().find(|s| !slot_ok(s))
+            {
+                return Err(format!("champion slot {s:?} is outside the populations"));
+            }
+        }
+        for r in &self.replay {
+            if r.traits.len() != r.neat.len() {
+                return Err(format!("replay squad {} has mismatched trait and NEAT counts", r.generation));
+            }
+            for g in &r.traits {
+                validate_trait(g).map_err(|e| format!("replay squad {}: {e}", r.generation))?;
+            }
+            for g in &r.neat {
+                g.validate(NEAT_INPUTS, NEAT_OUTPUTS).map_err(|e| format!("replay squad {}: {e}", r.generation))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Load, or start fresh. A corrupt, old or invalid file is kept beside it (see
+    /// [`load_checked`](Self::load_checked)).
     pub fn load_or_new(path: &Path, seed: u64) -> Self {
-        match std::fs::read(path) {
-            Ok(bytes) => match serde_json::from_slice::<BrainState>(&bytes) {
-                Ok(mut s) if s.version == SAVE_VERSION => {
-                    // Saves from before loadouts load as-is; weapon genes get seeded.
-                    s.migrate();
-                    s.player_model.fit_grids();
-                    s
-                }
-                _ => {
-                    let _ = std::fs::rename(path, path.with_extension("json.bak"));
-                    BrainState::new(seed)
-                }
-            },
-            Err(_) => BrainState::new(seed),
+        Self::load_checked(path, seed).0
+    }
+
+    /// [`load_or_new`](Self::load_or_new), also saying why a file present on disk was not used
+    /// (for the caller to log). A rejected file is moved to `<name>.v<N>.bak` when it is an
+    /// older save version, else `<name>.corrupt-<unix secs>`, so it never overwrites the
+    /// `<name>.bak` a manual reset makes.
+    pub fn load_checked(path: &Path, seed: u64) -> (Self, Option<String>) {
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (BrainState::new(seed), None),
+            Err(e) => return (BrainState::new(seed), Some(format!("could not read {}: {e}; starting fresh", path.display()))),
+        };
+        let checked = serde_json::from_slice::<BrainState>(&bytes).map_err(|e| e.to_string()).and_then(|mut s| {
+            // Saves from before loadouts load as-is; weapon genes get seeded.
+            s.migrate();
+            s.player_model.fit_grids();
+            s.validate().map(|()| s)
+        });
+        match checked {
+            Ok(s) => (s, None),
+            Err(why) => {
+                let note = move_aside(path, &bytes, &why);
+                (BrainState::new(seed), Some(note))
+            }
         }
     }
+}
+
+/// The version a save file claims, if it has one (even when the rest doesn't parse).
+fn file_version(bytes: &[u8]) -> Option<u32> {
+    #[derive(Deserialize)]
+    struct V {
+        version: u32,
+    }
+    serde_json::from_slice::<V>(bytes).ok().map(|v| v.version)
+}
+
+/// Move a save that can't be used out of the way and describe what happened. Older save
+/// versions go to `<name>.v<N>.bak`; anything else to `<name>.corrupt-<unix secs>`.
+pub(crate) fn move_aside(path: &Path, bytes: &[u8], why: &str) -> String {
+    let mut aside = path.as_os_str().to_owned();
+    match file_version(bytes) {
+        Some(v) if v != SAVE_VERSION => aside.push(format!(".v{v}.bak")),
+        _ => {
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            aside.push(format!(".corrupt-{secs}"));
+        }
+    }
+    let aside = std::path::PathBuf::from(aside);
+    match std::fs::rename(path, &aside) {
+        Ok(()) => format!("{} not usable ({why}); starting fresh, old file kept as {}", path.display(), aside.display()),
+        Err(e) => format!("{} not usable ({why}); starting fresh, could not move it aside: {e}", path.display()),
+    }
+}
+
+/// Serialise `value` and check the result loads back as `T` (`serde_json` writes NaN and
+/// infinity as `null`, which then fails to load). `InvalidData` if it wouldn't.
+pub(crate) fn checked_json<T: Serialize + serde::de::DeserializeOwned>(value: &T) -> std::io::Result<Vec<u8>> {
+    let bytes = serde_json::to_vec(value).map_err(std::io::Error::other)?;
+    serde_json::from_slice::<T>(&bytes)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("refusing to save: the file would not load back ({e})")))?;
+    Ok(bytes)
+}
+
+/// Write `bytes` to `path` atomically and durably: a temp file named with the process id next
+/// to it, `fsync`, rename over `path`, then a best-effort `fsync` of the folder (so the rename
+/// survives a power cut). Creates missing folders.
+///
+/// ```ignore
+/// brain::evolve::write_atomic(Path::new("/data/brain.json"), &bytes)?;
+/// ```
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let dir = path.parent().filter(|d| !d.as_os_str().is_empty());
+    if let Some(dir) = dir {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".{}.tmp", std::process::id()));
+    let tmp = std::path::PathBuf::from(tmp);
+    let res = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return res;
+    }
+    #[cfg(unix)]
+    if let Some(d) = dir.and_then(|d| std::fs::File::open(d).ok()) {
+        let _ = d.sync_all();
+    }
+    Ok(())
+}
+
+fn fix_slice(values: &mut [&mut f32]) -> usize {
+    values.iter_mut().map(|v| neat::fix_finite(v)).sum()
+}
+
+fn sanitize_trait(g: &mut TraitGenome) -> usize {
+    let mut fixed = neat::fix_finite(&mut g.fitness);
+    for a in [&mut g.genes[..], &mut g.pef[..], &mut g.loadout[..], &mut g.doctrine[..]] {
+        fixed += a.iter_mut().map(neat::fix_finite).sum::<usize>();
+    }
+    fixed
+}
+
+fn validate_trait(g: &TraitGenome) -> Result<(), String> {
+    let all = g.genes.iter().chain(&g.pef).chain(&g.loadout).chain(&g.doctrine);
+    if all.chain(std::iter::once(&g.fitness)).all(|v| v.is_finite()) { Ok(()) } else { Err("non-finite gene or fitness".into()) }
 }
 
 /// Explain a loadout change for the debrief, from what the player model says about him.

@@ -7,7 +7,8 @@ fn main() {
     let maps: Vec<Value> = MapId::ALL.iter().map(|&id| {
         let a = Arena::build(id);
         json!({
-            "id": id.label().to_lowercase(),
+            // The variant name, not the display label: URLs and site keys stay put when a map is renamed.
+            "id": format!("{id:?}").to_lowercase(),
             "label": id.label(),
             "blurb": id.blurb(),
             "blocks": a.blocks.iter().map(|b| json!({

@@ -2,8 +2,8 @@
 //!
 //! - Every finished match pays XP: a win, each round won, and each objective completed
 //!   ([`match_xp`]). An abandoned match pays nothing.
-//! - XP only goes up; enough of it promotes you through [`Rank::ALL`]. Elite is the top.
-//! - Each match rolls fresh objectives ([`roll_objectives`]): 3 at Recruit up to 6 at the top
+//! - XP only goes up; enough of it promotes you through [`Rank::ALL`]. Major is the top.
+//! - Each match rolls fresh objectives ([`roll_objectives`]): 3 at Cadet up to 6 at the top
 //!   ranks, with targets that grow with rank.
 //! - The game records what happens in a [`MatchLog`]; [`Goal::progress`] reads it, so the HUD can
 //!   show live progress and the debrief the final tally.
@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 
 // ---- Ranks ---------------------------------------------------------------------------------
 
+/// Player-facing names (see [`Rank::name`]) run Cadet … Major so they never repeat a difficulty
+/// name; the variant names are internal. Saves store only XP, so names can change freely.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Rank {
     Recruit,
@@ -61,14 +63,14 @@ impl Rank {
 
     pub fn name(self) -> &'static str {
         match self {
-            Rank::Recruit => "Recruit",
+            Rank::Recruit => "Cadet",
             Rank::Private => "Private",
             Rank::Corporal => "Corporal",
             Rank::Sergeant => "Sergeant",
             Rank::StaffSergeant => "Staff Sergeant",
             Rank::Lieutenant => "Lieutenant",
             Rank::Captain => "Captain",
-            Rank::Elite => "Elite",
+            Rank::Elite => "Major",
         }
     }
 

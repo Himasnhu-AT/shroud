@@ -32,7 +32,7 @@ use crate::save::Brain;
 use crate::settings::ShroudSettings;
 use crate::state::{GameState, Headless, not_paused};
 use crate::weapon::fire::{exit_distance, penetrable, penetration_mult, surface_at};
-use crate::weapon::{Damage, GunEvent, Health, Hitbox, Rifle, ShotFired, WeaponSet};
+use crate::weapon::{Damage, DamageCause, GunEvent, Health, Hitbox, Rifle, ShotFired, WeaponSet};
 use grenade::ThrowGrenade;
 use gun::{EnemyFx, GunLink};
 
@@ -824,7 +824,7 @@ fn think_and_act(
         }
         if amount > 0.0 && player_hp_left > 0.0 {
             c.shots_hit += 1;
-            damage_out.write(Damage { target: player, amount, source: e, headshot: false });
+            damage_out.write(Damage { target: player, amount, source: e, headshot: false, cause: DamageCause::Gun(kind) });
             c.report.damage_dealt += amount;
             player_hp_left -= amount;
             dealt += amount;
@@ -864,10 +864,17 @@ struct AiOut<'w> {
 }
 
 /// Round over: reward the open engagement window and keep the bandit for the next round/match.
-fn finish_round(mut squad: ResMut<Squad>, mut brain: ResMut<Brain>, players: Query<&Health, With<Player>>, mut telemetry: ResMut<crate::telemetry::Telemetry>) {
-    let dead = players.single().is_ok_and(|h| h.is_dead());
+fn finish_round(
+    mut squad: ResMut<Squad>,
+    mut brain: ResMut<Brain>,
+    flow: Res<crate::match_flow::MatchFlow>,
+    mut telemetry: ResMut<crate::telemetry::Telemetry>,
+) {
+    // The round's result, not "the player is dead": after a plant he can die and still win.
+    // An abandoned round (no result) counts as no win.
+    let squad_won = squad_won_round(flow.end);
     if let Some(c) = squad.coord.as_mut() {
-        c.end_round(dead);
+        c.end_round(squad_won);
         brain.state.tactics = c.tactics.clone();
         // How long each archetype was countered this round (the player model's style summary).
         for (t, s) in telemetry.0.style_time.iter_mut().zip(c.doctrine.active_time) {
@@ -875,6 +882,11 @@ fn finish_round(mut squad: ResMut<Squad>, mut brain: ResMut<Brain>, players: Que
         }
         telemetry.0.style_play_s += c.doctrine.play_time;
     }
+}
+
+/// Did the squad win the round that just ended? `None` = no result (abandoned).
+pub(crate) fn squad_won_round(end: Option<crate::match_flow::RoundEnd>) -> bool {
+    end.is_some_and(|e| !e.player_won())
 }
 
 /// Shrink the hitboxes while crouched so low cover hides the enemy; shift them (and roll the
@@ -948,5 +960,23 @@ fn enemy_deaths(
                 commands.entity(e).insert(Corpse(3.0));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::match_flow::RoundEnd;
+
+    #[test]
+    fn the_squad_is_rewarded_for_the_round_result_not_the_players_death() {
+        // He died after planting and the bomb went off: his round, not the squad's.
+        assert!(!super::squad_won_round(Some(RoundEnd::Exploded)));
+        assert!(!super::squad_won_round(Some(RoundEnd::SquadWiped)));
+        // He lived, but they defused or ran out the clock: the squad's round.
+        assert!(super::squad_won_round(Some(RoundEnd::Defused)));
+        assert!(super::squad_won_round(Some(RoundEnd::TimeUp)));
+        assert!(super::squad_won_round(Some(RoundEnd::PlayerKilled)));
+        // Abandoned round.
+        assert!(!super::squad_won_round(None));
     }
 }

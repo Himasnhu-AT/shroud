@@ -4,15 +4,23 @@ A first-person shooter written in Rust where the enemies **evolve from your past
 Every match, the squad you face is bred from the squads that did best against *you*,
 and it has studied your habits: where you camp, the ranges you fight at, and which way you strafe.
 
-> Status: design phase. Docs are complete; code is partly scaffolded (see [docs/TASKS.md](docs/TASKS.md)).
+**They get smarter, never faster.** Aim, reaction time and damage are fixed by the difficulty you
+pick; evolution only improves how the squad plays.
+
+> Status: in development and playable. Five-round bomb defusal (first to 3) with a round economy
+> and buy menu, grenades, six maps, a career with ranks and match objectives, and an optional
+> bodycam camera. Work tracking: [docs/TASKS.md](docs/TASKS.md), [TODO.md](TODO.md).
 
 ## How it gets harder
-1. **Traits evolve** (genetic algorithm): aggression, flanking, cover use, reaction time, and more.
+1. **Traits evolve** (genetic algorithm): aggression, preferred range, flanking, cover use,
+   teamwork, caution, weapon choice and more. Never aim or reaction speed.
 2. **Tactics adapt** (utility AI): enemies choose to attack, flank, take cover, retreat, or ambush where they predict you'll be.
 3. **Combat moves evolve** (NEAT neural nets): strafing, peeking, and when to shoot.
 4. **They learn you** (player model): your heatmap, ranges, and reactions feed both the tactics and the training.
 5. **Between matches** a fast offline sim trains the squad against a "ghost" of you.
-6. **Fair by design**: hard limits on reaction time and aim error loosen slowly, so enemies get smarter, not aimbots.
+6. **Fair by design**: reaction time, aim error and damage per hit are fixed limits set by the
+   difficulty. They never change with generation, so a generation-20 squad aims exactly like a
+   generation-1 squad. It just plays you better.
 
 ## Docs
 | Doc | What's in it |
@@ -28,7 +36,7 @@ and it has studied your habits: where you camp, the ranges you fight at, and whi
 | [CONTROL_AND_TELEMETRY](docs/CONTROL_AND_TELEMETRY.md) | Test control port (dev builds only) + crash/perf reporting (ashlar crates on stock Bevy) |
 | [ENGINE](docs/ENGINE.md) | Engine research record; decision: stock Bevy ([ADR 0001](docs/adr/0001-engine-strategy.md)) |
 
-## Quick start (once code lands)
+## Quick start
 ```sh
 memgate -- cargo test -p brain     # AI tests
 memgate -- cargo run -p game       # play

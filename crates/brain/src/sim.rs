@@ -229,6 +229,31 @@ pub fn run_round_objective(arena: &Arena, model: &PlayerModel, limits: Limits, m
     run_round_full(arena, model, limits, minds, seed, GhostMode::V2, true, UtilityBudget::STANDARD, true)
 }
 
+/// How a planted bomb ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BombEnd {
+    Defused,
+    Exploded,
+}
+
+/// One tick of defuse progress, the game's rule (`bomb::tick_bomb`): `on_it` is the
+/// coordinator's defuser when it stands on the bomb; a new defuser starts from zero, nobody on
+/// it resets it. Call after the fuse is advanced. Returns how the bomb ended, if it did.
+pub fn bomb_step(b: &mut PlantedBomb, defusing: &mut Option<usize>, on_it: Option<usize>) -> Option<BombEnd> {
+    if on_it.is_some() && on_it != *defusing {
+        b.defuse_progress = 0.0;
+    }
+    *defusing = on_it;
+    b.defuse_progress = if on_it.is_some() { (b.defuse_progress + DT / objective::DEFUSE_S).min(1.0) } else { 0.0 };
+    if b.defuse_progress >= 1.0 {
+        Some(BombEnd::Defused)
+    } else if b.fuse_left <= 0.0 {
+        Some(BombEnd::Exploded)
+    } else {
+        None
+    }
+}
+
 /// Every round flavour. `objective`: bomb defusal (needs two sites; ignored otherwise).
 #[allow(clippy::too_many_arguments)]
 pub fn run_round_full(
@@ -281,31 +306,6 @@ pub fn run_round_full(
 
     while (if bomb.is_some() { !defused && !exploded } else { t < ROUND_TIME && ghost.body.alive() }) && enemies.iter().any(Body::alive) {
         t += DT;
-        if let Some(b) = bomb.as_mut() {
-            b.fuse_left -= DT;
-            let on = (0..n).find(|&i| enemies[i].alive() && squad.wants_defuse(i) && enemies[i].pos.dist(b.pos) <= objective::DEFUSE_REACH);
-            match on {
-                Some(i) if defusing.is_none_or(|d| d == i) => {
-                    defusing = Some(i);
-                    b.defuse_progress += DT / objective::DEFUSE_S;
-                }
-                _ => {
-                    defusing = None;
-                    b.defuse_progress = 0.0;
-                }
-            }
-            if b.defuse_progress >= 1.0 {
-                defused = true;
-            } else if b.fuse_left <= 0.0 {
-                exploded = true;
-                for e in enemies.iter_mut() {
-                    e.hp -= objective::blast_damage(e.pos.dist(b.pos));
-                }
-            }
-            if defused || exploded {
-                break;
-            }
-        }
         if objective {
             squad.set_bomb(bomb);
         }
@@ -339,6 +339,25 @@ pub fn run_round_full(
         for (i, (m, o)) in minds.iter_mut().zip(orders).enumerate() {
             m.set_order(o);
             m.set_doctrine(squad.member_doctrine(i));
+        }
+        // --- The bomb: fuse and defuse, after the coordinator's tick so the defuser is this
+        // tick's (the game's `bomb::tick_bomb` runs after the squad's fixed tick the same way).
+        if let Some(b) = bomb.as_mut() {
+            b.fuse_left -= DT;
+            let at = b.pos;
+            let on_it = squad.defuser.filter(|&i| squad.wants_defuse(i) && enemies[i].alive() && enemies[i].pos.dist(at) <= objective::DEFUSE_REACH);
+            if let Some(end) = bomb_step(b, &mut defusing, on_it) {
+                match end {
+                    BombEnd::Defused => defused = true,
+                    BombEnd::Exploded => {
+                        exploded = true;
+                        for e in enemies.iter_mut() {
+                            e.hp -= objective::blast_damage(e.pos.dist(b.pos));
+                        }
+                    }
+                }
+                break;
+            }
         }
         let board = squad.board;
         // --- end squad layer ---

@@ -13,11 +13,10 @@ use brain::weapons::WeaponKind;
 
 use super::hud::KillFeed;
 use super::theme::*;
-use crate::armed::Armed;
-use crate::enemy::{Enemy, EnemyCombat};
+use crate::enemy::Enemy;
 use crate::player::Player;
 use crate::state::{GameState, has_visuals};
-use crate::weapon::{Damage, Health, ShotFired, WeaponSet};
+use crate::weapon::{Damage, DamageCause, Health, WeaponSet};
 
 /// Lines kept in the feed.
 const MAX_LINES: usize = 5;
@@ -30,8 +29,8 @@ const BG_ALPHA: f32 = 0.7;
 pub struct KillEvent {
     pub killer: &'static str,
     pub victim: &'static str,
-    /// The gun that did it; `None` for a grenade (damage from someone who didn't shoot that
-    /// frame) or an unknown source.
+    /// The gun that did it; `None` for a grenade or the bomb (the killing hit's
+    /// [`DamageCause`]).
     pub weapon: Option<WeaponKind>,
     pub headshot: bool,
     /// The player got the kill / was killed.
@@ -40,15 +39,21 @@ pub struct KillEvent {
     /// Enemy slots of the killer / victim, when they are enemies.
     pub killer_slot: Option<usize>,
     pub victim_slot: Option<usize>,
-    /// The killer fired a gun on the killing frame (not a frag; the bomb is never "by_player").
-    /// The career's kill objectives only count these.
+    /// The killing hit was a gun's (not a frag; the bomb is never "by_player"). The career's
+    /// kill objectives only count these.
     pub gun: bool,
+    /// What dealt the killing hit.
+    pub cause: DamageCause,
 }
 
 impl KillEvent {
-    /// "Longbow", "Frag".
+    /// "Longbow", "Frag", "Bomb".
     pub fn weapon_label(&self) -> &'static str {
-        self.weapon.map_or("Frag", WeaponKind::label)
+        match self.cause {
+            DamageCause::Gun(k) => k.label(),
+            DamageCause::Grenade => "Frag",
+            DamageCause::Bomb => "Bomb",
+        }
     }
 }
 
@@ -62,29 +67,24 @@ impl Plugin for KillFeedPlugin {
     }
 }
 
-/// Last hit on each target: (source, headshot, the source fired a gun that frame).
+/// Last hit on each target: (source, headshot, what dealt it).
 #[derive(Default)]
 pub(crate) struct LastHits {
-    hits: HashMap<Entity, (Entity, bool, bool)>,
+    hits: HashMap<Entity, (Entity, bool, DamageCause)>,
     dead: HashMap<Entity, bool>,
-    shooters: Vec<Entity>,
 }
 
 pub(crate) fn detect_kills(
     mut dmg: MessageReader<Damage>,
-    mut shots: MessageReader<ShotFired>,
     healths: Query<(Entity, &Health, Option<&Enemy>, Has<Player>)>,
-    players: Query<Option<&Armed>, With<Player>>,
-    enemies: Query<(&Enemy, Option<&EnemyCombat>, Option<&Armed>)>,
+    players: Query<(), With<Player>>,
+    enemies: Query<&Enemy>,
     mut out: MessageWriter<KillEvent>,
     mut st: Local<LastHits>,
 ) {
     let st = &mut *st;
-    st.shooters.clear();
-    st.shooters.extend(shots.read().map(|s| s.by));
     for d in dmg.read() {
-        let shot = st.shooters.contains(&d.source);
-        st.hits.insert(d.target, (d.source, d.headshot, shot));
+        st.hits.insert(d.target, (d.source, d.headshot, d.cause));
     }
     for (e, hp, enemy, is_player) in &healths {
         let dead = hp.is_dead();
@@ -92,27 +92,23 @@ pub(crate) fn detect_kills(
         if !dead || was || (enemy.is_none() && !is_player) {
             continue;
         }
-        let (src, headshot, shot) = st.hits.get(&e).copied().map_or((None, false, false), |(s, h, sh)| (Some(s), h, sh));
         // No hit on record (a scripted / test kill): nothing to report.
-        if src.is_none() {
-            continue;
-        }
-        let by_player = src.is_some_and(|s| players.contains(s));
-        let killer_enemy = src.and_then(|s| enemies.get(s).ok());
-        let (killer, killer_slot, weapon) = if by_player {
-            let held = src.and_then(|s| players.get(s).ok()).flatten().map_or(WeaponKind::Rifle, |a| a.0);
-            ("You", None, Some(held))
-        } else if let Some((en, combat, armed)) = killer_enemy {
-            let held = combat.map(|c| c.gun.held).or(armed.map(|a| a.0)).unwrap_or(WeaponKind::Rifle);
-            (callsign(en.slot), Some(en.slot), shot.then_some(held))
+        let Some(&(src, headshot, cause)) = st.hits.get(&e) else { continue };
+        let by_player = players.contains(src);
+        let weapon = cause.gun();
+        let shot = weapon.is_some();
+        let (killer, killer_slot) = if by_player {
+            ("You", None)
+        } else if let Ok(en) = enemies.get(src) {
+            (callsign(en.slot), Some(en.slot))
         } else {
-            ("Squad", None, None)
+            ("Squad", None)
         };
         let (victim, victim_slot) = match enemy {
             Some(en) => (callsign(en.slot), Some(en.slot)),
             None => ("You", None),
         };
-        out.write(KillEvent { killer, victim, weapon, headshot, by_player, on_player: is_player, killer_slot, victim_slot, gun: shot });
+        out.write(KillEvent { killer, victim, weapon, headshot, by_player, on_player: is_player, killer_slot, victim_slot, gun: shot, cause });
     }
     // Forget entities that are gone (corpses despawn, rounds respawn the squad).
     if st.dead.len() > healths.iter().count() {

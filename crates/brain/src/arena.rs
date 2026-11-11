@@ -189,8 +189,8 @@ pub enum MapId {
     Office,
     /// A 90 m town block: streets, alleys, a courtyard and eight enterable buildings.
     Township,
-    /// Defusal layout in a whitewashed hill town: long A, house and alley shorts, a roofed B
-    /// tunnel, a mid sniper lane.
+    /// Defusal layout in a whitewashed hill town: the high street through the town gate, the
+    /// vine alley and the baker's house, the roofed cellars, the procession road sniper lane.
     Sirocco,
     /// Defusal layout in a harbour rail yard: an indoor A site in a warehouse, a train-car mid,
     /// B on the open quay.
@@ -204,7 +204,7 @@ impl MapId {
         match self {
             MapId::Foundry => "Foundry",
             MapId::Depot => "Depot",
-            MapId::Office => "Office",
+            MapId::Office => "Ledger",
             MapId::Township => "Township",
             MapId::Sirocco => "Sirocco",
             MapId::Gantry => "Gantry",
@@ -213,10 +213,10 @@ impl MapId {
     pub fn blurb(self) -> &'static str {
         match self {
             MapId::Foundry => "Bomb sites in a steelworks. A in the casting hall, B at the loading docks, a ladle car on the rails down mid.",
-            MapId::Depot => "Three lanes, long sightlines, one contested middle.",
-            MapId::Office => "Bomb sites in an office floor. A in the server room, B in the records room; tight corridors, every corner a fight.",
+            MapId::Depot => "Bomb sites at a sun-baked bus depot. The freight lane west, the bus bays through the gatehouse, the roofed cistern east.",
+            MapId::Office => "Bomb sites on a records-office floor. A in the server room, B in the records room; tight corridors, every corner a fight.",
             MapId::Township => "Bomb sites in a town block on a late afternoon. A in the warehouse loading yard, B in the office courtyard; long streets, alleys, houses with windows.",
-            MapId::Sirocco => "Bomb sites in a whitewashed hill town. Long A, a house and an alley off mid, a roofed B tunnel.",
+            MapId::Sirocco => "Bomb sites in a whitewashed hill town. A on the fountain plaza, B in the market; the high street through the town gate, the vine alley, the procession road, the cellars.",
             MapId::Gantry => "Bomb sites in a harbour rail yard. A inside the warehouse, trains across mid, B out on the quay.",
         }
     }
@@ -758,9 +758,10 @@ impl Arena {
         )
     }
 
-    /// "Depot": three lanes between sun-baked buildings. Long A on the west with a door
-    /// choke, a contested mid with double doors, roofed B tunnels on the east, and two
-    /// crate-strewn sites at the north end. The player spawns south; the squad defends north.
+    /// "Depot": a sun-baked bus depot, three lanes between stucco buildings. The freight lane
+    /// on the west through the freight gate, the bus bays in the middle through the gatehouse,
+    /// the roofed cistern on the east, and two crate-strewn sites at the north end. Callout
+    /// zones: the forecourt, the arcade, the underpass. The lane layout is up for a rework. The player spawns south; the squad defends north.
     pub fn depot() -> Self {
         use Skin::*;
         let mut b = Builder::new(4.5, Stucco);
@@ -859,12 +860,12 @@ impl Arena {
             zone("A site", -32.0, -32.0, -13.5, -7.5),
             zone("B site", 13.5, -32.0, 32.0, -6.0),
             zone("the north spawn", -13.5, -32.0, 13.5, -20.0),
-            zone("north mid", -13.5, -20.0, 13.5, -6.0),
-            zone("long A", -32.0, -7.5, -21.0, 17.0),
-            zone("the A short", -21.0, -6.0, -7.0, 17.0),
-            zone("mid", -7.0, -6.0, 7.0, 17.0),
-            zone("the B tunnels", 21.0, -6.0, 32.0, 17.0),
-            zone("the lower tunnel", 7.0, -6.0, 21.0, 17.0),
+            zone("the forecourt", -13.5, -20.0, 13.5, -6.0),
+            zone("the freight lane", -32.0, -7.5, -21.0, 17.0),
+            zone("the arcade", -21.0, -6.0, -7.0, 17.0),
+            zone("the bus bays", -7.0, -6.0, 7.0, 17.0),
+            zone("the cistern", 21.0, -6.0, 32.0, 17.0),
+            zone("the underpass", 7.0, -6.0, 21.0, 17.0),
             zone("the south spawn", -32.0, 17.0, 32.0, 32.0),
         ];
         b.finish(

@@ -1,5 +1,6 @@
-//! `GameState::Debrief`: match result, what the squad learned about you, how it changed.
-//! Buttons: next match (Enter) | main menu (Esc) | reset the AI (R).
+//! `GameState::Debrief`: match result, the squad's plan and how it changed (the game's hook,
+//! always first), what to work on, then a compact career strip.
+//! Buttons: next match (Enter) | main menu (Esc) | retire this squad (R: reset the AI).
 
 use bevy::prelude::*;
 
@@ -49,21 +50,7 @@ fn spawn_debrief(
                     format!("{}: {arrow} {:.0}%", d.label, pct.abs())
                 })
                 .collect::<Vec<_>>(),
-            format!(
-                "Generation {} is ready | trained {} generations vs your ghost in {:.1}s | sim win rate {:.0}%",
-                s.generation + 1,
-                s.neat_generations,
-                s.elapsed_ms as f32 / 1000.0,
-                s.sim_win_rate * 100.0
-            ) + &match (s.real_player_win, s.ghost_player_win) {
-                (Some(r), Some(g)) => format!(
-                    "\nYour ghost: you won {:.0}% of rounds, the ghost won {:.0}% vs the same squad -> ghost skill now {:.2}",
-                    r * 100.0,
-                    g * 100.0,
-                    s.ghost_skill
-                ),
-                _ => String::new(),
-            },
+            generation_line(s.generation + 1, s.sim_rounds, s.real_player_win, s.ghost_player_win),
         ),
         None => (vec!["Evolution failed this time; same squad again.".into()], vec![], String::new()),
     };
@@ -72,27 +59,21 @@ fn spawn_debrief(
         .history
         .iter()
         .rev()
-        .take(6)
-        .map(|h| {
-            format!(
-                "Gen {}: you {} {}-{} | sim win {:.0}%",
-                h.generation,
-                if h.player_won { "won" } else { "lost" },
-                h.player_rounds,
-                h.enemy_rounds,
-                h.sim_win_rate * 100.0
-            )
-        })
+        .take(HISTORY_LINES)
+        .map(|h| format!("Gen {}: you {} {}\u{2013}{}", h.generation, if h.player_won { "won" } else { "lost" }, h.player_rounds, h.enemy_rounds))
         .collect();
 
     let card = last.0.as_ref().and_then(|s| s.card.clone());
-    // What the squad will carry next match, and why (the learned loadout).
+    // What the squad will carry next match, and why (the learned loadout): part of how they changed.
     let loadout_note = last.0.as_ref().and_then(|s| s.loadout_note.clone());
     let loadout_line = last.0.as_ref().map(|s| loadout_summary(&s.next_loadout)).filter(|l| !l.is_empty());
-    let show_loadout = loadout_note.is_some() || loadout_line.is_some();
-    let deltas = if deltas.is_empty() { vec!["No change".into()] } else { deltas };
+    let mut deltas: Vec<String> = deltas.into_iter().take(DELTA_LINES).collect();
+    if deltas.is_empty() {
+        deltas.push("No change".into());
+    }
     let history = if history.is_empty() { vec!["-".into()] } else { history };
     let color = if won { FRIENDLY } else { ENEMY };
+    let award = mc.award.as_ref().filter(|_| mc.match_no == flow.match_no);
 
     commands
         .spawn((
@@ -121,30 +102,14 @@ fn spawn_debrief(
                             h.spawn(eyebrow(&format!("Match complete \u{b7} Squad generation {}", brain.state.generation), ACCENT));
                             h.spawn((Node { align_items: AlignItems::Baseline, column_gap: px(GAP_L), ..default() }, Pickable::IGNORE))
                                 .with_children(|r| {
-                                    r.spawn(text(title, display(104.0), color));
-                                    r.spawn(text(format!("{pr} \u{2013} {er}"), display(56.0), TEXT));
+                                    r.spawn(text(title, display(96.0), color));
+                                    r.spawn(text(format!("{pr} \u{2013} {er}"), display(52.0), TEXT));
                                 });
                             if !gen_line.is_empty() {
                                 h.spawn(text(gen_line, body(SIZE_SMALL), TEXT_MUTED));
                             }
                         });
-                    // The career panel takes the place of "How they changed / History" (the screen
-                    // has no room for both; the main menu keeps the record).
-                    let award = mc.award.as_ref().filter(|_| mc.match_no == flow.match_no);
-                    if let Some(award) = award {
-                        career_panel(root, &mc, award, mc.xp_before, save.career.xp);
-                    }
-                    if show_loadout {
-                        root.spawn(card_panel()).with_children(|p| {
-                            p.spawn(eyebrow("Their loadout", ENEMY));
-                            if let Some(note) = loadout_note {
-                                p.spawn(text(note, body_bold(SIZE_BODY + 2.0), TEXT));
-                            }
-                            if let Some(line) = loadout_line {
-                                p.spawn(text(line, label(SIZE_LABEL), TEXT_MUTED));
-                            }
-                        });
-                    }
+                    // The game's hook first: what the squad tried against you, and how it changed.
                     if let Some(card) = card {
                         root.spawn(card_panel()).with_children(|p| {
                             p.spawn(eyebrow("Their plan this match", ACCENT));
@@ -162,12 +127,28 @@ fn spawn_debrief(
                             }
                         });
                     }
+                    root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|row| {
+                        side_panel(row, "How they changed", ENEMY, 2.0, |col| {
+                            if let Some(note) = loadout_note {
+                                col.spawn(text(note, body_bold(SIZE_BODY - 2.0), TEXT));
+                            }
+                            if let Some(line) = loadout_line {
+                                col.spawn(text(line, label(SIZE_TINY), TEXT_MUTED));
+                            }
+                            for l in deltas {
+                                col.spawn(text(l, body(SIZE_SMALL), TEXT));
+                            }
+                        });
+                        side_panel(row, "History", TEXT_MUTED, 1.0, |col| {
+                            for l in history {
+                                col.spawn(text(l, body(SIZE_SMALL), TEXT));
+                            }
+                        });
+                    });
                     root.spawn(card_panel()).with_children(|p| {
                         p.spawn(eyebrow("What to work on", INTEL));
-                        // (One line fewer when the loadout panel takes its place on screen.)
-                        // (One fewer per career objective past three: the career panel grows with them.)
-                        let extra = if award.is_some() { mc.objectives.len().saturating_sub(3) } else { 0 };
-                        let n = (if show_loadout { 3usize } else { 4 }).saturating_sub(extra).max(1);
+                        // Two tips when the career strip also needs the room.
+                        let n = if award.is_some() { 2 } else { 3 };
                         for (i, line) in insights.iter().take(n).enumerate() {
                             p.spawn((Node { column_gap: px(GAP_M), ..default() }, Pickable::IGNORE)).with_children(|r| {
                                 r.spawn((Node { width: px(24), flex_shrink: 0.0, ..default() }, Pickable::IGNORE))
@@ -177,49 +158,73 @@ fn spawn_debrief(
                             });
                         }
                     });
-                    if award.is_none() {
-                        root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), ..default() }, Pickable::IGNORE))
-                            .with_children(|row| {
-                                for (title, lines) in [("How they changed", deltas), ("History", history)] {
-                                    row.spawn((
-                                        Node {
-                                            flex_grow: 1.0,
-                                            flex_basis: px(0),
-                                            flex_direction: FlexDirection::Column,
-                                            row_gap: px(4),
-                                            padding: UiRect::all(px(20)),
-                                            border: UiRect::all(px(1)),
-                                            border_radius: BorderRadius::all(px(RADIUS)),
-                                            ..default()
-                                        },
-                                        BackgroundColor(PANEL),
-                                        BorderColor::all(LINE),
-                                        Pickable::IGNORE,
-                                    ))
-                                    .with_children(|col| {
-                                        col.spawn(eyebrow(title, TEXT_MUTED));
-                                        for l in lines {
-                                            col.spawn(text(l, body(SIZE_SMALL), TEXT));
-                                        }
-                                    });
-                                }
-                            });
+                    if let Some(award) = award {
+                        career_strip(root, &mc, award, mc.xp_before, save.career.xp);
                     }
-                    root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), align_items: AlignItems::Center, margin: UiRect::top(px(GAP_S)), ..default() }, Pickable::IGNORE))
+                    root.spawn((Node { width: px(PANEL_W), column_gap: px(GAP_M), align_items: AlignItems::Center, margin: UiRect::top(px(GAP_XS)), ..default() }, Pickable::IGNORE))
                         .with_children(|b| {
                             let t = Theme::default();
                             action_button(b, &t, "Next match", MenuAction::Custom("next_match"), Some(1), true, 300.0);
                             action_button(b, &t, "Main menu", MenuAction::MainMenu, Some(2), false, 200.0);
-                            action_button(b, &t, "Reset AI", MenuAction::Custom("reset_ai"), Some(3), false, 200.0);
+                            action_button(b, &t, "Retire this squad", MenuAction::Custom("reset_ai"), Some(3), false, 260.0);
                         });
                 });
             screen.spawn((Node::default(), Pickable::IGNORE)).with_children(|f| {
-                spawn_footer(f, &Theme::default(), &[("ENTER", "Next match"), ("ESC", "Main menu"), ("R", "Reset the AI")]);
+                spawn_footer(f, &Theme::default(), &[("ENTER", "Next match"), ("ESC", "Main menu"), ("R", "Retire this squad")]);
             });
         });
 }
 
 const PANEL_W: f32 = 1100.0;
+/// Lines in "How they changed" (trait changes) and "History" (past matches).
+const DELTA_LINES: usize = 4;
+const HISTORY_LINES: usize = 5;
+
+/// The header's plain-words line about the new squad and the player's ghost:
+/// "Generation 5 is ready. They trained 1,240 rounds against your ghost (a copy of how you play)."
+fn generation_line(generation: u32, sim_rounds: u64, real_win: Option<f32>, ghost_win: Option<f32>) -> String {
+    let mut s = format!("Generation {generation} is ready. They trained {} rounds against your ghost (a copy of how you play).", thousands(sim_rounds));
+    if let (Some(r), Some(g)) = (real_win, ghost_win) {
+        s += &format!(" Against this squad you won {:.0}% of rounds; your ghost won {:.0}%.", r * 100.0, g * 100.0);
+    }
+    s
+}
+
+/// 1240 -> "1,240".
+fn thousands(n: u64) -> String {
+    let d = n.to_string();
+    let mut out = String::with_capacity(d.len() + d.len() / 3);
+    for (i, c) in d.chars().enumerate() {
+        if i > 0 && (d.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// One column of the "How they changed / History" row (`grow`: its share of the width).
+fn side_panel(row: &mut ChildSpawnerCommands, title: &str, color: Color, grow: f32, fill: impl FnOnce(&mut ChildSpawnerCommands)) {
+    row.spawn((
+        Node {
+            flex_grow: grow,
+            flex_basis: px(0),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(4),
+            padding: UiRect::all(px(20)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(RADIUS)),
+            ..default()
+        },
+        BackgroundColor(PANEL),
+        BorderColor::all(LINE),
+        Pickable::IGNORE,
+    ))
+    .with_children(|col| {
+        col.spawn(eyebrow(title, color));
+        fill(col);
+    });
+}
 
 /// Seconds the XP bar takes to fill from the old XP to the new.
 const XP_ANIM_S: f32 = 1.8;
@@ -244,62 +249,37 @@ struct XpNumbers;
 #[derive(Component)]
 struct Promoted;
 
-/// "Career": the XP lines, total and an XP bar that fills from the old XP to the new (wrapping
-/// at each rank), with a big PROMOTED line when it crosses one; and the objectives, done or not.
-fn career_panel(root: &mut ChildSpawnerCommands, mc: &MatchCareer, award: &Award, from: u32, to: u32) {
-    const LEFT_W: f32 = 520.0;
-    let right_w = PANEL_W - 40.0 - LEFT_W - GAP_L;
+/// The career as one compact strip: XP earned, the rank and an XP bar that fills from the old
+/// XP to the new (wrapping at each rank), objectives done, and a PROMOTED line that pops in when
+/// the bar crosses into a new rank. The main menu keeps the full record.
+fn career_strip(root: &mut ChildSpawnerCommands, mc: &MatchCareer, award: &Award, from: u32, to: u32) {
+    const BAR_W: f32 = 440.0;
+    let status = mc.status();
+    let done = status.iter().filter(|s| s.0).count();
     root.spawn((card_panel(), XpAnim { from, to, rank_before: award.rank_before, t: -XP_ANIM_DELAY, promoted_at: None })).with_children(|p| {
-        p.spawn((Node { column_gap: px(GAP_L), ..default() }, Pickable::IGNORE)).with_children(|row| {
-            // Left: XP breakdown, total, rank bar.
-            row.spawn((Node { width: px(LEFT_W), flex_direction: FlexDirection::Column, row_gap: px(5), ..default() }, Pickable::IGNORE)).with_children(|l| {
-                l.spawn(eyebrow("Career", ACCENT));
-                // Match and rounds lines, then the objectives as one line (the right column lists them).
-                let done = mc.status().iter().filter(|s| s.0).count();
-                let fixed = award.lines.len().saturating_sub(done);
-                let obj_xp: u32 = award.lines[fixed..].iter().map(|l| l.xp).sum();
-                let mut lines: Vec<(String, u32)> = award.lines[..fixed].iter().map(|l| (l.label.clone(), l.xp)).collect();
-                if done > 0 {
-                    lines.push((format!("Objectives \u{d7}{done}"), obj_xp));
-                }
-                for (label_text, xp) in lines {
-                    l.spawn((Node { width: px(LEFT_W), justify_content: JustifyContent::SpaceBetween, ..default() }, Pickable::IGNORE)).with_children(|r| {
-                        r.spawn((Node { width: px(LEFT_W - 110.0), ..default() }, Pickable::IGNORE)).with_child(text(label_text, body(SIZE_SMALL), TEXT));
-                        r.spawn(text(format!("+{xp}"), label(SIZE_SMALL), FRIENDLY));
-                    });
-                }
-                l.spawn((Node { width: px(LEFT_W), height: px(1), ..default() }, BackgroundColor(LINE), Pickable::IGNORE));
-                l.spawn((Node { width: px(LEFT_W), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..default() }, Pickable::IGNORE)).with_children(|r| {
-                    r.spawn(text("TOTAL", label(SIZE_LABEL), TEXT_MUTED));
-                    r.spawn(text(format!("+{} XP", award.total), display(34.0), ACCENT));
-                });
-                l.spawn((Node { width: px(LEFT_W), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, margin: UiRect::top(px(4)), ..default() }, Pickable::IGNORE)).with_children(|r| {
-                    r.spawn((XpRankText, text(award.rank_before.name().to_uppercase(), display(30.0), TEXT)));
+        p.spawn((Node { column_gap: px(GAP_L), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|row| {
+            // XP earned.
+            row.spawn((Node { width: px(170), flex_shrink: 0.0, flex_direction: FlexDirection::Column, ..default() }, Pickable::IGNORE)).with_children(|c| {
+                c.spawn(eyebrow("Career", ACCENT));
+                c.spawn(text(format!("+{} XP", award.total), display(30.0), ACCENT));
+            });
+            // Rank and bar.
+            row.spawn((Node { width: px(BAR_W), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: px(5), ..default() }, Pickable::IGNORE)).with_children(|c| {
+                c.spawn((Node { width: px(BAR_W), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..default() }, Pickable::IGNORE)).with_children(|r| {
+                    r.spawn((XpRankText, text(award.rank_before.name().to_uppercase(), display(24.0), TEXT)));
                     r.spawn((XpNumbers, text("", label(SIZE_TINY), TEXT_MUTED)));
                 });
-                l.spawn((Node { width: px(LEFT_W), height: px(10), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.12)), Pickable::IGNORE))
+                c.spawn((Node { width: px(BAR_W), height: px(8), ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.12)), Pickable::IGNORE))
                     .with_child((XpFill, Node { width: percent(0), height: percent(100), ..default() }, BackgroundColor(ACCENT), Pickable::IGNORE));
             });
-            // Right: the objectives.
-            row.spawn((Node { width: px(right_w), flex_direction: FlexDirection::Column, row_gap: px(7), ..default() }, Pickable::IGNORE)).with_children(|r| {
-                let done = mc.status().iter().filter(|s| s.0).count();
-                r.spawn(eyebrow(&format!("Objectives {done}/{}", mc.objectives.len()), TEXT_MUTED));
-                for (o, (ok, prog, target)) in mc.objectives.iter().zip(mc.status()) {
-                    r.spawn((Node { column_gap: px(GAP_S), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|line| {
-                        super::career_hud::check_box(line, 16.0, ok);
-                        line.spawn((Node { width: px(right_w - 16.0 - 90.0 - 2.0 * GAP_S), ..default() }, Pickable::IGNORE))
-                            .with_child(text(o.goal.describe(), body(SIZE_SMALL), if ok { TEXT } else { TEXT_MUTED }));
-                        let (s, c) = if ok { (format!("+{} XP", o.xp), FRIENDLY) } else { (format!("{prog}/{target}"), TEXT_DIM) };
-                        line.spawn((Node { width: px(90), justify_content: JustifyContent::FlexEnd, ..default() }, Pickable::IGNORE)).with_child(text(s, label(SIZE_TINY), c));
-                    });
-                }
+            // Objectives, then the promotion (shown when the bar crosses into the new rank).
+            row.spawn((Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::FlexEnd, ..default() }, Pickable::IGNORE)).with_children(|c| {
+                c.spawn(text(format!("OBJECTIVES {done}/{}", mc.objectives.len()), label(SIZE_LABEL), if done > 0 { FRIENDLY } else { TEXT_MUTED }));
                 if award.promoted() {
-                    // Shown (and popped in) when the XP bar crosses into the new rank.
-                    r.spawn((
+                    c.spawn((
                         Promoted,
-                        text(format!("PROMOTED TO {}", award.rank_after.name().to_uppercase()), display(48.0), ACCENT),
+                        text(format!("PROMOTED TO {}", award.rank_after.name().to_uppercase()), display(30.0), ACCENT),
                         TextShadow::default(),
-                        Node { margin: UiRect::top(px(GAP_S)), ..default() },
                         UiTransform::IDENTITY,
                         Visibility::Hidden,
                     ));
@@ -449,5 +429,14 @@ mod tests {
         let s = super::loadout_summary(&[WeaponKind::Rifle, WeaponKind::Marksman, WeaponKind::Rifle, WeaponKind::Shotgun]);
         assert_eq!(s, "NEXT SQUAD: 2 RIFLEMEN  \u{b7}  1 BREACHER  \u{b7}  1 MARKSMAN");
         assert!(super::loadout_summary(&[]).is_empty());
+    }
+
+    #[test]
+    fn generation_line_is_plain_words() {
+        let s = super::generation_line(5, 1240, Some(0.6), Some(0.55));
+        assert_eq!(s, "Generation 5 is ready. They trained 1,240 rounds against your ghost (a copy of how you play). Against this squad you won 60% of rounds; your ghost won 55%.");
+        assert!(!super::generation_line(2, 7, None, None).contains("ghost won"));
+        assert_eq!(super::thousands(1_234_567), "1,234,567");
+        assert_eq!(super::thousands(999), "999");
     }
 }

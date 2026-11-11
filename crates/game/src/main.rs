@@ -37,7 +37,8 @@ pub use state::{GameState, Headless};
 
 fn info() -> GameInfo {
     GameInfo::new("shroud", "Shroud")
-        .tagline("They learn from you.")
+        // Second line: the fairness promise (aim/reaction are fixed per difficulty, see brain::limits).
+        .tagline("They learn from you.\nThey never aim faster. They play smarter.")
         .version(env!("CARGO_PKG_VERSION"))
         .assets_fallback(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets"))
 }

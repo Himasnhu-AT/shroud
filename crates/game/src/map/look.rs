@@ -802,8 +802,23 @@ pub fn look_with_sky(id: MapId, has: impl Fn(&str) -> bool) -> Look {
     l
 }
 
+/// Run condition for [`sync_look`]: only when something it reads changed (the map, the
+/// settings, the assets folder, or the `Look` itself, e.g. replaced by something else) or
+/// there is no `Look` yet. True on the first frame, so it always runs at startup and on every
+/// map load (`sync_map` writes `ArenaRes`). Rebuilding the `Look` allocates and checks the
+/// disk, so it must not run every frame.
+pub(crate) fn look_inputs_changed(
+    arena: Res<ArenaRes>,
+    settings: Res<crate::settings::ShroudSettings>,
+    look: Option<Res<Look>>,
+    dir: Option<Res<crate::assets::AssetsDir>>,
+) -> bool {
+    arena.is_changed() || settings.is_changed() || look.is_none_or(|l| l.is_changed()) || dir.is_some_and(|d| d.is_changed())
+}
+
 /// Keeps the engine `Look` and the render-budget ranges on the current map.
 /// Bodycam mode swaps in the map's bodycam look (`bodycam::lens::bodycam_look`).
+/// Gated by [`look_inputs_changed`]; whether a map's HDRI is on disk is checked once per map.
 pub(crate) fn sync_look(
     arena: Res<ArenaRes>,
     settings: Res<crate::settings::ShroudSettings>,
@@ -811,8 +826,21 @@ pub(crate) fn sync_look(
     dir: Option<Res<crate::assets::AssetsDir>>,
     mut ranges: ResMut<SceneryRanges>,
     mut commands: Commands,
+    mut hdri_present: Local<Vec<(MapId, bool)>>,
 ) {
-    let mut want = look_with_sky(arena.0.id, |p| dir.as_ref().is_some_and(|d| d.has(p)));
+    if dir.as_ref().is_some_and(|d| d.is_changed()) {
+        hdri_present.clear();
+    }
+    let id = arena.0.id;
+    let has_hdri = match hdri_present.iter().find(|(m, _)| *m == id) {
+        Some(&(_, has)) => has,
+        None => {
+            let has = hdri_of(id).is_some_and(|p| dir.as_ref().is_some_and(|d| d.has(p)));
+            hdri_present.push((id, has));
+            has
+        }
+    };
+    let mut want = look_with_sky(id, |_| has_hdri);
     if crate::bodycam::is_bodycam(&settings) {
         want = crate::bodycam::lens::bodycam_look(want);
     }

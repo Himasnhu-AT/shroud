@@ -1,5 +1,7 @@
 //! `GameState::Evolving`: run `brain::evolve` on a background thread (the window
-//! stays responsive), show progress, save `brain.json`, then go to `Debrief`.
+//! stays responsive), show progress, save `brain.json` (also on that thread), then go to
+//! `Debrief`. The merged background-training checkpoint is deleted only once the new brain is
+//! on disk, and quitting mid-evolve waits a little for the save.
 
 use bevy::prelude::*;
 use brain::arena::Arena;
@@ -7,6 +9,7 @@ use brain::evolve::{BrainState, EvolveConfig, EvolveSummary};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use crate::match_flow::PendingReport;
 use crate::dev::{Dev, Prop};
@@ -19,13 +22,18 @@ pub struct EvolvingPlugin;
 impl Plugin for EvolvingPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(TrainerTaskPlugin).add_systems(OnEnter(GameState::Evolving), (start, spawn_label.run_if(has_visuals)))
-            .add_systems(Update, (poll, update_label.run_if(has_visuals)).run_if(in_state(GameState::Evolving)));
+            .add_systems(Update, (poll, update_label.run_if(has_visuals)).run_if(in_state(GameState::Evolving)))
+            .add_systems(Last, finish_on_exit);
     }
 }
 
+/// What the evolve thread hands back: the new brain, its summary, and whether `brain.json` was
+/// written.
+type Evolved = (BrainState, EvolveSummary, std::io::Result<()>);
+
 #[derive(Resource)]
 struct Job {
-    handle: Option<JoinHandle<(BrainState, EvolveSummary)>>,
+    handle: Option<JoinHandle<Evolved>>,
     progress: Arc<AtomicU32>,
     /// Simulated rounds merged from the background trainer / behind the brain so far.
     merged_rounds: u64,
@@ -66,14 +74,24 @@ fn start(
     };
     let progress = Arc::new(AtomicU32::new(0));
     let p = progress.clone();
+    let (path, checkpoint) = (brain.path.clone(), bg.checkpoint().to_path_buf());
     let handle = std::thread::Builder::new()
         .name("evolve".into())
         .spawn(move || {
             let arena = Arena::build(map);
             let summary = state.evolve_merged(&report, trained, &arena, &EvolveConfig { worker_init: Some(utility_priority), ..EvolveConfig::default() }, |f| p.store((f * 100.0) as u32, Ordering::Relaxed));
-            (state, summary)
+            // Serialise and write here, not on the main thread (~640 KB of JSON). The trainer
+            // checkpoint it merged goes only once the merged brain is safely on disk.
+            let saved = state.save(&path);
+            if saved.is_ok() {
+                let _ = std::fs::remove_file(&checkpoint);
+            }
+            (state, summary, saved)
         })
         .ok();
+    if handle.is_none() {
+        warn!("evolve: could not start the evolve thread; keeping the previous squad");
+    }
     commands.insert_resource(Job { handle, progress, merged_rounds, total_rounds: brain.state.sim_rounds + merged_rounds, sim_vs_real });
 }
 
@@ -89,19 +107,22 @@ fn poll(
         return;
     }
     match job.handle.take().map(JoinHandle::join) {
-        Some(Ok((state, summary))) => {
+        Some(Ok((state, summary, saved))) => {
             info!("evolved to generation {} in {} ms", summary.generation, summary.elapsed_ms);
+            if let Err(e) = saved {
+                warn!("brain: could not save {}: {e} (the background-training checkpoint is kept)", brain.path.display());
+            }
             brain.state = state;
-            brain.save();
             dev.trace(
                 "ai.evolved",
                 &[("generation", Prop::Int(summary.generation as i64)), ("ms", Prop::Int(summary.elapsed_ms as i64)), ("sim_win_rate", Prop::Float(summary.sim_win_rate as f64))],
             );
             last.0 = Some(summary);
         }
-        // Training failed: keep the old squad and carry on.
+        // Training failed: keep the old squad and carry on. The background-training
+        // checkpoint is still on disk, so the next menu visit resumes it.
         _ => {
-            error!("evolution failed; keeping the previous squad");
+            error!("evolution failed; keeping the previous squad (background training kept in its checkpoint)");
             last.0 = None;
         }
     }
@@ -186,5 +207,33 @@ fn utility_priority() {
     #[cfg(target_os = "macos")]
     unsafe {
         libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_UTILITY, 0);
+    }
+}
+
+/// How long quitting during `Evolving` waits for the evolve thread to finish and save.
+/// Evolution is capped at `EvolveConfig::budget` (8 s) plus ghost calibration (~1.5 s).
+const EXIT_WAIT: Duration = Duration::from_secs(10);
+
+/// The app is quitting mid-evolve: wait (bounded) for the thread, which saves `brain.json`
+/// itself, so the match's learning isn't lost. If it doesn't finish in time, the old brain and
+/// the background-training checkpoint are both still on disk.
+fn finish_on_exit(mut exits: MessageReader<AppExit>, job: Option<ResMut<Job>>) {
+    if exits.read().next().is_none() {
+        return;
+    }
+    let Some(mut job) = job else { return };
+    let Some(h) = job.handle.take() else { return };
+    let until = Instant::now() + EXIT_WAIT;
+    while !h.is_finished() && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if !h.is_finished() {
+        warn!("evolve: quit before evolution finished; this match's result is not saved (background training kept)");
+        return;
+    }
+    match h.join() {
+        Ok((_, summary, Ok(()))) => info!("evolve: saved generation {} on exit", summary.generation),
+        Ok((_, _, Err(e))) => warn!("evolve: could not save the brain on exit: {e}"),
+        Err(_) => warn!("evolve: the evolve thread panicked; keeping the previous brain"),
     }
 }

@@ -100,6 +100,26 @@ pub struct Damage {
     pub amount: f32,
     pub source: Entity,
     pub headshot: bool,
+    /// What dealt it (kill rewards, the kill feed and the career read this).
+    pub cause: DamageCause,
+}
+
+/// What dealt a hit: a gun, a frag, or the planted bomb.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DamageCause {
+    Gun(WeaponKind),
+    Grenade,
+    Bomb,
+}
+
+impl DamageCause {
+    /// The gun, for gun hits.
+    pub fn gun(self) -> Option<WeaponKind> {
+        match self {
+            DamageCause::Gun(k) => Some(k),
+            _ => None,
+        }
+    }
 }
 
 /// A shot was fired (for hearing, telemetry, effects). One per trigger pull (a shotgun blast is

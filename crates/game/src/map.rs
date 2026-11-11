@@ -50,7 +50,7 @@ impl Plugin for MapPlugin {
                     .before(crate::match_flow::begin_round)
                     .before(crate::enemy::spawn_squad),
             )
-            .add_systems(Update, (look::sync_look, look::apply_light_budget, grime::spawn_grime).run_if(has_visuals));
+            .add_systems(Update, (look::sync_look.run_if(look::look_inputs_changed), look::apply_light_budget, grime::spawn_grime).run_if(has_visuals));
         #[cfg(feature = "dev")]
         {
             use engine::devtools::{AddControlCommand, params};
@@ -298,7 +298,9 @@ fn wall_beside(arena: &Arena, min: V2, max: V2) -> Option<usize> {
 
 #[cfg(any(feature = "dev", test))]
 fn parse_map(name: &str) -> Option<MapId> {
-    MapId::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(name.trim()))
+    // Match the display label or the stable variant name ("office" still works after a rename).
+    let n = name.trim();
+    MapId::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(n) || format!("{m:?}").eq_ignore_ascii_case(n))
 }
 
 #[cfg(feature = "dev")]

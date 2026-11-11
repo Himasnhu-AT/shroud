@@ -31,17 +31,16 @@ shroud/
 | Module | Role | State |
 |---|---|---|
 | `math` | `V2` ground-plane vector, seeded RNG, `gauss` | done |
-| `arena` | "Foundry" layout (blocks, zones, spawns, cover points), 2D line of sight, collision | done |
+| `arena` (+ `maps/`) | `MapId` and the six layouts (blocks, zones, sites, spawns, cover points), 2D line of sight, collision | done |
 | `nav` | nav grid bake, A* (8-neighbour, no corner cutting), string-pull smoothing | done |
-| `neat/` | NEAT genome, speciation, population, feed-forward network | API stub |
-| `genome` | trait genome + genetic algorithm | todo |
-| `limits` | fairness clamps by generation | todo |
-| `player_model` | telemetry → decayed player profile → insights | todo |
-| `utility` | tactical goal scoring | todo |
-| `mind` | `EnemyMind::think(&Observation) -> Action` joins all layers | todo |
-| `sim` | 2D top-down trainer world + ghost player | todo |
-| `evolve` | between-match pipeline, `BrainState`, save/load | todo |
-
+| `neat` | NEAT genome, speciation, population, feed-forward network | done |
+| `genome` | trait genome + genetic algorithm (technique genes only; aim and reaction are not evolved) | done |
+| `limits` | fixed fairness limits: reaction time, aim error, damage per hit. Same at every generation; only difficulty scales them | done |
+| `player_model` | telemetry → decayed player profile → insights | done |
+| `utility` | tactical goal scoring | done |
+| `mind` | `EnemyMind::think(&Observation) -> Action` joins all layers | done |
+| `sim` | 2D top-down trainer world + ghost player | done |
+| `evolve` | between-match pipeline, `BrainState`, save/load | done |
 ### `game` (Bevy, on the `engine` crate)
 The engine owns the shell: `AppState` (Boot → MainMenu → InGame), pause (Esc, focus loss),
 `CoreSettings` (controls/video/audio) + the generated settings screen, the main/pause menus and

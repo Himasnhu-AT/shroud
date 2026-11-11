@@ -33,9 +33,12 @@ export const nav = [
 export const facts = [
   { label: 'Status', value: 'In development' },
   { label: 'Genre', value: 'First-person shooter, solo against a squad of 3 to 6' },
-  { label: 'Maps', value: 'Foundry, Depot, Office' },
+  { label: 'Mode', value: 'Bomb defusal, first to 3 rounds, with a round economy and buy menu' },
+  { label: 'Maps', value: 'Sirocco, Gantry, Depot, Township, Ledger, Foundry' },
   { label: 'Difficulty', value: 'Recruit, Regular, Veteran, Elite' },
-  { label: 'Built with', value: 'Rust, Bevy 0.19, avian3d' },
+  { label: 'Camera', value: 'Classic, or bodycam: a wide chest-cam lens with free aim and no crosshair' },
+  { label: 'Fairness', value: 'Aim and reaction never improve. They play smarter, never faster.' },
+  { label: 'Built with', value: 'Rust, Bevy 0.20, avian3d' },
 ] as const;
 
 // Unknown: shown as one honest line, every item flagged for the owner to replace.
@@ -53,8 +56,8 @@ export const home = {
   heroHint: 'Live on Foundry: point at or tap the map. That is you.',
   heroCta: { href: '/squad/', label: 'See how they hunt' },
   statement:
-    'One of you against one squad of three to six. Rounds, first to the target score. When the match ends the squad trains against a ghost of you, and the next squad is bred from the ones that did best against you.',
-  statementNote: 'Foundry, Depot and Office rotate every match.',
+    'One of you against one squad of three to six. You carry the bomb, they hold two sites: first to three rounds. Buy guns, armor and grenades between rounds. When the match ends the squad trains against a ghost of you, and the next squad is bred from the ones that did best against you. They get smarter, never faster: their aim and reaction stay fixed.',
+  statementNote: 'Six maps. Pick one before each match.',
   chapters: [
     {
       id: 'belief',
@@ -94,17 +97,17 @@ export const home = {
       rows: [
         { map: 'Foundry', before: 0.17, after: 0.06 },
         { map: 'Depot', before: 0.23, after: 0.15 },
-        { map: 'Office', before: 0.25, after: 0.11 },
+        { map: 'Ledger', before: 0.25, after: 0.11 },
       ],
     },
   },
   difficulty: {
     title: 'Pick how hard they hunt',
-    lead: 'Reaction, aim, damage, coordination, grenade use and how many attack at once all scale with it.',
+    lead: 'Reaction, aim, damage, coordination, grenade use and how many attack at once all scale with it. Evolution never does: it only changes how they play.',
   },
   build: {
     title: 'Rust from the squad brain up',
-    text: 'The game runs on Bevy 0.19 with avian3d physics. The squad brain is a separate Rust crate with no engine dependency, so the same code runs in the game and in a 2D trainer that plays rounds against your ghost while you sit in the menus.',
+    text: 'The game runs on Bevy 0.20 with avian3d physics. The squad brain is a separate Rust crate with no engine dependency, so the same code runs in the game and in a 2D trainer that plays rounds against your ghost while you sit in the menus.',
     engine:
       'Window, settings, menus, pause, UI kit, FPS controller, render budget, devtools and the metrics window come from a shared in-house engine.',
     port: { before: '13,467', after: '7,833', label: 'lines of Shroud game code before and after the move onto the engine' },
@@ -151,31 +154,31 @@ export const maps: MapInfo[] = [
   {
     id: 'depot',
     name: 'Depot',
-    blurb: 'Three lanes, long sightlines, one contested middle.',
+    blurb: 'Bomb sites at a sun-baked bus depot. The freight lane west, the bus bays through the gatehouse, the roofed cistern east.',
     about:
-      'Three lanes between sun-baked buildings. Long A on the west with a door choke, a contested mid with double doors, roofed B tunnels on the east and two crate sites at the north end. You spawn south; the squad holds the north.',
+      'A bus depot baking in the sun. The freight lane runs up the west side to the freight gate, the bus bays fill the middle and open through the gatehouse onto the forecourt, and the cistern winds up the east side under a roof, lit by a few lamps. The arcade and the underpass cut across between them. You spawn south with the bomb; the squad holds the two sites at the north end.',
     cover: 'depot_long_a',
-    coverAlt: 'Depot’s long A lane: sand underfoot between a wooden fence and stucco buildings, a crate stack halfway down.',
+    coverAlt: 'Depot’s freight lane: sand underfoot between a wooden fence and stucco buildings, a crate stack halfway down.',
     shots: [
-      { src: 'depot_b_tunnels', alt: 'Inside Depot’s roofed B tunnels: a narrow plaster corridor lit by one ceiling lamp, crates at the entrance.', caption: 'The roofed B tunnels on the east side: close range, one lamp.' },
+      { src: 'depot_b_tunnels', alt: 'Inside Depot’s cistern: a narrow plaster corridor lit by one ceiling lamp, crates at the entrance.', caption: 'The cistern on the east side: close range, one lamp.' },
       { src: 'round_over', alt: 'Depot round over screen reading Round won, one to zero, in front of a red shipping container.', caption: 'Round won, one to nil. The next round starts on its own.' },
     ],
   },
   {
     id: 'office',
-    name: 'Office',
-    blurb: 'Tight corridors and rooms. Every corner is a fight.',
+    name: 'Ledger',
+    blurb: 'Bomb sites on a records-office floor. A in the server room, B in the records room; tight corridors, every corner a fight.',
     about:
-      'One roofed floor of rooms and corridors: offices on both flanks off two long corridors, open-plan cubicles around a conference room, a break room north and reception south. Doorways everywhere, so any room can be flanked.',
+      'One roofed floor of a records office: the server room (A) on the east flank, the records room (B) on the west, offices off two long corridors, open-plan cubicles around a conference room, a break room north and reception south. Doorways everywhere, so any room can be flanked.',
     cover: 'office_server_room',
-    coverAlt: 'Office server room: a row of dark racks with green status lights under a grid ceiling.',
+    coverAlt: 'Ledger’s server room: a row of dark racks with green status lights under a grid ceiling.',
     shots: [
-      { src: 'office_west_corridor', alt: 'Office west corridor: a long bright hallway with doorways on both sides and ceiling lights running to the far end.', caption: 'The west corridor: doorways on both sides, nowhere to hide.' },
-      { src: 'enemies_office', alt: 'A dark conference table in front of a long wall with two doorways under a ceiling grid.', caption: 'Two doorways, one table: any room in Office can be flanked.' },
+      { src: 'office_west_corridor', alt: 'Ledger’s west corridor: a long bright hallway with doorways on both sides and ceiling lights running to the far end.', caption: 'The west corridor: doorways on both sides, nowhere to hide.' },
+      { src: 'enemies_office', alt: 'A dark conference table in front of a long wall with two doorways under a ceiling grid.', caption: 'Two doorways, one table: any room in Ledger can be flanked.' },
     ],
     compare: [
-      { low: 'low_office_cubicles', high: 'high_office_cubicles', alt: 'The Office cubicles', caption: 'Cubicles at Low and High quality.' },
-      { low: 'low_office_lobby_long', high: 'high_office_lobby_long', alt: 'The long view down the Office lobby', caption: 'The lobby at Low and High quality.' },
+      { low: 'low_office_cubicles', high: 'high_office_cubicles', alt: 'The Ledger cubicles', caption: 'Cubicles at Low and High quality.' },
+      { low: 'low_office_lobby_long', high: 'high_office_lobby_long', alt: 'The long view down the Ledger lobby', caption: 'The lobby at Low and High quality.' },
     ],
   },
 ];
@@ -248,9 +251,9 @@ export const squadPage = {
     between: {
       title: 'Between matches',
       paras: [
-        'Each enemy carries a trait genome of ten genes, evolved with a genetic algorithm: aggression, preferred range, flank bias, cover affinity, reaction time, aim error, burst length, retreat health, team cohesion and prediction trust.',
+        'Each enemy carries a trait genome evolved with a genetic algorithm. Only technique evolves: aggression, preferred range, flank bias, cover affinity, burst length, retreat health, team cohesion and prediction trust, plus which guns it buys and which counters it reaches for.',
         'NEAT networks evolve combat moves. A player model keeps a decayed profile of you: a 32 by 32 heat grid of where you fight, your ranges and your habits. A 2D trainer runs simulated rounds against a ghost built from that model, in small steps while you are in the menus, and the HUD shows the squad generation going up.',
-        'Fairness floors keep it honest. Minimum reaction time starts at 0.45 seconds and never goes below 0.18; minimum aim error starts at 5 degrees and never goes below 1.2. They loosen a little each generation, so the squad gets smarter, not inhuman.',
+        'They get smarter, never faster. Reaction time, aim error and damage per hit are fixed limits: a generation-20 squad aims exactly like a generation-1 squad. Only the difficulty you pick scales them. Everything the squad gains between matches is in how it plays you.',
       ],
     },
   },
@@ -264,7 +267,7 @@ export const notFound = {
 
 export const gallery = [
   { src: 'main_menu', alt: 'Shroud main menu: the title, the line They learn from you, Play, Settings and Quit, and an Enemy brain panel reading Gen 1 and 2308 sim rounds.', caption: 'Main menu. The enemy brain panel counts the trainer’s simulated rounds.' },
-  { src: 'match_setup', alt: 'Match setup screen with four difficulty cards, Recruit to Elite, and three map cards, Foundry, Depot and Office.', caption: 'Match setup: difficulty and map.' },
+  { src: 'match_setup', alt: 'Match setup screen with four difficulty cards, Recruit to Elite, and three map cards, Foundry, Depot and Office (since renamed Ledger).', caption: 'Match setup: difficulty and map. An earlier build with three maps.' },
   { src: 'settings_gameplay', alt: 'Settings, Gameplay tab: difficulty, squad callouts, crosshair colour and size, a crosshair preview and an About this setting panel.', caption: 'Every setting explains itself, with a live crosshair preview.' },
   { src: 'pause', alt: 'Pause menu over the frozen match with the score line, Resume, Settings, Restart match, Main menu and Quit game.', caption: 'Esc pauses with the score line.' },
   { src: 'metrics_window', alt: 'Dev metrics window with frame time, CPU, GPU and memory graphs and a table of per-run stats.', caption: 'The dev metrics window, from the shared engine.' },

@@ -171,8 +171,8 @@ impl Gear {
 
     pub fn label(self) -> &'static str {
         match self {
-            Gear::Kevlar => "Kevlar vest",
-            Gear::KevlarHelmet => "Kevlar + helmet",
+            Gear::Kevlar => "Vest",
+            Gear::KevlarHelmet => "Vest + helmet",
         }
     }
 

@@ -85,7 +85,9 @@ fn save_load_round_trip() {
     std::fs::write(&path, b"not json").unwrap();
     let fresh = BrainState::load_or_new(&path, 99);
     assert_eq!(fresh.seed, 99);
-    assert!(path.with_extension("json.bak").exists());
+    // Kept beside it under a name a manual reset's `brain.json.bak` can't overwrite.
+    let kept = std::fs::read_dir(&dir).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("brain.json.corrupt-"));
+    assert!(kept, "the corrupt file was moved aside");
     let _ = std::fs::remove_dir_all(dir);
 }
 

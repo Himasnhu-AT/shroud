@@ -10,7 +10,7 @@
 //! ```
 
 use crate::arena::Arena;
-use crate::evolve::{BrainState, EvolveConfig, GenReport, Parallel, team_spirit};
+use crate::evolve::{BrainState, EvolveConfig, GenReport, Parallel, checked_json, move_aside, team_spirit, write_atomic};
 use crate::limits::Limits;
 use crate::math::rng_from_seed;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug)]
 pub struct TrainerConfig {
@@ -31,6 +32,9 @@ pub struct TrainerConfig {
     pub max_session_rounds: u64,
     /// Save a checkpoint every this many steps (and on exit) when given a path.
     pub checkpoint_every: u64,
+    /// Also save a checkpoint when this much time has passed since the last one, so a killed
+    /// process loses at most this much training.
+    pub checkpoint_interval: Duration,
     /// Run at the start of the trainer thread and of each sim worker (e.g. lower priority).
     pub worker_init: Option<fn()>,
 }
@@ -43,6 +47,7 @@ impl Default for TrainerConfig {
             anneal_rounds: 50_000,
             max_session_rounds: 500_000,
             checkpoint_every: 25,
+            checkpoint_interval: Duration::from_secs(30),
             worker_init: None,
         }
     }
@@ -99,22 +104,42 @@ impl Trainer {
         Some(s)
     }
 
+    /// Save atomically, with non-finite floats replaced (see `BrainState::save`).
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+        let mut t = self.clone();
+        t.state.sanitize();
+        if let Some(s) = &mut t.last {
+            for v in [&mut s.champion_win, &mut s.mean_win, &mut s.tau] {
+                if !v.is_finite() {
+                    *v = 0.0;
+                }
+            }
         }
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec(self).map_err(std::io::Error::other)?)?;
-        std::fs::rename(tmp, path)
+        write_atomic(path, &checked_json(&t)?)
     }
 
     /// Load a checkpoint. Like `BrainState::load_or_new`, it migrates old saves: weapon genes
     /// get seeded and player-model grids saved at an older map size are reset to the current size.
+    /// `None` if it is missing or unusable (see [`load_checked`](Self::load_checked)).
     pub fn load(path: &Path) -> Option<Self> {
-        let mut t: Trainer = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
-        t.state.migrate();
-        t.state.player_model.fit_grids();
-        Some(t)
+        Self::load_checked(path).ok().flatten()
+    }
+
+    /// [`load`](Self::load), telling a missing checkpoint (`Ok(None)`) from one that doesn't
+    /// parse or fails `BrainState::validate` (`Err`, after moving it aside like a corrupt
+    /// `brain.json`).
+    pub fn load_checked(path: &Path) -> Result<Option<Self>, String> {
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(format!("could not read {}: {e}", path.display())),
+        };
+        let checked = serde_json::from_slice::<Trainer>(&bytes).map_err(|e| e.to_string()).and_then(|mut t| {
+            t.state.migrate();
+            t.state.player_model.fit_grids();
+            t.state.validate().map(|()| t)
+        });
+        checked.map(Some).map_err(|why| move_aside(path, &bytes, &why))
     }
 }
 
@@ -148,6 +173,7 @@ impl TrainerHandle {
             }
             // Train on every map in turn, so squads don't overfit Foundry's layout.
             let arenas: Vec<Arena> = crate::arena::MapId::ALL.iter().map(|&m| Arena::build(m)).collect();
+            let mut saved_at = Instant::now();
             while !p.cancel.load(Ordering::Relaxed) && trainer.session_rounds < cfg.max_session_rounds {
                 let arena = &arenas[(trainer.steps as usize) % arenas.len()];
                 let Some(s) = trainer.step(arena, &cfg, Some(&p.cancel)) else { break };
@@ -155,9 +181,10 @@ impl TrainerHandle {
                 p.steps.store(trainer.steps, Ordering::Relaxed);
                 p.champion_win_milli.store((s.champion_win * 1000.0) as u32, Ordering::Relaxed);
                 if let Some(path) = &checkpoint
-                    && trainer.steps.is_multiple_of(cfg.checkpoint_every.max(1))
+                    && (trainer.steps.is_multiple_of(cfg.checkpoint_every.max(1)) || saved_at.elapsed() >= cfg.checkpoint_interval)
                 {
                     let _ = trainer.save(path);
+                    saved_at = Instant::now();
                 }
             }
             if let Some(path) = &checkpoint {
@@ -185,5 +212,28 @@ impl TrainerHandle {
     pub fn finish(self) -> Option<Trainer> {
         self.cancel();
         self.join.join().ok()
+    }
+
+    /// Cancel and wait at most `timeout` for the trainer (e.g. on app exit, where blocking for
+    /// a whole sim round is too long). `Err(self)` if it is still running; it still saves its
+    /// checkpoint when it does stop, unless the process exits first.
+    ///
+    /// ```ignore
+    /// match handle.finish_within(Duration::from_secs(2)) {
+    ///     Ok(Some(trainer)) => { /* stopped and checkpointed */ }
+    ///     Ok(None) => { /* the thread panicked */ }
+    ///     Err(_still_running) => { /* gave up waiting */ }
+    /// }
+    /// ```
+    pub fn finish_within(self, timeout: Duration) -> Result<Option<Trainer>, Self> {
+        self.cancel();
+        let until = Instant::now() + timeout;
+        while !self.join.is_finished() {
+            if Instant::now() >= until {
+                return Err(self);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(self.finish())
     }
 }

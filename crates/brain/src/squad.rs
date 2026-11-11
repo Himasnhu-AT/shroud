@@ -1094,10 +1094,11 @@ impl SquadCoordinator {
         }
     }
 
-    /// Round over: score the open engagement window (`player_dead`: the squad won it).
-    pub fn end_round(&mut self, player_dead: bool) {
+    /// Round over: score the open engagement window. `squad_won`: the squad won the round (with
+    /// bomb rules the player can die and still win it, so this is the round result, not his death).
+    pub fn end_round(&mut self, squad_won: bool) {
         if let Some(e) = self.episode.as_mut() {
-            e.killed |= player_dead;
+            e.killed |= squad_won;
         }
         self.close_episode(None);
     }

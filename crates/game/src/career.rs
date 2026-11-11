@@ -69,6 +69,9 @@ pub struct MatchCareer {
     pub xp_before: u32,
     /// The bomb's defuser on the previous frame (the kill can clear it the same frame).
     last_defuser: Option<usize>,
+    /// The round was already over on the previous frame: kills and damage from then on (the
+    /// round-over pause) are not logged.
+    round_closed: bool,
 }
 
 impl MatchCareer {
@@ -143,6 +146,7 @@ pub(crate) fn start_round(
         mc.log.begin_round(squad.size as u32);
     }
     mc.last_defuser = None;
+    mc.round_closed = false;
 }
 
 /// Fresh objectives (and log) for the current match.
@@ -171,6 +175,9 @@ fn track(
     // Only mark the resource changed when the log really changes (the HUD redraws on it).
     let m = mc.bypass_change_detection();
     let last_defuser = std::mem::replace(&mut m.last_defuser, defuser);
+    // Over before this frame? The frame the round ends still counts: the killing blow (his or
+    // the squad's) lands on it.
+    let closed = std::mem::replace(&mut m.round_closed, flow.round_over.is_some());
     let Some(round) = m.log.rounds.last_mut() else {
         kills.clear();
         bombs.clear();
@@ -179,7 +186,7 @@ fn track(
     };
     let mut changed = false;
     for k in kills.read() {
-        if !(k.by_player && k.gun && !k.on_player) {
+        if closed || !(k.by_player && k.gun && !k.on_player) {
             continue;
         }
         let Some(weapon) = k.weapon else { continue };
@@ -201,14 +208,12 @@ fn track(
         }
     }
     if let Some((pe, hp, arsenal)) = player {
-        if flow.round_over.is_none() {
-            let taken: f32 = damage.read().filter(|d| d.target == pe).map(|d| d.amount).sum();
-            if taken > 0.0 {
-                round.damage_taken += taken;
-                changed = true;
-            }
-        } else {
-            damage.clear();
+        // Read before deciding: damage on the frame the round ends (a hit or the killing blow)
+        // counts, so that round is not flawless.
+        let taken: f32 = damage.read().filter(|d| d.target == pe).map(|d| d.amount).sum();
+        if taken > 0.0 && !closed {
+            round.damage_taken += taken;
+            changed = true;
         }
         if hp.is_dead() && !round.died {
             round.died = true;

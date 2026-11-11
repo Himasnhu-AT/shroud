@@ -27,6 +27,8 @@ const MAX_CLIMB: f32 = 0.22;
 const STRING_RESET_S: f32 = 0.32;
 /// A semi-auto pull during cooldown fires when the gun is ready, if within this long.
 const TRIGGER_BUFFER_S: f32 = 0.14;
+/// Most shots one frame may fire (an automatic at a low frame rate catches up, up to this).
+pub const MAX_SHOTS_PER_FRAME: u32 = 4;
 
 // Reload stage marks (bit flags on `Weapon::reload_marks`).
 const MARK_OUT: u8 = 1;
@@ -170,7 +172,7 @@ pub fn fire_and_reload(
         w.burst = 0;
     }
     w.cooldown -= dt;
-    if !intent.fire || w.cooldown < -0.05 {
+    if !intent.fire {
         w.cooldown = w.cooldown.max(0.0);
     }
     w.queued = (w.queued - dt).max(0.0);
@@ -295,14 +297,9 @@ pub fn fire_and_reload(
         }
     }
 
-    // Fire.
-    let want = match spec.mode {
-        FireMode::Auto => intent.fire,
-        _ => w.queued > 0.0,
-    };
-    if !want || w.cooldown > 0.0 || w.ammo == 0 || w.sprint > 0.35 {
-        return;
-    }
+    // Fire. Time owed from before this frame was not spent firing (the gun was blocked or idle),
+    // so at most this frame's time carries over: no burst after a reload or a draw.
+    w.cooldown = w.cooldown.max(-dt);
     let Ok(cam_local) = cams.single() else { return };
     // Compose from local transforms: GlobalTransform lags a frame behind movement.
     let cam = ptf.mul_transform(*cam_local);
@@ -311,7 +308,41 @@ pub fn fire_and_reload(
     } else {
         (cam.translation, *cam.forward(), *cam.right(), *cam.up())
     };
+    // Every shot whose time came this frame (an automatic at a low frame rate fires several),
+    // capped; the leftover cooldown carries into the next frame.
+    for _ in 0..MAX_SHOTS_PER_FRAME {
+        let want = match spec.mode {
+            FireMode::Auto => intent.fire,
+            _ => w.queued > 0.0,
+        };
+        if !want || w.cooldown > 0.0 || w.ammo == 0 || w.sprint > 0.35 {
+            break;
+        }
+        fire_one(&mut w, &mut kick, motor, &spatial, &arena.0, &hitboxes, &healths, &mut marker, &mut out, &mut hits, player, kind, (origin, fwd, right, up), &cam, muzzle.0);
+    }
+    // Past the cap (a long hitch) the rest is dropped next frame by the `-dt` floor above.
+}
 
+/// One trigger pull: ammo, cooldown, recoil, pellets, penetration and damage.
+#[allow(clippy::too_many_arguments)]
+fn fire_one(
+    w: &mut Weapon,
+    kick: &mut FpsViewKick,
+    motor: &FpsMotor,
+    spatial: &SpatialQuery,
+    arena: &Arena,
+    hitboxes: &Query<&Hitbox>,
+    healths: &Query<(), With<Health>>,
+    marker: &mut HitMarker,
+    out: &mut FireOut,
+    hits: &mut Vec<(Entity, f32, bool)>,
+    player: Entity,
+    kind: WeaponKind,
+    (origin, fwd, right, up): (Vec3, Vec3, Vec3, Vec3),
+    cam: &Transform,
+    muzzle_cam: Vec3,
+) {
+    let spec = kind.spec();
     w.ammo -= 1;
     w.cooldown += spec.shot_interval();
     w.queued = 0.0;
@@ -332,7 +363,7 @@ pub fn fire_and_reload(
 
     out.shots.write(ShotFired::new(origin, fwd, player, kind));
     out.events.write(GunEvent::Shot { kind });
-    let muzzle_world = cam.transform_point(muzzle.0);
+    let muzzle_world = cam.transform_point(muzzle_cam);
 
     hits.clear();
     for i in 0..spec.pellets.max(1) {
@@ -371,7 +402,7 @@ pub fn fire_and_reload(
                 out.impacts.write(Impact { pos: p, normal: hit.normal, flesh: true, surface: Surface::Suit, exit: false });
                 break;
             }
-            let (surface, block) = surface_at(&arena.0, p, hit.normal);
+            let (surface, block) = surface_at(arena, p, hit.normal);
             out.impacts.write(Impact { pos: p, normal: hit.normal, flesh: false, surface, exit: false });
             // Through thin cover?
             let Some(b) = block.filter(|b| pass < MAX_PENETRATIONS && spec.penetration > 0.0 && penetrable(b)) else { break };
@@ -392,7 +423,7 @@ pub fn fire_and_reload(
         }
     }
     for &(target, amount, headshot) in hits.iter() {
-        out.damage.write(Damage { target, amount, source: player, headshot });
+        out.damage.write(Damage { target, amount, source: player, headshot, cause: super::DamageCause::Gun(kind) });
         let head = headshot || (marker.timer > 0.0 && marker.headshot);
         *marker = HitMarker { timer: super::HIT_MARKER_S, headshot: head, kill: false };
     }

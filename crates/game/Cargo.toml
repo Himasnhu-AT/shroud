@@ -30,4 +30,5 @@ default = ["dev"]
 dev = ["engine/devtools", "engine/trace"]
 
 [dev-dependencies]
-ashlar-control = { path = "/Users/himanshu/codes/synthai/ashlar/crates/control" }
+# Same git rev as the engine's, so tests share its control client and build on any machine.
+ashlar-control = { git = "https://github.com/Himasnhu-AT/ashlar", rev = "561745aaf96e07a0efe2ed61f37b0a365f46a530" }

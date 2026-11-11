@@ -1,30 +1,30 @@
 ---
-// Fairness floors from crates/brain/src/limits.rs:
-//   min_reaction_s    = max(0.45 - 0.015 g, 0.18)
-//   min_aim_error_deg = max(5.0 - 0.25 g, 1.2)
+// Fairness limits from crates/brain/src/limits.rs. They are fixed: `Limits::for_generation`
+// returns the same values at every generation, and only the difficulty scales them
+// (crates/brain/src/difficulty.rs). Evolution improves technique, never mechanics.
+//   REACTION_S    = 0.44 s
+//   AIM_ERROR_DEG = 5.0°
 const G = 30;
-const gens = Array.from({ length: G + 1 }, (_, g) => g);
-const react = (g: number) => Math.max(0.45 - 0.015 * g, 0.18);
-const aim = (g: number) => Math.max(5 - 0.25 * g, 1.2);
+const REACTION_S = 0.44;
+const AIM_ERROR_DEG = 5.0;
 const W = 300, H = 150, pad = 4;
-const x = (g: number) => pad + (g / G) * (W - pad * 2);
-const line = (f: (g: number) => number, max: number) =>
-  gens.map((g, i) => `${i ? 'L' : 'M'}${x(g).toFixed(1)},${(H - pad - (f(g) / max) * (H - pad * 2)).toFixed(1)}`).join(' ');
+const y = (v: number, max: number) => H - pad - (v / max) * (H - pad * 2);
+const flat = (v: number, max: number) => `M${pad},${y(v, max).toFixed(1)} L${W - pad},${y(v, max).toFixed(1)}`;
 const charts = [
-  { title: 'Minimum reaction time', unit: 's', d: line(react, 0.5), start: '0.45 s', floor: '0.18 s from gen 18', floorY: H - pad - (0.18 / 0.5) * (H - pad * 2) },
-  { title: 'Minimum aim error', unit: '°', d: line(aim, 5.5), start: '5°', floor: '1.2° from gen 16', floorY: H - pad - (1.2 / 5.5) * (H - pad * 2) },
+  { title: 'Reaction time floor', d: flat(REACTION_S, 0.5), value: '0.44 s', floorY: y(REACTION_S, 0.5) },
+  { title: 'Aim error floor', d: flat(AIM_ERROR_DEG, 5.5), value: '5°', floorY: y(AIM_ERROR_DEG, 5.5) },
 ];
 ---
 <figure class="floors">
   {charts.map((c) => (
     <div class="floors__chart">
       <p class="floors__title">{c.title}</p>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${c.title}: starts at ${c.start}, falls each generation, floor ${c.floor}.`}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${c.title}: ${c.value} at generation 0 and still ${c.value} at generation ${G}.`}>
         <line class="floors__floor" x1="0" x2={W} y1={c.floorY} y2={c.floorY} />
         <path class="floors__line" d={c.d} />
       </svg>
-      <p class="floors__axis"><span>gen 0, {c.start}</span><span>{c.floor}</span></p>
+      <p class="floors__axis"><span>gen 0, {c.value}</span><span>gen {G}, {c.value}</span></p>
     </div>
   ))}
-  <figcaption>The floors by squad generation, plotted from the formulas in the brain crate.</figcaption>
+  <figcaption>The fairness limits by squad generation: flat. Only the difficulty you pick scales them. Values before difficulty scaling, from the brain crate.</figcaption>
 </figure>

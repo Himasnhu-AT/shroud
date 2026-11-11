@@ -84,6 +84,38 @@ impl Default for ShroudSettings {
     }
 }
 
+/// Shroud's mouse-sensitivity range (the engine slider goes to 3; ours to 4).
+pub const SENSITIVITY_RANGE: (f32, f32) = (0.1, 4.0);
+
+impl ShroudSettings {
+    /// Make values loaded from settings.json safe: the crosshair size clamped to its slider
+    /// range, the colour to 0..1, anything non-finite back to its default.
+    pub fn sanitized(mut self) -> Self {
+        let d = ShroudSettings::default();
+        self.crosshair_size = if self.crosshair_size.is_finite() { self.crosshair_size.clamp(0.5, 2.0) } else { d.crosshair_size };
+        if self.crosshair_color.iter().any(|c| !c.is_finite()) {
+            self.crosshair_color = d.crosshair_color;
+        }
+        for c in &mut self.crosshair_color {
+            *c = c.clamp(0.0, 1.0);
+        }
+        self
+    }
+}
+
+/// Clamp the loaded settings to the ranges the settings screen allows (the engine already did
+/// its own core fields, with a loose sensitivity bound we tighten to Shroud's slider here).
+fn sanitize_loaded(world: &mut World) {
+    let mut g = world.resource_mut::<ShroudSettings>();
+    let clean = g.clone().sanitized();
+    g.set_if_neq(clean);
+    let mut core = world.resource_mut::<engine::settings::CoreSettings>();
+    let sens = core.sensitivity.clamp(SENSITIVITY_RANGE.0, SENSITIVITY_RANGE.1);
+    if core.sensitivity != sens {
+        core.sensitivity = sens;
+    }
+}
+
 pub const CROSSHAIR_COLORS: [[f32; 3]; 6] =
     [[0.4, 1.0, 0.6], [0.35, 0.9, 1.0], [1.0, 1.0, 1.0], [1.0, 0.92, 0.3], [1.0, 0.4, 0.95], [1.0, 0.3, 0.3]];
 
@@ -92,6 +124,7 @@ pub struct ShroudSettingsPlugin;
 impl Plugin for ShroudSettingsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SettingsPlugin::<ShroudSettings>::default());
+        sanitize_loaded(app.world_mut());
         register_fields(app);
         app.add_systems(Update, show_mount_row);
     }
@@ -210,7 +243,45 @@ fn register_fields(app: &mut App) {
     reg.fields.retain(|f| !matches!(f.key, "music_volume" | "ui_volume"));
     // Shroud's sensitivity range goes to 4x.
     if let Some(f) = reg.fields.iter_mut().find(|f| f.key == "sensitivity") {
-        f.kind = FieldKind::Slider { min: 0.1, max: 4.0, step: 0.05, format: two_decimals };
-        f.set = |w, v| w.resource_mut::<engine::settings::CoreSettings>().sensitivity = v.clamp(0.1, 4.0);
+        f.kind = FieldKind::Slider { min: SENSITIVITY_RANGE.0, max: SENSITIVITY_RANGE.1, step: 0.05, format: two_decimals };
+        f.set = |w, v| w.resource_mut::<engine::settings::CoreSettings>().sensitivity = v.clamp(SENSITIVITY_RANGE.0, SENSITIVITY_RANGE.1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_settings_are_clamped_and_finite() {
+        let s = ShroudSettings { crosshair_size: 1e39_f64 as f32, crosshair_color: [f32::NAN, 0.5, 0.5], ..Default::default() }.sanitized();
+        assert_eq!(s.crosshair_size, ShroudSettings::default().crosshair_size);
+        assert_eq!(s.crosshair_color, ShroudSettings::default().crosshair_color);
+        let s = ShroudSettings { crosshair_size: 0.0, crosshair_color: [2.0, -1.0, 0.5], ..Default::default() }.sanitized();
+        assert_eq!(s.crosshair_size, 0.5);
+        assert_eq!(s.crosshair_color, [1.0, 0.0, 0.5]);
+        assert_eq!(ShroudSettings::default().sanitized(), ShroudSettings::default());
+    }
+
+    #[test]
+    fn plugin_clamps_a_hand_edited_settings_file() {
+        let dir = std::env::temp_dir().join(format!("shroud-settings-clamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.json"), r#"{"core":{"fov_deg":0.0,"sensitivity":9.0},"game":{"crosshair_size":50.0}}"#).unwrap();
+        let mut app = App::new();
+        app.insert_resource(engine::paths::DataDir(dir.clone()));
+        app.add_plugins(engine::settings::CoreSettingsPlugin);
+        sanitize_after_load(&mut app);
+        let core = app.world().resource::<engine::settings::CoreSettings>();
+        assert_eq!(core.fov_deg, 60.0);
+        assert_eq!(core.sensitivity, SENSITIVITY_RANGE.1);
+        assert_eq!(app.world().resource::<ShroudSettings>().crosshair_size, 2.0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The part of `ShroudSettingsPlugin::build` that loads and clamps (without the UI rows).
+    fn sanitize_after_load(app: &mut App) {
+        app.add_plugins(SettingsPlugin::<ShroudSettings>::default());
+        sanitize_loaded(app.world_mut());
     }
 }

@@ -8,7 +8,8 @@ use bevy::prelude::*;
 use brain::evolve::BrainState;
 use brain::trainer::{Trainer, TrainerConfig, TrainerHandle};
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::dev::Dev;
 use crate::save::Brain;
@@ -23,7 +24,8 @@ impl Plugin for TrainerTaskPlugin {
             .add_systems(OnEnter(AppState::MainMenu), start)
             .add_systems(OnEnter(GameState::Debrief), start)
             .add_systems(OnEnter(GameState::Playing), stop)
-            .add_systems(Update, reap);
+            .add_systems(Update, reap)
+            .add_systems(Last, stop_on_exit);
     }
 }
 
@@ -51,14 +53,23 @@ impl BackgroundTrainer {
         }
     }
 
+    /// `<data dir>/trainer.json`.
+    pub fn checkpoint(&self) -> &Path {
+        &self.checkpoint
+    }
+
     /// Stop training and hand over its brain if it is a continuation of `live`.
-    /// Call only between matches.
+    /// Call only between matches. A merged session's checkpoint stays on disk: the caller
+    /// deletes it (`checkpoint()`) only once the merged brain is saved, so quitting or a failed
+    /// evolve can't lose the background training.
     pub fn take_for_merge(&mut self, live: &BrainState, log: &Dev) -> Option<BrainState> {
         self.halt(log);
         let t = self.parked.take()?;
-        let _ = std::fs::remove_file(&self.checkpoint);
         self.rounds_unmerged = 0;
         let ok = t.matches(live) && t.state.evaluated && t.steps > 0;
+        if !ok {
+            let _ = std::fs::remove_file(&self.checkpoint);
+        }
         log.log("trainer", || json!({ "action": if ok { "merge" } else { "discard" }, "steps": t.steps, "rounds": t.session_rounds }));
         ok.then_some(t.state)
     }
@@ -66,11 +77,14 @@ impl BackgroundTrainer {
     fn halt(&mut self, log: &Dev) {
         self.stopping = false;
         let Some(h) = self.running.take() else { return };
-        if let Some(t) = h.finish() {
-            let win = t.last.map_or(0.0, |s| s.champion_win);
-            log.log("trainer", || json!({ "action": "stop", "steps": t.steps, "rounds": t.session_rounds, "champion_win": win }));
-            self.rounds_unmerged = t.session_rounds;
-            self.parked = Some(t);
+        match h.finish() {
+            Some(t) => {
+                let win = t.last.map_or(0.0, |s| s.champion_win);
+                log.log("trainer", || json!({ "action": "stop", "steps": t.steps, "rounds": t.session_rounds, "champion_win": win }));
+                self.rounds_unmerged = t.session_rounds;
+                self.parked = Some(t);
+            }
+            None => warn!("trainer: the background trainer thread panicked; its session is lost (the last checkpoint, if any, is kept)"),
         }
     }
 }
@@ -101,7 +115,13 @@ fn start(mut bg: ResMut<BackgroundTrainer>, brain: Res<Brain>, headless: Res<Hea
     let trainer = bg
         .parked
         .take()
-        .or_else(|| Trainer::load(&bg.checkpoint))
+        .or_else(|| match Trainer::load_checked(&bg.checkpoint) {
+            Ok(t) => t,
+            Err(note) => {
+                warn!("trainer: {note}");
+                None
+            }
+        })
         .filter(|t| t.matches(&brain.state))
         .unwrap_or_else(|| Trainer::new(brain.state.clone()));
     let cfg = TrainerConfig { threads: 2, worker_init: Some(lower_priority), ..Default::default() };
@@ -128,5 +148,23 @@ fn stop(mut bg: ResMut<BackgroundTrainer>) {
 fn reap(mut bg: ResMut<BackgroundTrainer>, log: Dev) {
     if bg.stopping && bg.running.as_ref().is_some_and(TrainerHandle::is_finished) {
         bg.halt(&log);
+    }
+}
+
+/// How long quitting waits for the trainer to finish its sim round and save its checkpoint.
+const EXIT_WAIT: Duration = Duration::from_secs(2);
+
+/// The app is quitting: stop the trainer and give it a moment to write its checkpoint, so the
+/// generations since the last periodic checkpoint aren't lost.
+fn stop_on_exit(mut exits: MessageReader<AppExit>, mut bg: ResMut<BackgroundTrainer>) {
+    if exits.read().next().is_none() {
+        return;
+    }
+    let Some(h) = bg.running.take() else { return };
+    bg.stopping = false;
+    match h.finish_within(EXIT_WAIT) {
+        Ok(Some(t)) => info!("trainer: stopped on exit after {} steps (checkpoint saved)", t.steps),
+        Ok(None) => warn!("trainer: the background trainer thread panicked"),
+        Err(_) => warn!("trainer: still in a sim round after {} s at exit; keeping the last periodic checkpoint", EXIT_WAIT.as_secs()),
     }
 }
