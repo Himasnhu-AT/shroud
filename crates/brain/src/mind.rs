@@ -23,6 +23,8 @@ pub const NEAT_OUTPUTS: usize = 4;
 /// How fast enemies can turn their aim (rad/s): a quick flick by the player breaks their aim.
 pub const MAX_TURN_RATE: f32 = std::f32::consts::TAU;
 pub const ENGAGE_MEMORY_S: f32 = 1.5;
+/// How long (s) out of sight his last-seen aim still counts as "aiming at me" (fading to 0).
+pub const AIM_MEMORY_S: f32 = 1.5;
 /// After a hit, aim spread is up to `1 + FLINCH_SPREAD` times wider, easing back over `FLINCH_S`.
 pub const FLINCH_S: f32 = 0.25;
 pub const FLINCH_SPREAD: f32 = 1.5;
@@ -118,6 +120,13 @@ impl Blackboard {
     }
 }
 
+/// How squarely he aims at a member whose bearing to him is `dir_p` (unit): -1..1. Unseen,
+/// his last-seen aim fades to 0 over `AIM_MEMORY_S` (he may have turned since).
+pub fn aiming_at_me(o: &Observation, dir_p: V2) -> f32 {
+    let trust = if o.player_visible { 1.0 } else { (1.0 - o.time_since_seen / AIM_MEMORY_S).clamp(0.0, 1.0) };
+    V2::from_angle(o.player_facing).dot(-dir_p) * trust
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Observation {
     pub dt: f32,
@@ -129,14 +138,15 @@ pub struct Observation {
     /// Last known position if not visible.
     pub player_pos: V2,
     pub player_vel: V2,
+    /// Player health 0..1 when the squad last saw him (no wallhack: not live while unseen).
     pub player_hp: f32,
-    /// Player look direction (radians on the ground plane).
+    /// Player look direction (radians on the ground plane) when the squad last saw him.
     pub player_facing: f32,
     pub time_since_seen: f32,
     pub heard_shot: Option<V2>,
     pub allies: Vec<AllyInfo>,
     pub taking_fire: bool,
-    /// The player is reloading (a window to push).
+    /// The player is reloading and this member sees or hears it (a window to push).
     pub player_reloading: bool,
     /// The player just took damage (another window to push).
     pub player_hurt: bool,
@@ -586,7 +596,7 @@ impl EnemyMind {
             self.seen_time = (self.seen_time - 2.0 * o.dt).max(0.0);
         }
         let engaged = o.player_visible || o.time_since_seen < ENGAGE_MEMORY_S;
-        let aiming_at_me = V2::from_angle(o.player_facing).dot(-dir_p);
+        let aiming_at_me = aiming_at_me(o, dir_p);
 
         // Alert: own senses (sight, pain, sound), raised to the squad's level.
         if o.heard_shot.is_some() && o.heard_shot != self.heard_prev {

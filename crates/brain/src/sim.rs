@@ -231,6 +231,8 @@ pub fn run_round_opts(
     squad.utility = utility;
     squad.seed(seed);
     // --- end squad layer ---
+    // The ghost's look angle at the squad's last sighting (its health: `squad.player_hp`).
+    let mut seen_facing = 0.0f32;
     let mut last_hit: Vec<f32> = vec![f32::NEG_INFINITY; n]; // assist/trade bookkeeping
     let mut last_ally_death = f32::NEG_INFINITY;
     // Utility: grenades in flight, and how long the ghost stays flashed.
@@ -261,7 +263,6 @@ pub fn run_round_opts(
                 bark: minds[i].take_bark(),
             })
             .collect();
-        squad.player_hp = ghost.body.hp / HP;
         let orders = squad.tick(DT, &views, arena, model).to_vec();
         squad.drain_callouts();
         for th in squad.take_throws() {
@@ -274,6 +275,8 @@ pub fn run_round_opts(
             m.set_doctrine(squad.member_doctrine(i));
         }
         let board = squad.board;
+        // What the squad knows of his facing and health: the last sighting (no wallhack).
+        let mut known = (seen_facing, squad.player_hp);
         // --- end squad layer ---
         for i in 0..n {
             if !enemies[i].alive() {
@@ -285,6 +288,7 @@ pub fn run_round_opts(
             if sees {
                 last_seen[i] = 0.0;
                 last_known[i] = ghost.body.pos;
+                known = (ghost.facing, ghost.body.hp / HP);
             } else {
                 last_seen[i] += DT;
             }
@@ -305,13 +309,14 @@ pub fn run_round_opts(
                 player_visible: sees,
                 player_pos: shared.0,
                 player_vel: if sees { ghost.body.vel } else { V2::ZERO },
-                player_hp: ghost.body.hp / HP,
-                player_facing: ghost.facing,
+                player_hp: known.1,
+                player_facing: known.0,
                 time_since_seen: shared.1,
                 heard_shot: heard[i],
                 allies,
                 taking_fire: enemies[i].hit_t < 0.6,
-                player_reloading: ghost.body.reloading(),
+                player_reloading: ghost.body.reloading()
+                    && (sees || crate::perception::hear(arena, ghost.body.pos, enemies[i].pos, crate::perception::RELOAD_RANGE).is_some()),
                 player_hurt: ghost.body.hit_t < 0.8,
                 squad_alert: board.alert,
                 token_denied: !squad.tokens.get(i).copied().unwrap_or(true),
@@ -363,6 +368,8 @@ pub fn run_round_opts(
                 }
             }
         }
+        seen_facing = known.0;
+        squad.player_hp = known.1;
         if ghost_spotted {
             ghost.stats.engaged_s += DT;
         }

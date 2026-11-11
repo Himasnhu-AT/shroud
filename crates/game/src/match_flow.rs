@@ -58,6 +58,11 @@ impl MatchFlow {
         self.started = false;
         self.round_over = None;
     }
+    /// The round in play ended with a result (the round-over banner). False when it is left
+    /// without one (`abandon`): nothing from it may train the squad.
+    pub fn round_decided(&self) -> bool {
+        self.round_over.is_some()
+    }
     fn needs_new_match(&self) -> bool {
         !self.started || self.player_rounds >= ROUNDS_TO_WIN || self.enemy_rounds >= ROUNDS_TO_WIN
     }

@@ -230,3 +230,19 @@ fn contact_callout_names_true_zone() {
         coord.drain_callouts();
     }
 }
+
+/// No wallhack: out of sight, his last-seen aim stops counting as "aiming at me" within
+/// `AIM_MEMORY_S`; in sight it counts in full.
+#[test]
+fn stale_aim_fades_out_of_sight() {
+    let me = V2::new(0.0, 0.0);
+    let p = V2::new(0.0, 10.0);
+    let dir_p = (p - me).norm();
+    // Facing straight at me (from p toward me).
+    let facing = (me - p).angle();
+    let at = |visible: bool, age: f32| brain::mind::aiming_at_me(&Observation { player_visible: visible, player_facing: facing, ..obs(me, p, age, Alert::Combat) }, dir_p);
+    assert!((at(true, 0.0) - 1.0).abs() < 1e-4);
+    assert!(at(false, 0.5) > 0.5 && at(false, 0.5) < 1.0);
+    assert_eq!(at(false, brain::mind::AIM_MEMORY_S), 0.0);
+    assert_eq!(at(false, 30.0), 0.0);
+}
