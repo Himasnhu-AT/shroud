@@ -333,17 +333,17 @@
  {
   "cmd": "player.teleport",
   "params": {
-   "x": -20,
-   "z": -10
+   "x": -6,
+   "z": -6
   }
  },
  {
   "cmd": "player.look",
   "params": {
    "at": [
-    -24,
+    -2,
     1.5,
-    -24
+    -22
    ]
   }
  },
@@ -362,17 +362,17 @@
  {
   "cmd": "player.teleport",
   "params": {
-   "x": 20,
-   "z": -8
+   "x": 25,
+   "z": -8.5
   }
  },
  {
   "cmd": "player.look",
   "params": {
    "at": [
-    24,
-    1.5,
-    -22
+    21,
+    1.2,
+    -26
    ]
   }
  },
@@ -385,17 +385,17 @@
  {
   "cmd": "player.teleport",
   "params": {
-   "x": 0,
-   "z": -20
+   "x": -6,
+   "z": -23
   }
  },
  {
   "cmd": "player.look",
   "params": {
    "at": [
-    0,
+    2,
     1.0,
-    -28
+    -30
    ]
   }
  },

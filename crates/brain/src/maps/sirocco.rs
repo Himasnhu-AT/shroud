@@ -1,34 +1,34 @@
 //! "Sirocco": a bomb-defusal layout in a whitewashed hill town at midday.
 //!
 //! ```text
-//!            north (defenders)
-//!   +-------------+---+--------+---+-------------+
-//!   |   A site    |   | def.   |   |   B site    |
-//!   |  (plaza,    |con| spawn  |con|  (market,   |
-//!   |  fountain)  |   |        |   |   stalls)   |
-//!   +--+   +------+---+ mid    +---+--+    +-----+
-//!   |  |   | short leg|  doors | B    |    | tun-|
-//!   |A |   +----------+--------+ short|    | nel |
-//!   |  |   house |   alley  mid |  alley    | exit|
-//!   |long+-doors-+           |   +------+  |(roof|
-//!   |  |  houses  |   mid    |  houses    | ed) |
-//!   +--+----------+----------+------------+-----+
-//!   |             attacker spawn               |
-//!   +------------------------------------------+
-//!            south (attackers)
+//!                        north (defenders)
+//!   +--------------+--+---------------------+------------------------+
+//!   |  A site      |  |   defender spawn    |   the convent (solid)  |
+//!   |  (fountain   |  |                     |                        |
+//!   |   plaza)    west+---- the bell arch --+--+---------------------+
+//!   |             arch   square  (( arch )) east   B site            |
+//!   +--+-----+    |  |                      arch   (market, canopy)  |
+//!   |bakery  |    |  +--+---D---------+-----+--+------+     +--------+
+//!   |  D   high st.  |v |  the church  |priest's|house |dog- | house  |
+//!   |baker's|      |  |i D  (pews,    | house  |      | leg | (solid)|
+//!   +--D---+  gate |  |n |   altar)    |(solid) +------+  || |        |
+//!   | lower +------+--+e +------D------+---+ dog-leg alley  ||        |
+//!   | street| the cellars  procession road |-----------+    ||        |
+//!   |       +------------+   (square)      |  house    |    ||        |
+//!   +-------+------------+---[spawn wall]--+-----------+----++--------+
+//!   |                     attacker spawn                              |
+//!   +-----------------------------------------------------------------+
+//!                        south (attackers)
 //! ```
 //!
-//! Routes (callout names): **the lower street** then **the high street** (west, through the
-//! tall arched town gate halfway), **the vine alley** (off the procession road under a
-//! pergola, turning north into A, or through **the baker's house** from the high street),
-//! **the procession road** (the sniper lane from the defender spawn through **the bell arch**
-//! down to the spawn wall), **the dog-leg** (an L-shaped alley off the road), **the cellars**
-//! (two roofed corridors with a cross-link on the east, opening at **the cellar mouth**).
-//! Defenders rotate between sites through **the west arch** and **the east arch** either side
-//! of their spawn. The player (attacker) spawns south; the squad holds north.
-//!
-//! The lane layout is up for a rework: today's shape sits too close to a well-known defusal
-//! map. The callout names stay.
+//! Two lanes and a church. West: **the lower street** along the town wall, a jog east into
+//! **the high street**, which opens into A from the south (or through **the baker's house**).
+//! East: **the dog-leg**, an L-shaped alley off the square that weaves north into the side of B.
+//! In the middle the attackers' square (**the procession road**) leads into **the church**
+//! (side door onto **the vine alley**), whose north door opens on **the bell arch** square in
+//! front of the defender spawn; from there **the west arch** leads to A and **the east arch** to
+//! B. **The cellars** are a roofed cross-link from the lower street to the square. The player
+//! (attacker) spawns south; the squad holds north.
 
 use crate::arena::{Arena, BuildingUse, Builder, FloorSkin, Header, LampStyle, MapId, Paint, Skin, zone};
 use crate::building::{Building, Opening, Side, STOREY};
@@ -47,11 +47,11 @@ pub fn sirocco() -> Arena {
     let mut b = Builder::sized(SIROCCO_HALF, 7.0, Stucco);
 
     // ------------------------------------------------------------------ attacker spawn (south)
-    // A paved square under the south houses; a garden wall shields it from the mid lane.
+    // A paved square under the south houses; a garden wall shields it from the church door.
     b.tall(-39.0, 35.0, -26.0, 39.0, 8.5, Stucco);
     b.tall(-9.0, 37.0, 9.0, 39.0, 6.0, Stucco);
     b.tall(25.0, 34.0, 39.0, 39.0, 7.5, Stucco);
-    b.tall(-4.0, 26.5, 4.0, 27.7, 3.4, Stucco); // spawn wall: mid's sniper lane ends here
+    b.tall(-4.0, 26.5, 4.0, 27.7, 3.4, Stucco); // spawn wall
     b.low(-17.0, 31.0, -14.0, 34.0, Planter); // fountain
     b.low(13.0, 30.0, 14.2, 31.2, Crate);
     b.low(14.2, 30.0, 15.4, 31.2, Crate);
@@ -59,194 +59,180 @@ pub fn sirocco() -> Arena {
     b.low(-24.0, 29.0, -22.8, 30.2, Barrel);
     b.low(-30.0, 31.0, -27.0, 31.6, Stucco);
 
-    // ------------------------------------------------------------------ west: the high street, the baker's house, the vine alley
-    // The houses between the high street and the procession road: a tall row (south) and a lower one (north).
-    b.tall(-27.0, 17.0, -15.0, 26.0, 7.5, Stucco);
-    b.tall(-27.0, 9.0, -15.0, 13.0, 6.0, Stucco);
-    b.tall(-15.0, 9.0, -5.0, 13.0, 7.0, Stucco);
-    b.tall(-15.0, 17.0, -5.0, 26.0, 6.5, Stucco);
-    // The mid alleys: side streets off top mid, west to outside long and east into the lower tunnel.
-    arch(&mut b, -5.6, 13.0, -5.0, 17.0, 3.0, 5.0);
-    arch(&mut b, 5.0, 13.0, 5.6, 17.0, 3.0, 5.0);
-    b.low(-20.0, 13.4, -18.8, 14.6, Crate);
-    b.low(18.0, 15.6, 19.2, 16.8, Barrel);
-    b.tall(-17.0, -2.0, -5.0, 9.0, 5.5, Stucco);
-    // The baker's house: two rooms between the high street and the vine alley (a third way in).
-    Building::new("the baker's house", BuildingUse::House, -27.0, -2.0, -17.0, 9.0, STOREY, Plaster)
-        .door(Side::West, 3.0)
-        .windows(Side::West, &[6.5], 1.4)
-        .door(Side::North, -21.0)
-        .windows(Side::North, &[-18.6], 1.2)
-        .partition_z(5.0, -26.6, -17.4, &[Opening::door(-20.0)])
-        .room("the baker's house", -26.6, -1.6, -17.4, 4.85, Some(FloorSkin::Wood))
-        .room("the bakery", -26.6, 5.15, -17.4, 8.6, Some(FloorSkin::Tiles))
-        .low(-26.6, 7.6, -23.0, 8.6, Desk)
-        .low(-25.6, -0.4, -23.6, 0.8, Desk)
-        .tall(-18.2, 1.8, -17.4, 3.6, 2.0, Cabinet)
+    // ------------------------------------------------------------------ west: lower street, high street, baker's house
+    // The baker's house: between the lower street (south door), the high street (east door)
+    // and A (north door).
+    Building::new("the baker's house", BuildingUse::House, -39.0, -16.0, -30.0, -2.0, STOREY, Plaster)
+        .door(Side::South, -35.0)
+        .door(Side::East, -6.0)
+        .windows(Side::East, &[-13.0], 1.4)
+        .door(Side::North, -34.0)
+        .partition_z(-9.0, -38.6, -30.4, &[Opening::door(-33.0)])
+        .room("the bakery", -38.6, -15.6, -30.4, -9.15, Some(FloorSkin::Tiles))
+        .room("the baker's house", -38.6, -8.85, -30.4, -2.4, Some(FloorSkin::Wood))
+        .low(-38.6, -15.6, -35.6, -14.6, Desk)
+        .low(-37.6, -6.0, -35.6, -4.8, Desk)
         .emit(&mut b);
-    // A long gate: a thick wall across the street with a tall arch.
-    b.tall(-39.0, 0.0, -35.1, 1.4, 5.5, Stucco);
-    b.tall(-30.9, 0.0, -27.0, 1.4, 5.5, Stucco);
-    arch(&mut b, -35.1, 0.0, -30.9, 1.4, 3.4, 5.5);
-    // Outside long: a parked car, a cart, crates by the gate.
+    // The lower street: along the town wall from the spawn to the jog into the high street.
+    b.tall(-33.0, 6.0, -31.0, 8.0, 2.4, Crate);
     b.low(-37.0, 15.0, -35.1, 19.4, Car);
-    b.low(-30.0, 21.0, -28.8, 22.2, Crate);
-    b.low(-30.0, 6.0, -28.0, 6.6, Stucco);
     b.low(-38.6, 2.4, -37.4, 3.6, Barrel);
-    // Inside long: a low wall and boxes on the corner into A.
-    b.tall(-31.0, -7.0, -29.0, -5.0, 2.4, Crate);
-    b.low(-29.0, -6.2, -27.8, -5.0, Crate);
-    b.low(-38.6, -9.0, -36.0, -8.4, Stucco);
-    // Between long and the short's north leg; between the leg and mid.
-    b.tall(-27.0, -12.0, -23.0, -2.0, 6.0, Stucco);
-    b.tall(-19.0, -15.0, -5.0, -6.0, 5.0, Stucco);
-    // Alley arch where A short leaves mid, and a vine pergola over the alley.
-    arch(&mut b, -5.6, -6.0, -5.0, -2.0, 3.0, 5.0);
-    b.decor.roofs.push(crate::arena::Roof { min: V2::new(-16.0, -6.0), max: V2::new(-9.0, -2.0), bottom: 3.0, thickness: 0.12 });
-    b.low(-14.0, -3.4, -12.8, -2.2, Crate);
-    b.low(-22.8, -11.0, -21.6, -9.8, Barrel);
+    b.low(-34.0, 22.0, -32.8, 23.2, Crate);
+    // The high street: wide, opens into A from the south.
+    b.tall(-24.0, -6.0, -22.0, -4.0, 2.4, Crate);
+    b.low(-28.0, -12.0, -26.8, -10.8, Crate);
+    b.low(-20.0, 0.0, -18.0, 2.0, Planter);
+    b.low(-19.0, -14.0, -17.8, -12.8, Barrel);
+    // House walls: the high street | the vine alley, and A | the defenders (the west arch).
+    b.tall(-16.0, -16.0, -14.0, 4.0, 6.5, Stucco);
+    b.tall(-16.0, -39.0, -14.0, -26.0, 6.5, Stucco);
+    b.tall(-16.0, -22.0, -14.0, -16.0, 6.0, Stucco);
+    arch(&mut b, -16.0, -26.0, -14.0, -22.0, 3.0, 6.0);
+    // The houses either side of the cellars.
+    b.tall(-30.0, 4.0, -14.0, 12.0, 7.0, Stucco);
+    b.tall(-30.0, 17.0, -14.0, 27.0, 7.5, Stucco);
+    // The cellars: a roofed cross-link, split down the middle for a stretch.
+    b.roof(-30.0, 12.0, -14.0, 17.0, 3.4);
+    b.tall(-24.0, 14.2, -20.0, 14.8, 3.45, Stucco);
+    b.lamp_styled(-27.0, 14.5, 3.3, LampStyle::Bulkhead);
+    b.lamp_styled(-17.0, 14.5, 3.3, LampStyle::Bulkhead);
+    // The vine alley: between the church and the houses, under a pergola.
+    b.decor.roofs.push(crate::arena::Roof { min: V2::new(-14.0, -10.0), max: V2::new(-10.0, -2.0), bottom: 3.0, thickness: 0.12 });
+    b.low(-13.4, 6.0, -12.2, 7.2, Crate);
 
-    // ------------------------------------------------------------------ mid
-    b.tall(2.4, 20.0, 4.4, 22.0, 2.4, Crate); // mid boxes
-    b.low(-4.6, 6.0, -3.4, 7.2, Crate);
-    b.low(-1.2, -9.0, 1.2, -8.4, Stucco);
-    b.low(3.6, 18.0, 4.8, 19.2, Barrel);
-    // Mid doors: two thick pillars and an arch, the defenders' end of the lane.
-    b.tall(-5.0, -15.0, -1.6, -13.5, 4.8, Stucco);
-    b.tall(1.6, -15.0, 5.0, -13.5, 4.8, Stucco);
-    arch(&mut b, -1.6, -15.0, 1.6, -13.5, 2.8, 4.8);
+    // ------------------------------------------------------------------ centre: the church
+    // Doors offset north/south (no line straight through) and an altar screen in the nave.
+    // The south front stops at z 8 so the square in front of it is deep enough to fight in
+    // (and to be flanked in) rather than a strip along one door.
+    Building::new("the church", BuildingUse::House, -10.0, -12.0, 10.0, 8.0, 5.0, Stucco)
+        .parapet(true)
+        .opening(Side::North, Opening::wide_door(-4.0, 3.0, 3.0))
+        .opening(Side::South, Opening::wide_door(5.0, 3.0, 3.0))
+        .door(Side::West, -2.0)
+        .room("the church", -9.6, -11.6, 9.6, 7.6, Some(FloorSkin::Tiles))
+        .lamp(0.0, -7.0)
+        .lamp(0.0, 3.5)
+        .low(-2.0, -9.0, 2.0, -8.0, Desk) // altar
+        .tall(-3.0, -1.0, 3.0, -0.4, 2.4, Stucco) // altar screen
+        .tall(-6.5, -6.0, -5.5, -5.0, 5.0, Stucco)
+        .tall(5.5, -6.0, 6.5, -5.0, 5.0, Stucco)
+        .low(-8.0, 2.0, -3.0, 2.6, Desk) // pews
+        .low(3.0, 2.0, 8.0, 2.6, Desk)
+        .low(-8.0, 4.8, -3.0, 5.4, Desk)
+        .low(3.0, 4.8, 8.0, 5.4, Desk)
+        .emit(&mut b);
+    b.tall(10.0, -12.0, 16.0, 8.0, 6.5, Stucco); // the priest's house (solid)
+    // The procession road: the attackers' square in front of the church.
+    b.tall(2.4, 20.0, 4.4, 22.0, 2.4, Crate);
+    b.low(-6.0, 16.0, -4.8, 17.2, Crate);
+    b.low(8.0, 18.0, 9.2, 19.2, Barrel);
+    // Wine casks across the foot of the vine alley: no line from the bell arch into the spawn.
+    b.tall(-14.0, 20.0, -10.0, 22.0, 2.4, Crate);
 
-    // ------------------------------------------------------------------ east: the dog-leg, the cellars
-    b.tall(5.0, 17.0, 15.0, 26.0, 6.5, Stucco);
-    b.tall(5.0, 8.0, 15.0, 13.0, 7.0, Stucco);
-    b.tall(15.0, 17.0, 26.0, 26.0, 8.0, Stucco);
-    b.tall(15.0, 8.0, 26.0, 13.0, 6.0, Stucco);
-    b.tall(5.0, -15.0, 14.0, 4.0, 6.0, Stucco);
-    b.tall(18.0, -13.0, 26.0, 8.0, 6.5, Stucco);
-    // B short: the alley leaves mid under an arch, turns north at the corner.
-    arch(&mut b, 5.0, 4.0, 5.6, 8.0, 3.0, 5.0);
-    b.low(16.2, 5.0, 17.4, 6.2, Crate);
-    b.low(14.6, -6.0, 15.8, -4.8, Barrel);
-    b.decor.roofs.push(crate::arena::Roof { min: V2::new(14.0, -4.0), max: V2::new(18.0, 2.0), bottom: 3.0, thickness: 0.12 });
-    // The cellars: two roofed corridors split by a wall with a cross-link; the lower one
-    // joins the upper before the exit.
-    b.roof(26.0, -4.0, 39.0, 20.0, 3.4);
-    b.tall(31.0, -1.0, 32.0, 6.0, 3.45, Stucco);
-    b.tall(31.0, 10.0, 32.0, 20.0, 3.45, Stucco);
-    b.tall(26.0, -5.0, 33.0, -4.0, 3.45, Stucco);
-    b.low(37.4, 12.0, 38.6, 13.2, Barrel);
-    b.low(37.4, 13.4, 38.6, 14.6, Barrel);
-    b.low(26.0, 2.0, 27.2, 3.2, Crate);
-    for (x, z) in [(28.5, 15.0), (35.5, 15.0), (35.5, 3.0), (28.5, 1.0), (35.5, -2.5)] {
-        b.lamp_styled(x, z, 3.3, LampStyle::Bulkhead);
-    }
-    // Outside the tunnels, the B side of spawn.
-    b.low(27.0, 22.0, 29.4, 22.6, Stucco);
+    // ------------------------------------------------------------------ east: the dog-leg
+    b.tall(16.0, -4.0, 26.0, 14.0, 7.0, Stucco);
+    b.tall(32.0, -4.0, 39.0, 27.0, 6.5, Stucco);
+    b.tall(14.0, 20.0, 26.0, 27.0, 8.0, Stucco);
+    // Two staggered stair houses: the lane weaves, no line from B into the spawn.
+    b.tall(26.0, 10.0, 29.0, 12.0, 3.2, Stucco);
+    b.tall(29.0, 2.0, 32.0, 4.0, 3.2, Stucco);
+    b.low(18.0, 15.6, 19.2, 16.8, Crate);
+    b.low(30.6, -2.0, 31.4, -1.2, Barrel);
+    b.low(27.0, 22.0, 28.2, 23.2, Crate);
 
     // ------------------------------------------------------------------ defenders (north)
-    // Thick house walls split the north into A site | defender spawn | B site, with a
-    // connector arch through each.
-    b.tall(-14.0, -39.0, -10.0, -34.0, 6.5, Stucco);
-    b.tall(-14.0, -29.6, -10.0, -15.0, 6.0, Stucco);
-    arch(&mut b, -14.0, -34.0, -10.0, -29.6, 3.0, 6.0);
-    b.tall(10.0, -39.0, 14.0, -34.0, 6.5, Stucco);
-    b.tall(10.0, -29.6, 14.0, -15.0, 6.0, Stucco);
-    arch(&mut b, 10.0, -34.0, 14.0, -29.6, 3.0, 6.0);
-    // The church front behind the spawn, a well, benches.
-    b.tall(-6.0, -39.0, 6.0, -37.0, 9.0, Stucco);
+    b.tall(-6.0, -39.0, 6.0, -37.0, 9.0, Stucco); // the chapel front behind the spawn
+    b.tall(14.0, -39.0, 39.0, -24.0, 7.0, Stucco); // the convent (solid)
+    b.low(-12.4, -33.0, -11.2, -31.8, Barrel);
+    // The bell arch square: a free-standing bell arch, a well, boxes.
+    b.tall(-8.0, -20.0, -6.0, -18.0, 5.5, Stucco);
+    b.tall(6.0, -20.0, 8.0, -18.0, 5.5, Stucco);
+    arch(&mut b, -6.0, -20.0, 6.0, -18.0, 3.6, 5.5);
     b.low(-1.5, -27.5, 1.5, -24.5, Planter); // the well
-    b.tall(-8.0, -21.0, -6.0, -19.0, 2.4, Crate);
-    b.low(5.0, -21.0, 7.4, -20.4, Stucco);
-    b.low(-9.4, -33.0, -8.2, -31.8, Barrel);
+    b.tall(-12.0, -16.0, -10.0, -14.0, 2.4, Crate);
+    b.low(9.0, -16.0, 11.4, -15.4, Stucco);
+    // The east arch: from the square into B.
+    b.tall(14.0, -24.0, 16.0, -21.0, 6.0, Stucco);
+    b.tall(14.0, -17.0, 16.0, -12.0, 6.0, Stucco);
+    arch(&mut b, 14.0, -21.0, 16.0, -17.0, 3.0, 6.0);
 
     // ------------------------------------------------------------------ A site
     b.tall(-39.0, -39.0, -31.0, -35.0, 7.0, Stucco); // the back house
-    b.tall(-30.0, -27.0, -27.0, -24.0, 2.4, Crate); // default boxes
-    b.low(-27.0, -25.2, -25.8, -24.0, Crate);
-    b.low(-22.0, -23.0, -19.0, -20.0, Planter); // fountain
-    b.tall(-35.0, -20.0, -34.0, -17.0, 4.0, Stucco); // a broken arch pier
+    b.tall(-34.0, -26.0, -31.0, -23.0, 2.4, Crate); // default boxes
+    b.low(-31.0, -24.2, -29.8, -23.0, Crate);
+    b.low(-26.0, -23.0, -23.0, -20.0, Planter); // fountain
+    b.tall(-38.0, -20.0, -37.0, -18.0, 4.0, Stucco); // a broken arch pier
     b.low(-38.6, -30.0, -36.0, -29.4, Stucco);
-    b.low(-24.0, -36.0, -22.1, -31.6, Car);
-    b.low(-17.0, -30.0, -15.8, -28.8, Crate);
-    b.low(-17.0, -28.8, -15.8, -27.6, Crate);
+    b.low(-22.0, -36.0, -20.1, -31.6, Car);
+    b.low(-17.5, -30.0, -16.3, -28.8, Crate);
+    b.low(-17.5, -28.8, -16.3, -27.6, Crate);
     b.tall(-27.0, -33.0, -25.0, -31.0, 2.4, Crate);
 
     // ------------------------------------------------------------------ B site
-    b.tall(31.0, -39.0, 39.0, -33.0, 7.0, Stucco); // the back house
-    b.tall(24.0, -27.0, 27.0, -24.0, 2.6, Crate); // default boxes
-    b.low(27.0, -25.2, 28.2, -24.0, Crate);
-    b.tall(16.0, -37.0, 22.0, -34.6, 2.6, Container); // a storage container
-    b.tall(20.0, -20.0, 21.0, -19.0, 4.2, Stucco); // market canopy piers
-    b.tall(29.0, -20.0, 30.0, -19.0, 4.2, Stucco);
-    b.decor.roofs.push(crate::arena::Roof { min: V2::new(19.5, -20.5), max: V2::new(30.5, -18.5), bottom: 4.2, thickness: 0.15 });
-    b.low(31.0, -21.0, 34.0, -20.4, Stucco);
-    b.low(36.6, -27.0, 37.8, -25.8, Barrel);
-    b.low(37.8, -27.0, 39.0, -25.8, Barrel);
-    b.low(15.0, -24.0, 17.4, -23.4, Stucco);
-    b.low(32.0, -31.0, 33.9, -26.6, Car);
+    b.tall(24.0, -18.0, 27.0, -15.0, 2.6, Crate); // default boxes
+    b.low(27.0, -16.2, 28.2, -15.0, Crate);
+    b.tall(33.0, -24.0, 39.0, -21.6, 2.6, Container);
+    b.tall(20.0, -12.0, 21.0, -11.0, 4.2, Stucco); // market canopy piers
+    b.tall(31.0, -12.0, 32.0, -11.0, 4.2, Stucco);
+    b.decor.roofs.push(crate::arena::Roof { min: V2::new(19.5, -12.5), max: V2::new(32.5, -10.5), bottom: 4.2, thickness: 0.15 });
+    b.low(18.0, -20.0, 20.4, -19.4, Stucco);
+    b.low(37.4, -10.0, 38.6, -8.8, Barrel);
+    b.low(37.4, -8.6, 38.6, -7.4, Barrel);
+    b.low(34.0, -10.0, 35.9, -5.6, Car);
+    b.low(21.0, -6.0, 24.0, -5.4, Stucco);
 
     // ------------------------------------------------------------------ signs
-    // Site letters, big, where attackers arrive and where defenders hold.
+    // (The sign glyphs are A, B, D, I, M, T and arrows only: no callout words.)
     b.sign_wall("A", -35.0, -35.0, 3.6, 2.4, (0, 1), Paint::White, Some(Paint::Red));
-    b.sign_wall("A", -14.0, -22.0, 3.0, 1.8, (-1, 0), Paint::White, Some(Paint::Red));
-    b.sign_wall("B", 35.0, -33.0, 3.6, 2.4, (0, 1), Paint::White, Some(Paint::Blue));
-    b.sign_wall("B", 14.0, -22.0, 3.0, 1.8, (1, 0), Paint::White, Some(Paint::Blue));
-    b.sign_floor("A", -26.0, -19.0, 3.0, (0, -1), Paint::Red);
-    b.sign_floor("B", 25.0, -30.0, 3.0, (0, -1), Paint::Blue);
-    // Directions from spawn.
-    b.sign_wall("< A", -16.0, 26.0, 2.4, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
-    b.sign_wall("B >", 16.0, 26.0, 2.4, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
-    b.sign_wall("MID", 0.0, 27.7, 2.2, 0.6, (0, 1), Paint::Black, Some(Paint::White));
-    // A long, mid, B short, tunnels.
-    b.sign_wall("< A", -27.0, 12.0, 2.4, 0.9, (-1, 0), Paint::Black, Some(Paint::Yellow));
-    b.sign_floor("A ^", -33.0, 4.0, 1.2, (0, -1), Paint::Yellow);
-    b.sign_wall("A >", -5.0, 2.5, 2.4, 0.8, (1, 0), Paint::Black, Some(Paint::Yellow));
-    b.sign_wall("B >", 5.0, 1.0, 2.4, 0.8, (-1, 0), Paint::Black, Some(Paint::Yellow));
-    b.sign_wall("A >", -23.0, -4.0, 2.4, 0.8, (1, 0), Paint::Black, Some(Paint::Yellow));
-    b.sign_wall("< B", 18.0, 6.0, 2.4, 0.8, (-1, 0), Paint::Black, Some(Paint::Yellow));
-    b.sign_floor("B ^", 35.5, 22.0, 1.2, (0, -1), Paint::Yellow);
-    // Defender rotations.
-    b.sign_wall("A >", -10.0, -24.0, 2.6, 0.8, (1, 0), Paint::White, Some(Paint::Red));
-    b.sign_wall("< B", 10.0, -24.0, 2.6, 0.8, (-1, 0), Paint::White, Some(Paint::Blue));
-    b.sign_wall("MID", 0.0, -37.0, 2.6, 0.6, (0, 1), Paint::Black, Some(Paint::White));
+    b.sign_wall("A", -14.0, -19.0, 3.0, 1.8, (1, 0), Paint::White, Some(Paint::Red));
+    b.sign_wall("B", 30.0, -24.0, 3.6, 2.4, (0, 1), Paint::White, Some(Paint::Blue));
+    b.sign_wall("B", 14.0, -14.5, 3.0, 1.8, (-1, 0), Paint::White, Some(Paint::Blue));
+    b.sign_floor("A", -26.0, -30.0, 3.0, (0, -1), Paint::Red);
+    b.sign_floor("B", 27.0, -21.0, 3.0, (0, -1), Paint::Blue);
+    // Directions from spawn: A up the west lane, B up the dog-leg, both through the church.
+    b.sign_wall("< A", -22.0, 27.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
+    b.sign_wall("B >", 20.0, 27.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
+    b.sign_wall("A B ^", 0.0, 27.7, 2.2, 0.6, (0, 1), Paint::Black, Some(Paint::White));
+    b.sign_floor("A ^", -34.5, 10.0, 1.2, (0, -1), Paint::Yellow);
+    b.sign_floor("A ^", -23.0, -10.0, 1.2, (0, -1), Paint::Yellow);
+    b.sign_wall("B >", 21.0, 14.0, 2.4, 0.9, (0, 1), Paint::Black, Some(Paint::Yellow));
+    b.sign_floor("B ^", 29.0, 24.0, 1.2, (0, -1), Paint::Yellow);
+    // Defender rotations from the bell arch square.
+    b.sign_floor("< A", -9.0, -23.0, 1.0, (0, -1), Paint::Yellow);
+    b.sign_floor("B >", 9.0, -23.0, 1.0, (0, -1), Paint::Yellow);
 
     // ------------------------------------------------------------------ ground
-    // Base: sun-baked earth. Cobbled streets, a paved spawn square, tiled site plazas.
-    b.floor(-39.0, 26.0, 39.0, 39.0, FloorSkin::Sidewalk);
-    b.floor(-39.0, -12.0, -27.0, 26.0, FloorSkin::Pavement);
-    b.floor(-5.0, -15.0, 5.0, 26.0, FloorSkin::Pavement);
-    b.floor(-23.0, -6.0, -5.0, -2.0, FloorSkin::Pavement);
-    b.floor(-27.0, 13.0, -5.0, 17.0, FloorSkin::Pavement);
-    b.floor(5.0, 13.0, 26.0, 17.0, FloorSkin::Pavement);
-    b.floor(-23.0, -12.0, -19.0, -6.0, FloorSkin::Pavement);
-    b.floor(5.0, 4.0, 18.0, 8.0, FloorSkin::Pavement);
-    b.floor(14.0, -13.0, 18.0, 4.0, FloorSkin::Pavement);
-    b.floor(26.0, -4.0, 39.0, 20.0, FloorSkin::Concrete);
-    b.floor(-39.0, -39.0, -14.0, -12.0, FloorSkin::Tiles);
-    b.floor(14.0, -39.0, 39.0, -13.0, FloorSkin::Tiles);
-    b.floor(-10.0, -39.0, 10.0, -15.0, FloorSkin::Sidewalk);
+    // Base: sun-baked earth. Cobbled streets, paved squares, tiled site plazas.
+    b.floor(-39.0, 27.0, 39.0, 39.0, FloorSkin::Sidewalk);
+    b.floor(-39.0, -2.0, -30.0, 27.0, FloorSkin::Pavement);
+    b.floor(-30.0, -16.0, -16.0, 4.0, FloorSkin::Pavement);
+    b.floor(-30.0, 12.0, -14.0, 17.0, FloorSkin::Concrete);
+    b.floor(-14.0, -12.0, -10.0, 8.0, FloorSkin::Pavement);
+    b.floor(-14.0, 8.0, 16.0, 27.0, FloorSkin::Sidewalk);
+    b.floor(16.0, 14.0, 26.0, 20.0, FloorSkin::Pavement);
+    b.floor(26.0, -4.0, 32.0, 27.0, FloorSkin::Pavement);
+    b.floor(-39.0, -39.0, -16.0, -16.0, FloorSkin::Tiles);
+    b.floor(16.0, -24.0, 39.0, -4.0, FloorSkin::Tiles);
+    b.floor(-14.0, -39.0, 14.0, -12.0, FloorSkin::Sidewalk);
     // Spawn zones: painted borders (attackers orange, defenders blue).
     b.outline(-21.0, 28.5, 21.0, 38.5, 0.25, Paint::Orange);
-    b.outline(-9.6, -36.6, 9.6, -28.0, 0.25, Paint::Blue);
+    b.outline(-12.0, -36.6, 12.0, -28.5, 0.25, Paint::Blue);
 
     let zones = vec![
-        zone("attacker spawn", -39.0, 26.0, 39.0, 39.0),
+        zone("attacker spawn", -39.0, 27.0, 39.0, 39.0),
         // "A site" / "B site" are load-bearing: `Builder::finish` finds the plant zones by name.
-        zone("the lower street", -39.0, 1.4, -27.0, 26.0),
-        zone("the high street", -39.0, -12.0, -27.0, 1.4),
-        zone("the vine alley", -27.0, -12.0, -5.0, -2.0),
-        zone("A site", -39.0, -39.0, -14.0, -12.0),
-        zone("the west arch", -14.0, -34.0, -10.0, -29.6),
-        zone("defender spawn", -10.0, -39.0, 10.0, -23.0),
-        zone("the bell arch", -10.0, -23.0, 10.0, -13.5),
-        zone("the procession road", -5.0, -13.5, 5.0, 26.0),
-        zone("the west lane", -27.0, 13.0, -5.0, 17.0),
-        zone("the east lane", 5.0, 13.0, 26.0, 17.0),
-        zone("the dog-leg", 5.0, -13.0, 18.0, 8.0),
-        zone("the east arch", 10.0, -34.0, 14.0, -29.6),
-        zone("the cellars", 26.0, -4.0, 39.0, 26.0),
-        zone("the cellar mouth", 26.0, -13.0, 39.0, -4.0),
-        zone("B site", 14.0, -39.0, 39.0, -13.0),
+        zone("the lower street", -39.0, -2.0, -30.0, 27.0),
+        zone("the high street", -30.0, -16.0, -16.0, 4.0),
+        zone("the cellars", -30.0, 12.0, -14.0, 17.0),
+        zone("the west arch", -16.0, -26.0, -14.0, -22.0),
+        zone("A site", -39.0, -39.0, -16.0, -16.0),
+        zone("defender spawn", -14.0, -39.0, 14.0, -28.0),
+        zone("the bell arch", -14.0, -28.0, 14.0, -12.0),
+        zone("the vine alley", -14.0, -12.0, -10.0, 8.0),
+        zone("the procession road", -14.0, 8.0, 16.0, 27.0),
+        zone("the east arch", 14.0, -21.0, 16.0, -17.0),
+        zone("B site", 16.0, -24.0, 39.0, -4.0),
+        zone("the dog-leg", 14.0, -4.0, 32.0, 27.0),
     ];
     b.finish(
         MapId::Sirocco,
@@ -256,11 +242,11 @@ pub fn sirocco() -> Arena {
             V2::new(-5.0, -34.0),
             V2::new(0.0, -34.5),
             V2::new(5.0, -34.0),
-            V2::new(-6.0, -29.0),
-            V2::new(6.0, -29.0),
-            V2::new(0.0, -21.0),
-            V2::new(-30.0, -33.0),
-            V2::new(28.5, -31.0),
+            V2::new(-9.0, -30.0),
+            V2::new(9.0, -30.0),
+            V2::new(0.0, -30.5),
+            V2::new(-30.0, -32.0),
+            V2::new(27.0, -12.0),
         ],
     )
 }

@@ -1,314 +1,66 @@
 [
- {
-  "cmd": "enemy.freeze",
-  "params": {
-   "on": true
-  }
- },
- {
-  "cmd": "player.god",
-  "params": {
-   "on": true
-  }
- },
- {
-  "cmd": "map.load",
-  "params": {
-   "name": "Sirocco"
-  }
- },
- {
-  "sleep": 4
- },
- {
-  "cmd": "map.info"
- },
- {
-  "cmd": "enemy.freeze",
-  "params": {
-   "on": true
-  }
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 10,
-   "z": 35
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    0,
-    2,
-    20
-   ]
-  }
- },
- {
-  "sleep": 6
- },
- {
-  "shot": "s01_attacker_spawn"
- },
- {
-  "cmd": "perf.stats"
- },
- {
-  "cmd": "render.stats"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": -33,
-   "z": 22
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    -33,
-    2,
-    -10
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s02_outside_long"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": -33,
-   "z": -2
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    -30,
-    1.5,
-    -25
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s03_a_long_gate_to_site"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": -18,
-   "z": -15
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    -30,
-    1.5,
-    -30
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s04_a_site"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": -8,
-   "z": -4
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    -22,
-    1.5,
-    -4
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s05_a_short_alley"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 0,
-   "z": 23
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    0,
-    1.6,
-    -20
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s06_mid_sniper_lane"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 0,
-   "z": -30
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    0,
-    1.6,
-    10
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s07_mid_doors_from_defenders"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 8,
-   "z": 6
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    17,
-    1.5,
-    6
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s08_b_short"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 35,
-   "z": 22
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    35,
-    1.5,
-    0
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s09_b_tunnels"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 33,
-   "z": -8
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    24,
-    1.5,
-    -28
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s10_b_site"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": 4,
-   "z": -27
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    -10,
-    2.6,
-    -24
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s11_defender_spawn_rotations"
- },
- {
-  "cmd": "player.teleport",
-  "params": {
-   "x": -20,
-   "z": 1.5
-  }
- },
- {
-  "cmd": "player.look",
-  "params": {
-   "at": [
-    -27,
-    1.5,
-    3
-   ]
-  }
- },
- {
-  "sleep": 1.5
- },
- {
-  "shot": "s12_a_house"
- }
+ {"cmd": "enemy.freeze", "params": {"on": true}},
+ {"cmd": "player.god", "params": {"on": true}},
+ {"cmd": "map.load", "params": {"name": "Sirocco"}},
+ {"sleep": 4},
+ {"cmd": "map.info"},
+ {"cmd": "enemy.freeze", "params": {"on": true}},
+ {"cmd": "player.teleport", "params": {"x": 10, "z": 35}},
+ {"cmd": "player.look", "params": {"at": [0, 2, 20]}},
+ {"sleep": 6},
+ {"shot": "s01_attacker_spawn"},
+ {"cmd": "perf.stats"},
+ {"cmd": "render.stats"},
+ {"cmd": "player.teleport", "params": {"x": -35, "z": 24}},
+ {"cmd": "player.look", "params": {"at": [-33, 1.6, -2]}},
+ {"sleep": 1.5},
+ {"shot": "s02_lower_street"},
+ {"cmd": "player.teleport", "params": {"x": -25, "z": 2}},
+ {"cmd": "player.look", "params": {"at": [-26, 1.5, -26]}},
+ {"sleep": 1.5},
+ {"shot": "s03_high_street_to_a"},
+ {"cmd": "player.teleport", "params": {"x": -20, "z": -18}},
+ {"cmd": "player.look", "params": {"at": [-32, 1.5, -32]}},
+ {"sleep": 1.5},
+ {"shot": "s04_a_site"},
+ {"cmd": "player.teleport", "params": {"x": -34, "z": -5}},
+ {"cmd": "player.look", "params": {"at": [-33, 1.5, -14]}},
+ {"sleep": 1.5},
+ {"shot": "s05_bakers_house"},
+ {"cmd": "player.teleport", "params": {"x": -29, "z": 15.5}},
+ {"cmd": "player.look", "params": {"at": [-14, 1.6, 14.5]}},
+ {"sleep": 1.5},
+ {"shot": "s06_cellars"},
+ {"cmd": "player.teleport", "params": {"x": 0, "z": 24}},
+ {"cmd": "player.look", "params": {"at": [3, 2, 0]}},
+ {"sleep": 1.5},
+ {"shot": "s07_procession_road_to_church"},
+ {"cmd": "player.teleport", "params": {"x": 5, "z": 7}},
+ {"cmd": "player.look", "params": {"at": [-4, 1.6, -12]}},
+ {"sleep": 1.5},
+ {"shot": "s08_church_nave"},
+ {"cmd": "player.teleport", "params": {"x": -11.5, "z": 5}},
+ {"cmd": "player.look", "params": {"at": [-12, 1.6, -12]}},
+ {"sleep": 1.5},
+ {"shot": "s09_vine_alley"},
+ {"cmd": "player.teleport", "params": {"x": 0, "z": -32}},
+ {"cmd": "player.look", "params": {"at": [0, 2.5, -12]}},
+ {"sleep": 1.5},
+ {"shot": "s10_bell_arch_from_defenders"},
+ {"cmd": "player.teleport", "params": {"x": 13, "z": 17}},
+ {"cmd": "player.look", "params": {"at": [29, 1.6, 17]}},
+ {"sleep": 1.5},
+ {"shot": "s11_dog_leg_alley"},
+ {"cmd": "player.teleport", "params": {"x": 28, "z": 18}},
+ {"cmd": "player.look", "params": {"at": [29, 1.6, -10]}},
+ {"sleep": 1.5},
+ {"shot": "s12_dog_leg_to_b"},
+ {"cmd": "player.teleport", "params": {"x": 29, "z": -6}},
+ {"cmd": "player.look", "params": {"at": [24, 1.5, -22]}},
+ {"sleep": 1.5},
+ {"shot": "s13_b_site"},
+ {"cmd": "player.teleport", "params": {"x": 12, "z": -19}},
+ {"cmd": "player.look", "params": {"at": [-16, 2.0, -24]}},
+ {"sleep": 1.5},
+ {"shot": "s14_defender_rotations"}
 ]

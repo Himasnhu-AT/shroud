@@ -518,7 +518,8 @@ fn precision_aimer_meets_micro_strafes() {
     let a = Arena::build(MapId::Sirocco);
     let model = PlayerModel::default();
     let limits = Difficulty::Regular.limits(0);
-    let player = a.nav.nearest_walkable(V2::new(0.0, 5.0));
+    // Open ground to strafe on: the procession road square in front of the church.
+    let player = a.nav.nearest_walkable(V2::new(0.0, 18.0));
     let me = (0..40)
         .map(|k| a.nav.nearest_walkable(player + V2::from_angle(k as f32 * 0.157) * 14.0))
         .find(|p| a.line_of_sight(*p, false, player, false) && p.dist(player) > 10.0)

@@ -33,25 +33,33 @@ crouch behind it to hide, stand to shoot over it. Every map is a **bomb-defusal*
 (attacker) spawns south inside an orange border; the squad (6+ spawns) defends north inside a blue
 one, between two plant zones, **A** and **B** (`Arena::sites`, declared with `Builder::site` or zones
 named "A site" / "B site"). Sites carry big painted letters on walls and floor and crates or
-containers as default plant cover; yellow direction signs ("< A", "B >", "MID") lead from spawn.
+containers as default plant cover; yellow direction signs ("< A", "B >", "A B ^") lead from spawn.
+The sign font has only A, B, D, I, M, T and arrows, so signs carry site letters, not callout names.
 Named zones are used in callouts and debrief text. `cargo run -p brain --example map_ascii -- foundry`
 prints a map's nav grid. `brain/tests/maps.rs` checks every map: sites A and B with plantable floor,
 reachable from both spawns, no overlapping geometry, a sim round that plays out.
 
 - **Foundry** (80 m, default): a steelworks on a hazy evening. **A** is the casting hall (furnace,
-  ladles, ingot moulds, a control room; roller door off A long, a side door off the A apron, the
-  defenders' door on the east). **B** is the loading docks (trailers backed onto the dock shed,
-  steel coils, a container). Routes: *A long* through the scrap yard and an S-bend between two
-  scrap balers; *A short* off mid through the boiler house; *mid* with a ladle car on rails and a
-  conveyor overhead, held from the *mid doors*; *B short* through the scale house; *B ramp* up the
-  rail spur past hopper wagons. The *west cut* and *east cut* link the lanes; defenders rotate
-  through the hall's east door and the *B connector* arch. Tour: `scripts/foundry-tour.json`.
-- **Depot**: a sun-baked bus depot, three lanes between stucco blocks. *The freight lane* (west,
-  through the *freight gate*), *the bus bays* (middle, through the *gatehouse* into *the
-  forecourt*; *the arcade* and *the underpass* cut across to the side lanes), and *the cistern*, a
-  roofed, lamp-lit serpentine (east). Two crate-and-container sites at the north end.
-  **The lane layout is up for a rework**: today's three-lane shape reads too close to a
-  well-known defusal map, so expect the geometry to change; the callout names above stay.
+  ladles, ingot moulds, a control room; roller door off the slag road, a side door off the hall
+  apron, the defenders' door on the east). **B** is the loading docks (trailers backed onto the
+  dock shed, steel coils, a container). Routes: *the slag road* through the scrap yard and an
+  S-bend between two scrap balers; *the boiler house* off the ladle track to *the hall apron*;
+  *the ladle track* with a ladle car on rails and a conveyor overhead, held from *the beam gate*;
+  *the scale house* into the docks; *the rail spur* past hopper wagons and through *the ramp
+  gate*. *The conveyor cut* and *the spur cut* link the lanes; defenders rotate through the
+  hall's east door and *the dock arch*. Tour: `scripts/foundry-tour.json`.
+- **Depot** (64 m): a sun-baked bus depot built around a hub. **A** is the coach yard in the
+  middle of the north, right in front of the defender spawn (two parked coaches, a box stack;
+  the plant zone is the yard's west part, up to the east coach); **B** is the cistern hall, a
+  roofed pump hall in the north-east with three doors (the plant zone is the back of the hall,
+  past the cistern tank). The two plant zones are 14 m apart, so the squad can tell which site
+  a sighting is on. From *the bus
+  bays* (the open lot by the attacker spawn) three ways lead to *the forecourt* in front of A:
+  *the freight lane* (an open container yard on the west, which also enters A from the side
+  through the *freight gate*), *the arcade* (two shops, a door on every side), and *the
+  gatehouse* passage under a gate arch. B is entered up *the underpass* (the east road, under a
+  road bridge), through a side door off the forecourt corner of A, or by the defenders' back
+  door. Tours: `scripts/maps-tour.json`, `scripts/sites-tour.json`.
 - **Ledger** (map id `office`): one roofed floor of a records office, close quarters. **A** is the server room (east corridor door, a
   kitchen door, the north-east office behind); **B** is the records room on the west flank
   (west corridor door, the west office, the north-west office behind). Two long corridors with flank rooms, open-plan cubicles around a
@@ -59,14 +67,19 @@ reachable from both spawns, no overlapping geometry, a sim round that plays out.
 - **Township** (90 m): a town block on a late afternoon. **A** is the warehouse loading yard
   (north-west), **B** the office courtyard (north-east); the squad spawns on north Main Street
   between them, the player south behind the bus.
-- **Sirocco** (80 m): whitewashed hill town. **A** is the fountain plaza, **B** the market. Routes:
-  *the lower street* and *the high street* (west, through the arched town gate), *the vine alley*
-  under a pergola or through *the baker's house*, *the procession road* (the sniper lane from the
-  *bell arch* to the spawn wall, with *the west lane* and *the east lane* across it), *the
-  dog-leg* alley, and *the cellars* (two roofed corridors to *the cellar mouth*). Defenders rotate
-  through *the west arch* and *the east arch*. **The lane layout is up for a rework**, like
-  Depot's; the callout names stay. Tour: `scripts/sirocco-tour.json`.
-- **Gantry** (80 m): harbour rail yard. A inside the warehouse, trains across mid, B on the quay
+- **Sirocco** (80 m): whitewashed hill town, two lanes and a church. **A** is the fountain plaza
+  (north-west), **B** the market under a canopy (east, half-way up the map). West lane: *the lower
+  street* along the town wall, a jog east into *the high street*, which opens into A from the
+  south; *the baker's house* is a second way in. East lane: *the dog-leg*, an L-shaped alley off
+  the square that weaves north between stair houses into the side of B. In the middle the
+  attackers' square (*the procession road*, deep enough to fight in) leads into *the church*
+  (pews, an altar screen, doors offset so no line runs straight through;
+  a side door onto *the vine alley*), whose north
+  door opens on *the bell arch* square in front of the defender spawn. From there defenders take
+  *the west arch* to A and *the east arch* to B. *The cellars* are a roofed cross-link from the
+  lower street to the square. Tour: `scripts/sirocco-tour.json`.
+- **Gantry** (80 m): harbour rail yard. A inside the warehouse, parked trains across the rail
+  yard (*the centre track* runs through *the signal gate*), B on the quay
   under the crane. Tour: `scripts/gantry-tour.json`.
 - `scripts/sites-tour.json` shoots the sites of Ledger (`office`), Township and Depot.
 

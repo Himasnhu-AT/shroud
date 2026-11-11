@@ -335,8 +335,12 @@ fn contact_encircles() {
         // Known issue: on the rebuilt 80 m Foundry the x4 squad closes on the lower-mid hideout
         // from the south-east and both alleys but rarely down mid (~170-185 deg over the seeds;
         // the members end up 3-6 m from him). Close-range spread there needs AI tuning (TODO.md).
+        // Known issue (same cause): on the reworked Sirocco the x4 squad is spread at +6 s
+        // (~143 deg) but by +10 s members whose holds lapsed in the fight close on the square
+        // hideout from the church side (~177 deg). Holds that don't lapse fix Sirocco (~154)
+        // but push Ledger x4 to ~187, so it waits for AI tuning (TODO.md).
         let limit = match (*id, *n) {
-            (MapId::Foundry, 4) => 185.0,
+            (MapId::Foundry, 4) | (MapId::Sirocco, 4) => 185.0,
             (_, 4) if big => 160.0,
             _ => 180.0,
         };

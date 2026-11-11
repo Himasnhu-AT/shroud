@@ -179,21 +179,22 @@ pub struct CoverPoint {
 /// which the player-model heat grids cover) and has at least 6 enemy spawns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum MapId {
-    /// Defusal layout in a steelworks: A in the casting hall, B at the loading docks, a
-    /// ladle-car mid between the boiler house and the scale house.
+    /// Defusal layout in a steelworks: A in the casting hall, B at the loading docks, the ladle
+    /// track between the boiler house and the scale house.
     #[default]
     Foundry,
-    /// Three-lane, medium-range outdoor defusal map.
+    /// Medium-range outdoor defusal map around a hub: A in the coach yard, B in the roofed
+    /// cistern hall, the arcade in the middle.
     Depot,
     /// Tight indoor close-quarters defusal map: A in the server room, B in the records room.
     Office,
     /// A 90 m town block: streets, alleys, a courtyard and eight enterable buildings.
     Township,
-    /// Defusal layout in a whitewashed hill town: the high street through the town gate, the
-    /// vine alley and the baker's house, the roofed cellars, the procession road sniper lane.
+    /// Defusal layout in a whitewashed hill town, two lanes and a church: the high street to A,
+    /// the dog-leg to B, the church between the procession road and the bell arch square.
     Sirocco,
-    /// Defusal layout in a harbour rail yard: an indoor A site in a warehouse, a train-car mid,
-    /// B on the open quay.
+    /// Defusal layout in a harbour rail yard: an indoor A site in a warehouse, parked trains
+    /// across the rail yard, B on the open quay.
     Gantry,
 }
 
@@ -212,12 +213,12 @@ impl MapId {
     }
     pub fn blurb(self) -> &'static str {
         match self {
-            MapId::Foundry => "Bomb sites in a steelworks. A in the casting hall, B at the loading docks, a ladle car on the rails down mid.",
-            MapId::Depot => "Bomb sites at a sun-baked bus depot. The freight lane west, the bus bays through the gatehouse, the roofed cistern east.",
+            MapId::Foundry => "Bomb sites in a steelworks. A in the casting hall, B at the loading docks, a ladle car on the track between them.",
+            MapId::Depot => "Bomb sites at a sun-baked bus depot. A in the coach yard, B in the roofed cistern hall; the freight lane, the arcade and the gatehouse meet at the forecourt.",
             MapId::Office => "Bomb sites on a records-office floor. A in the server room, B in the records room; tight corridors, every corner a fight.",
             MapId::Township => "Bomb sites in a town block on a late afternoon. A in the warehouse loading yard, B in the office courtyard; long streets, alleys, houses with windows.",
-            MapId::Sirocco => "Bomb sites in a whitewashed hill town. A on the fountain plaza, B in the market; the high street through the town gate, the vine alley, the procession road, the cellars.",
-            MapId::Gantry => "Bomb sites in a harbour rail yard. A inside the warehouse, trains across mid, B out on the quay.",
+            MapId::Sirocco => "Bomb sites in a whitewashed hill town. A on the fountain plaza, B in the market; the high street, the church between the procession road and the bell arch, the dog-leg, the cellars.",
+            MapId::Gantry => "Bomb sites in a harbour rail yard. A inside the warehouse, parked trains across the rail yard, B out on the quay.",
         }
     }
 }
@@ -758,128 +759,195 @@ impl Arena {
         )
     }
 
-    /// "Depot": a sun-baked bus depot, three lanes between stucco buildings. The freight lane
-    /// on the west through the freight gate, the bus bays in the middle through the gatehouse,
-    /// the roofed cistern on the east, and two crate-strewn sites at the north end. Callout
-    /// zones: the forecourt, the arcade, the underpass. The lane layout is up for a rework. The player spawns south; the squad defends north.
+    /// "Depot": a sun-baked bus depot built around a hub, not parallel lanes.
+    ///
+    /// ```text
+    ///              north (defenders)
+    ///   +-----------+------------------------+-----------+
+    ///   | depot     |  north spawn            |  B site   |
+    ///   | office    |                        D  (the    |
+    ///   +-----+ +---+   A site: the coach     |  cistern |
+    ///   |     gate  |   yard, two coaches     |  hall,   |
+    ///   |  freight  |                        D  roofed)  |
+    ///   |  lane     +------ forecourt --------+---D------+
+    ///   | (open     | arcade | ticket |gate-  | bus  |under-
+    ///   |  yard,    D shops  D hall   Dhouse  |garage| pass
+    ///   |  stacked  +---D----+----D---+-------+------+ (road,
+    ///   |  boxes)   |      bus bays (open lot)       | bridge)
+    ///   +-----------+---------- south spawn ----------+-----+
+    ///              south (attackers)
+    /// ```
+    ///
+    /// A is the coach yard in the middle of the north, straight in front of the defender spawn;
+    /// B is the cistern hall, a roofed pump hall on the north-east. Attackers reach the
+    /// **forecourt** (A's front) three ways: the open **freight lane** yard on the west (which
+    /// also enters A from the side through the freight gate), through **the arcade** (two shops
+    /// with doors on every side), or up **the gatehouse** passage beside it. B has three doors:
+    /// **the underpass** road from the south-east (under a road bridge), a side door off the
+    /// forecourt corner of A, and the defenders' back door. The player spawns south; the squad
+    /// defends north.
     pub fn depot() -> Self {
+        use crate::building::{Building, Opening, Side};
         use Skin::*;
         let mut b = Builder::new(4.5, Stucco);
-        // --- Buildings that separate the lanes (tall facades for the skyline).
-        b.tall(-21.0, -6.0, -7.0, 3.0, 5.5, Stucco); // west block, north half
-        b.tall(-21.0, 6.5, -7.0, 17.0, 6.5, Stucco); // west block, south half (A short runs between)
-        b.tall(7.0, -6.0, 21.0, 8.0, 6.0, Stucco); // east block, north half
-        b.tall(7.0, 11.5, 21.0, 17.0, 5.0, Stucco); // east block, south half (lower tunnel between)
-        b.roof(7.0, 8.0, 21.0, 11.5, 3.4); // the lower tunnel is covered
-        // --- Mid doors: the contested choke between mid and the north.
-        b.tall(-7.0, -7.5, -1.2, -6.0, 4.0, Concrete);
-        b.tall(1.2, -7.5, 7.0, -6.0, 4.0, Concrete);
-        b.header(V2::new(-1.2, -7.5), V2::new(1.2, -6.0), 4.0);
-        // --- Long A doors.
-        b.tall(-31.0, -3.0, -27.2, -1.5, 4.0, Concrete);
-        b.tall(-24.8, -3.0, -21.0, -1.5, 4.0, Concrete);
-        b.header(V2::new(-27.2, -3.0), V2::new(-24.8, -1.5), 4.0);
-        // --- B tunnels: a roofed serpentine between the east block and the outer wall.
-        b.roof(21.0, -2.5, 31.0, 17.0, 3.4);
-        b.tall(25.0, 5.0, 26.0, 14.0, 3.45, Concrete); // splits upper/lower tunnel
-        b.tall(21.0, 2.0, 26.5, 3.0, 3.45, Concrete);
-        b.tall(25.5, -2.0, 31.0, -1.0, 3.45, Concrete);
-        b.low(29.4, 9.0, 30.2, 9.8, Barrel);
-        b.low(29.4, 10.0, 30.2, 10.8, Barrel);
-        b.low(21.0, 15.0, 22.2, 16.2, Crate);
-        b.lamp(23.0, 12.0, 3.3);
-        b.lamp(28.5, 8.0, 3.3);
-        b.lamp(28.5, 0.5, 3.3);
-        b.lamp(23.0, -0.5, 3.3);
-        b.lamp(14.0, 9.75, 3.3);
-        // --- Site dividers (CT side).
-        b.tall(-13.5, -24.0, -12.0, -12.0, 3.6, Stucco);
-        b.tall(12.0, -24.0, 13.5, -12.0, 3.6, Stucco);
-        // --- A site.
-        b.tall(-25.0, -20.0, -22.0, -17.0, 2.4, Crate); // default box stack
-        b.low(-22.0, -18.2, -20.8, -17.0, Crate);
-        b.low(-18.0, -13.0, -16.8, -11.8, Crate);
-        b.tall(-31.0, -29.0, -28.6, -23.0, 2.6, Container);
-        b.low(-17.0, -22.0, -15.0, -21.4, Sandbag);
-        b.low(-29.0, -9.0, -26.6, -8.4, Sandbag);
-        // --- B site.
-        b.tall(22.0, -22.4, 28.0, -20.0, 2.6, Container);
-        b.tall(17.0, -17.0, 19.4, -14.6, 2.4, Crate);
-        b.low(19.4, -15.8, 20.6, -14.6, Crate);
-        b.low(27.6, -12.4, 28.4, -11.6, Barrel);
-        b.low(28.6, -12.4, 29.4, -11.6, Barrel);
-        b.low(23.0, -9.0, 25.4, -8.4, Sandbag);
-        b.low(15.0, -9.0, 17.4, -8.4, Sandbag);
-        // --- North (CT) area.
-        b.low(-4.0, -22.6, 4.0, -21.8, Sandbag);
-        b.tall(-6.6, -15.0, -4.2, -12.6, 2.4, Crate);
-        b.tall(3.0, -17.0, 5.0, -15.0, 3.6, Concrete);
-        b.low(-1.0, -11.0, 1.0, -10.2, Crate);
-        b.low(6.0, -11.0, 7.4, -9.6, Crate);
-        // --- Mid.
-        b.low(-1.0, 3.0, 1.0, 5.0, Crate); // the mid box
-        b.low(3.6, 12.0, 5.0, 13.4, Crate);
-        b.low(-6.0, 9.0, -4.8, 10.2, Barrel);
-        // --- Long A.
-        b.low(-29.0, 6.0, -27.6, 7.4, Crate);
-        b.low(-24.0, 12.0, -22.8, 13.2, Crate);
-        b.tall(-31.0, 9.0, -28.6, 15.0, 2.6, Container);
-        // --- South (player) spawn.
-        b.tall(-3.0, 20.0, 3.0, 22.4, 2.8, Container); // parked truck shields spawn from mid
+
+        // --- North-west: the depot office (solid) and the fence of the freight gate.
+        b.tall(-31.0, -31.0, -16.0, -24.0, 6.5, Stucco);
+        b.tall(-17.0, -24.0, -16.0, -21.0, 3.6, Stucco);
+        b.tall(-17.0, -16.0, -16.0, -9.0, 3.6, Stucco); // the gate is z -21..-16
+
+        // --- The freight lane: an open yard of stacked containers (no straight line end to end).
+        b.tall(-26.0, -14.0, -20.0, -11.6, 2.6, Container);
+        b.tall(-25.0, -1.2, -19.0, 1.2, 2.6, Container);
+        b.tall(-31.0, 6.0, -28.6, 12.0, 2.6, Container);
+        b.tall(-21.0, 15.0, -19.0, 17.0, 2.4, Crate);
+        b.low(-29.0, 18.0, -27.8, 19.2, Crate);
+        b.low(-24.0, 8.0, -21.6, 8.6, Sandbag);
+        b.low(-30.2, -8.0, -29.4, -7.2, Barrel);
+        b.low(-22.0, -20.0, -20.8, -18.8, Crate);
+        b.low(-28.4, -18.0, -27.2, -16.8, Crate);
+
+        // --- The arcade: two shops between the bus bays and the forecourt, doors on all sides.
+        Building::new("the arcade", BuildingUse::Shop, -16.0, -3.0, 7.0, 9.0, 3.6, Stucco)
+            .door(Side::North, -10.0)
+            .door(Side::North, 2.0)
+            .door(Side::South, -11.0)
+            .door(Side::South, 3.0)
+            .door(Side::West, 3.0)
+            .door(Side::East, 6.0)
+            .partition_x(-5.0, -2.6, 8.6, &[Opening::door(3.0)])
+            .room("the arcade", -15.6, -2.6, -5.15, 8.6, Some(FloorSkin::Tiles))
+            .room("the ticket hall", -4.85, -2.6, 6.6, 8.6, Some(FloorSkin::Tiles))
+            .low(-13.0, -1.0, -11.8, 2.0, Shelf)
+            .tall(-15.6, 6.0, -14.4, 8.6, 2.2, Shelf)
+            .low(-9.0, 4.5, -7.0, 5.7, Desk)
+            .low(-1.0, 1.0, 3.0, 2.2, Desk) // ticket counter
+            .tall(-0.5, 3.5, 4.0, 4.1, 2.2, Shelf) // timetable rack: no line through both doors
+            .low(-3.0, 6.0, -1.0, 6.8, Desk)
+            .tall(4.4, -2.6, 6.6, -1.6, 2.0, Cabinet)
+            .emit(&mut b);
+
+        // --- The gatehouse: a passage between the arcade and the bus garage, under a gate arch.
+        b.tall(7.0, -1.0, 8.0, 0.0, 4.0, Concrete);
+        b.tall(12.0, -1.0, 13.0, 0.0, 4.0, Concrete);
+        b.header(V2::new(8.0, -1.0), V2::new(12.0, 0.0), 4.0);
+        b.tall(10.5, 3.0, 13.0, 6.0, 3.0, Stucco); // the gatekeeper's booth
+        b.tall(13.0, -6.0, 20.0, 14.0, 6.0, Stucco); // the bus garage (solid)
+
+        // --- B: the cistern hall, roofed. Doors: west (defenders), west (off A), south (underpass).
+        Building::new("the cistern hall", BuildingUse::Warehouse, 13.0, -31.0, 31.0, -6.0, 4.5, Stucco)
+            .opening(Side::West, Opening::wide_door(-27.0, 3.0, 3.0))
+            .opening(Side::West, Opening::wide_door(-11.0, 3.0, 3.0))
+            .opening(Side::South, Opening::wide_door(25.0, 4.0, 3.2))
+            .room("B site", 13.4, -30.6, 30.6, -14.0, Some(FloorSkin::Concrete))
+            .room("the cistern", 13.4, -14.0, 30.6, -6.4, Some(FloorSkin::Concrete))
+            .lamp(17.0, -26.0)
+            .lamp(27.0, -15.0)
+            .tall(20.0, -26.0, 22.4, -23.6, 2.4, Crate) // default plant boxes
+            .low(22.4, -24.8, 23.6, -23.6, Crate)
+            .tall(26.0, -30.6, 30.6, -28.2, 2.6, Container)
+            .tall(18.0, -15.0, 22.0, -11.0, 3.0, Concrete) // the cistern tank
+            .tall(26.0, -19.0, 27.0, -18.0, 4.5, Concrete) // roof pillar
+            .low(15.0, -20.0, 15.8, -19.2, Barrel)
+            .low(15.0, -19.0, 15.8, -18.2, Barrel)
+            .low(27.0, -11.0, 29.4, -10.4, Sandbag)
+            .low(17.0, -9.0, 18.2, -7.8, Crate)
+            .emit(&mut b);
+
+        // --- The underpass: the east road, under a road bridge halfway.
+        b.roof(20.0, 0.0, 31.0, 8.0, 3.4);
+        b.tall(24.5, 3.0, 26.5, 5.0, 3.45, Concrete); // bridge pier
+        b.lamp(22.0, 2.0, 3.3);
+        b.lamp(29.0, 6.0, 3.3);
+        b.tall(20.0, 9.0, 22.4, 11.4, 2.4, Crate);
+        b.low(22.0, 15.0, 23.9, 19.4, Car);
+        b.low(29.4, 4.0, 30.2, 4.8, Barrel);
+        b.tall(27.0, -3.6, 29.4, -1.2, 2.4, Crate);
+        b.low(21.0, -3.0, 23.4, -2.4, Sandbag);
+
+        // --- A site: the coach yard.
+        b.tall(-10.0, -22.0, -7.6, -13.0, 2.8, Container); // parked coach
+        b.tall(1.0, -21.0, 3.4, -12.0, 2.8, Container); // parked coach
+        b.tall(-4.0, -16.0, -2.0, -14.0, 2.4, Crate); // default plant boxes
+        b.low(-2.0, -15.2, -0.8, -14.0, Crate);
+        b.low(-14.0, -12.2, -12.8, -11.0, Crate);
+        b.low(6.0, -20.0, 7.2, -18.8, Crate);
+        b.low(10.0, -14.0, 10.8, -13.2, Barrel);
+        b.low(-6.0, -25.4, -2.0, -24.8, Sandbag);
+        b.low(5.0, -25.4, 9.0, -24.8, Sandbag);
+
+        // --- The forecourt.
+        b.low(-10.0, -7.0, -7.0, -6.4, Sandbag);
+        b.low(4.5, -7.0, 5.7, -5.8, Crate);
+        b.low(9.0, -8.0, 10.2, -6.8, Crate);
+        b.tall(-14.0, -8.0, -12.0, -6.0, 2.4, Crate);
+
+        // --- The bus bays and the south (player) spawn.
+        b.tall(-12.0, 13.0, -9.6, 20.0, 2.8, Container); // parked bus
+        b.tall(8.0, 12.0, 10.4, 19.0, 2.8, Container); // parked bus
+        b.low(-5.0, 15.0, -3.8, 16.2, Crate);
+        b.low(4.0, 15.5, 5.2, 16.7, Crate);
+        b.low(16.0, 18.0, 16.8, 18.8, Barrel);
+        b.tall(-3.0, 20.0, 3.0, 22.4, 2.8, Container); // parked truck: shields the spawn
         b.low(-14.0, 22.0, -10.0, 22.6, Sandbag);
         b.low(10.0, 22.0, 14.0, 22.6, Sandbag);
         b.tall(-31.0, 25.0, -25.0, 31.0, 6.0, Stucco);
         b.tall(25.0, 25.0, 31.0, 31.0, 6.0, Stucco);
         b.low(-20.0, 26.0, -18.8, 27.2, Crate);
         b.low(18.8, 26.0, 20.0, 27.2, Crate);
-        // --- Ground: sand everywhere, asphalt roads through mid and the spawn street,
-        //     concrete pads on the sites.
-        b.floor(-7.0, -7.5, 7.0, 17.0, FloorSkin::Asphalt);
-        b.floor(-31.0, 17.0, 31.0, 24.0, FloorSkin::Asphalt);
-        b.floor(-31.0, -31.0, -13.5, -10.0, FloorSkin::Pavement);
-        b.floor(13.5, -31.0, 31.0, -10.0, FloorSkin::Pavement);
+
+        // --- Ground: sand in the freight lane, asphalt yards and streets, pavement elsewhere.
+        b.floor(-31.0, 23.0, 31.0, 31.0, FloorSkin::Asphalt);
+        b.floor(-16.0, 9.0, 20.0, 23.0, FloorSkin::Asphalt);
+        b.floor(-16.0, -26.0, 13.0, -9.0, FloorSkin::Asphalt);
+        b.floor(-16.0, -9.0, 13.0, -3.0, FloorSkin::Pavement);
+        b.floor(-16.0, -31.0, 13.0, -26.0, FloorSkin::Pavement);
+        b.floor(7.0, -3.0, 13.0, 9.0, FloorSkin::Pavement);
+        b.floor(20.0, -6.0, 31.0, 23.0, FloorSkin::Concrete);
+
         // --- Site letters and direction signs.
-        b.sign_wall("A", -13.5, -18.0, 2.4, 1.6, (-1, 0), Paint::White, Some(Paint::Red));
-        b.sign_wall("B", 13.5, -18.0, 2.4, 1.6, (1, 0), Paint::White, Some(Paint::Blue));
-        b.sign_wall("A", -17.5, -6.0, 3.6, 1.6, (0, -1), Paint::White, Some(Paint::Red));
-        b.sign_wall("B", 17.5, -6.0, 3.6, 1.6, (0, -1), Paint::White, Some(Paint::Blue));
-        b.sign_wall("< A", -14.0, 17.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
-        b.sign_wall("B >", 14.0, 17.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
-        b.sign_wall("MID", 0.0, 22.4, 2.0, 0.6, (0, 1), Paint::Black, Some(Paint::White));
-        b.sign_floor("A ^", -26.0, 2.0, 1.2, (0, -1), Paint::Yellow);
-        b.sign_floor("B ^", 28.5, 14.0, 1.2, (0, -1), Paint::Yellow);
-        b.sign_floor("A", -20.0, -24.0, 3.0, (0, -1), Paint::Red);
-        b.sign_floor("B", 24.0, -16.0, 3.0, (0, -1), Paint::Blue);
+        b.sign_wall("A", -16.0, -27.5, 2.4, 1.6, (1, 0), Paint::White, Some(Paint::Red));
+        b.sign_floor("A", -5.5, -19.5, 3.0, (0, -1), Paint::Red);
+        b.sign_wall("B", 13.0, -18.5, 2.4, 1.6, (-1, 0), Paint::White, Some(Paint::Blue));
+        b.sign_wall("B", 29.0, -6.0, 2.4, 1.6, (0, 1), Paint::White, Some(Paint::Blue));
+        b.sign_floor("B", 22.0, -20.0, 3.0, (0, -1), Paint::Blue);
+        // (The sign glyphs are A, B, D, I, M, T and arrows only: no callout words.)
+        b.sign_wall("A B ^", 0.0, 22.4, 2.0, 0.6, (0, 1), Paint::Black, Some(Paint::White));
+        b.sign_wall("< A", -14.0, 9.0, 2.6, 0.9, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_wall("B >", 16.5, 14.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
+        b.sign_floor("A ^", -23.5, 20.0, 1.2, (0, -1), Paint::Yellow);
+        b.sign_floor("B ^", 25.5, 20.0, 1.2, (0, -1), Paint::Yellow);
+        b.sign_floor("B >", 10.0, -27.5, 1.0, (0, -1), Paint::Yellow);
         // Spawn borders: attackers orange, defenders blue.
         b.outline(-16.0, 23.4, 16.0, 31.0, 0.25, Paint::Orange);
-        b.outline(-11.0, -30.6, 11.0, -23.6, 0.25, Paint::Blue);
-        // Plant zones: the crate-and-container yards at the end of long A and the B tunnels.
-        b.site('A', -30.0, -28.0, -15.0, -11.0);
-        b.site('B', 15.0, -28.0, 30.0, -10.0);
+        b.outline(-12.0, -30.6, 10.0, -26.4, 0.25, Paint::Blue);
+        // Plant zones: the west half of the coach yard (A) and the back of the cistern hall
+        // (B). They stay 14 m apart: the squad's rotation calls need to tell the sites apart,
+        // and the hall's west aisle and the yard's east end are the approaches, not the site.
+        b.site('A', -14.0, -24.0, 5.0, -11.0);
+        b.site('B', 19.0, -30.0, 29.5, -15.0);
         let zones = vec![
-            zone("A site", -32.0, -32.0, -13.5, -7.5),
-            zone("B site", 13.5, -32.0, 32.0, -6.0),
-            zone("the north spawn", -13.5, -32.0, 13.5, -20.0),
-            zone("the forecourt", -13.5, -20.0, 13.5, -6.0),
-            zone("the freight lane", -32.0, -7.5, -21.0, 17.0),
-            zone("the arcade", -21.0, -6.0, -7.0, 17.0),
-            zone("the bus bays", -7.0, -6.0, 7.0, 17.0),
-            zone("the cistern", 21.0, -6.0, 32.0, 17.0),
-            zone("the underpass", 7.0, -6.0, 21.0, 17.0),
-            zone("the south spawn", -32.0, 17.0, 32.0, 32.0),
+            zone("the north spawn", -16.0, -31.0, 13.0, -26.0),
+            zone("A site", -16.0, -26.0, 13.0, -9.0),
+            zone("the freight lane", -31.0, -24.0, -16.0, 23.0),
+            zone("the forecourt", -16.0, -9.0, 13.0, -3.0),
+            zone("the gatehouse", 7.0, -3.0, 13.0, 9.0),
+            zone("the bus bays", -16.0, 9.0, 20.0, 23.0),
+            zone("the underpass", 20.0, -6.0, 31.0, 23.0),
+            zone("the south spawn", -31.0, 23.0, 31.0, 31.0),
         ];
         b.finish(
             MapId::Depot,
             zones,
             V2::new(0.0, 27.0),
             vec![
-                V2::new(-4.0, -28.0),
-                V2::new(4.0, -28.0),
-                V2::new(-18.0, -27.0),
-                V2::new(18.0, -27.0),
-                V2::new(0.0, -25.0),
-                V2::new(-26.5, -21.5),
-                V2::new(26.0, -26.0),
+                V2::new(-9.0, -29.0),
+                V2::new(-3.0, -29.5),
+                V2::new(3.0, -29.0),
+                V2::new(8.0, -28.5),
+                V2::new(-13.0, -28.0),
+                V2::new(0.0, -26.8),
+                V2::new(24.0, -27.0),
             ],
         )
     }

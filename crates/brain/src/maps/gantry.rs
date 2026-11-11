@@ -4,26 +4,26 @@
 //!              north (defenders)
 //!   +----------------------+---------+--+------------------+
 //!   |  the warehouse       | harbour |  |  B site (quay,   |
-//!   |  = A site (indoor,   | office  |con  gantry crane,   |
+//!   |  = A site (indoor,   | office  |gap  gantry crane,   |
 //!   |  shelving, office)   | def.    |  |  containers)     |
 //!   |                 back>| spawn   +--+                  |
-//!   +--roller door--door---+-gate----+--pump house--+      |
-//!   |A yard |   A link     |   |   |   |  (B short)  | B  |
-//!   |(con-  +--------------+ w | m | e +-------------+quay|
-//!   |tainer |   sheds      | t | i | t |  customs    |    |
-//!   |stacks)|              | r | d | r |             |    |
+//!   +--roller door--door---+-signal--+--pump house--+      |
+//!   |con-   |  loading     |   | c |   |             | sea|
+//!   |tainer |  apron       | w | e | e +-------------+wall|
+//!   |stacks +--------------+ t | n | t |  customs    |    |
+//!   |       |   sheds      | r | t | r |             |    |
 //!   +-------+--------------+---+---+---+-------------+----+
 //!   |              attacker spawn (truck gate)             |
 //!   +------------------------------------------------------+
 //!              south (attackers)
 //! ```
 //!
-//! Routes: **A yard** (the long way: container stacks up to the warehouse roller door),
-//! **A link** (off the west tracks to the warehouse's small door), **mid** (three lanes
-//! between two parked trains; the centre track is the sniper lane from the defender spawn
-//! through the mid gate down to the parked trailer), **B short** (off the east tracks
-//! through the pump house), **B quay** (the long open quay along the sea wall). Defenders
-//! reach A through the warehouse back door and B through the B connector.
+//! Routes: **the container stacks** (the long way up to the warehouse roller door), **the
+//! loading apron** (off the west tracks to the warehouse's small door), **the rail yard**
+//! (three lanes between two parked trains; **the centre track** is the sniper lane from the
+//! defender spawn through **the signal gate** down to the parked trailer), **the pump house**
+//! (off the east tracks), **the sea wall** (the long open quay). Defenders reach A through the
+//! warehouse back door and B through **the harbour gap**.
 
 use crate::arena::{Arena, BuildingUse, Builder, FloorSkin, LampStyle, MapId, Paint, Roof, Skin, zone};
 use crate::building::{Building, Opening, Side};
@@ -52,7 +52,7 @@ pub fn gantry() -> Arena {
     b.tall(-39.0, 33.0, -33.0, 39.0, 6.0, Brick);
     b.low(8.0, 33.0, 9.2, 34.2, Crate);
 
-    // ------------------------------------------------------------------ west: A yard, A link, the warehouse (A site)
+    // ------------------------------------------------------------------ west: container stacks, loading apron, the warehouse (A site)
     Building::new("the warehouse", BuildingUse::Warehouse, -39.0, -39.0, -12.0, -14.0, 7.5, Siding)
         .opening(Side::South, Opening::wide_door(-31.0, 4.0, 3.8))
         .door(Side::South, -16.0)
@@ -78,18 +78,18 @@ pub fn gantry() -> Arena {
         .low(-38.4, -31.0, -36.0, -30.4, Desk)
         .low(-29.0, -37.0, -26.6, -35.8, Crate)
         .emit(&mut b);
-    // A link: a fenced loading apron off the west tracks, walled off from the A yard.
+    // The loading apron: fenced, off the west tracks, walled off from the container stacks.
     b.tall(-27.4, -14.0, -27.0, -6.0, 3.6, Concrete);
     b.tall(-24.0, -11.0, -21.6, -8.6, 2.6, Crate);
     b.low(-17.0, -9.0, -15.8, -7.8, Barrel);
-    // The sheds between the A yard and the tracks.
+    // The sheds between the container stacks and the tracks.
     b.tall(-27.0, -6.0, -12.0, 8.0, 6.0, Siding);
     b.tall(-27.0, 8.0, -12.0, 13.0, 7.0, Brick);
     b.tall(-27.0, 17.0, -12.0, 24.0, 7.0, Brick);
-    // Cut-throughs from the tracks: west to the A yard, east to the quay.
+    // Cut-throughs from the tracks: west to the container stacks, east to the quay.
     b.low(-22.0, 13.4, -20.8, 14.6, Crate);
     b.low(17.0, 15.6, 18.2, 16.8, Barrel);
-    // A yard: container stacks (some two high) and pallets.
+    // The container stacks (some two high) and pallets.
     b.tall(-37.0, 10.0, -34.6, 16.0, 2.6, Container);
     b.tall(-33.0, -2.0, -30.6, 4.0, 5.2, Container);
     b.tall(-31.0, 18.0, -28.6, 24.0, 2.6, Container);
@@ -98,7 +98,7 @@ pub fn gantry() -> Arena {
     b.low(-31.0, -11.0, -28.6, -10.4, Sandbag);
     b.low(-38.6, 21.0, -37.4, 22.2, Crate);
 
-    // ------------------------------------------------------------------ mid: the rail yard
+    // ------------------------------------------------------------------ the rail yard
     // Two parked trains (box wagons and a flatbed each) make three lanes.
     b.tall(-8.2, -12.0, -5.6, 0.0, 2.9, Container);
     b.tall(-8.2, 3.0, -5.6, 13.0, 2.9, Container);
@@ -109,12 +109,12 @@ pub fn gantry() -> Arena {
     b.low(-1.2, 24.0, 1.2, 24.6, Cabinet); // buffer stop
     b.low(-12.0, 18.0, -10.8, 19.2, Crate);
     b.low(10.8, 6.0, 12.0, 7.2, Barrel);
-    // The mid gate: a wall across the yard with a signal gantry over the gap.
+    // The signal gate: a wall across the yard with a signal gantry over the gap.
     b.tall(-12.0, -17.0, -2.0, -16.0, 4.0, Concrete);
     b.tall(2.0, -17.0, 12.0, -16.0, 4.0, Concrete);
     b.decor.headers.push(crate::arena::Header { min: V2::new(-2.0, -17.0), max: V2::new(2.0, -16.0), bottom: 3.4, top: 4.0 });
 
-    // ------------------------------------------------------------------ east: the pump house (B short), customs, the quay
+    // ------------------------------------------------------------------ east: the pump house, customs, the quay
     b.tall(12.0, -39.0, 14.0, -34.0, 6.0, Concrete);
     b.tall(12.0, -29.5, 14.0, -12.0, 6.0, Concrete);
     Building::new("the pump house", BuildingUse::Workshop, 12.0, -12.0, 26.0, -2.0, 4.5, Brick)
@@ -182,7 +182,7 @@ pub fn gantry() -> Arena {
     b.sign_floor("B", 21.0, -26.0, 3.0, (0, -1), Paint::Blue);
     b.sign_wall("< A", -20.0, 24.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
     b.sign_wall("B >", 19.0, 24.0, 2.6, 1.0, (0, 1), Paint::Black, Some(Paint::Yellow));
-    b.sign_wall("MID", 0.0, 28.0, 1.9, 0.6, (0, 1), Paint::Black, Some(Paint::White));
+    b.sign_wall("A B ^", 0.0, 28.0, 1.9, 0.6, (0, 1), Paint::Black, Some(Paint::White));
     b.sign_wall("A >", -12.0, -3.0, 2.4, 0.8, (1, 0), Paint::Black, Some(Paint::Yellow));
     b.sign_wall("< B", 12.0, 1.0, 2.4, 0.8, (-1, 0), Paint::Black, Some(Paint::Yellow));
     b.sign_wall("A >", -12.0, -28.0, 2.2, 0.8, (1, 0), Paint::White, Some(Paint::Red));
@@ -214,18 +214,18 @@ pub fn gantry() -> Arena {
 
     let zones = vec![
         zone("attacker spawn", -39.0, 24.0, 39.0, 39.0),
-        zone("A yard", -39.0, -14.0, -27.0, 26.0),
-        zone("A link", -27.0, -14.0, -12.0, -6.0),
-        zone("yard cut", -27.0, 13.0, -12.0, 17.0),
-        zone("quay cut", 12.0, 13.0, 26.0, 17.0),
-        zone("west tracks", -12.0, -16.0, -5.6, 26.0),
-        zone("mid", -5.6, -16.0, 5.6, 26.0),
-        zone("east tracks", 5.6, -16.0, 12.0, 26.0),
-        zone("B quay", 26.0, -12.0, 39.0, 26.0),
+        zone("the container stacks", -39.0, -14.0, -27.0, 26.0),
+        zone("the loading apron", -27.0, -14.0, -12.0, -6.0),
+        zone("the stack cut", -27.0, 13.0, -12.0, 17.0),
+        zone("the quay cut", 12.0, 13.0, 26.0, 17.0),
+        zone("the west tracks", -12.0, -16.0, -5.6, 26.0),
+        zone("the centre track", -5.6, -16.0, 5.6, 26.0),
+        zone("the east tracks", 5.6, -16.0, 12.0, 26.0),
+        zone("the sea wall", 26.0, -12.0, 39.0, 26.0),
         zone("B site", 14.0, -39.0, 39.0, -12.0),
-        zone("B connector", 12.0, -34.0, 14.0, -29.5),
+        zone("the harbour gap", 12.0, -34.0, 14.0, -29.5),
         zone("defender spawn", -12.0, -39.0, 12.0, -26.0),
-        zone("mid gate", -12.0, -26.0, 12.0, -16.0),
+        zone("the signal gate", -12.0, -26.0, 12.0, -16.0),
     ];
     b.finish(
         MapId::Gantry,
