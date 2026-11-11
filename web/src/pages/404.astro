@@ -2,9 +2,9 @@
 import Base from '../layouts/Base.astro';
 import Plan from '../components/Plan.astro';
 import Ticks from '../components/Ticks.astro';
-import { notFound } from '../data/site';
+import { notFound, NAME } from '../data/site';
 ---
-<Base title={notFound.title} description="This page does not exist. The Shroud squad is still looking for it.">
+<Base title={notFound.title} description={`This page does not exist. The ${NAME} squad is still looking for it.`}>
   <section class="lost" data-belief-scope>
     <div class="lost__text">
       <p class="label">404</p>

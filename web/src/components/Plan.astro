@@ -5,9 +5,14 @@ import data from '../data/maps.json';
 interface Props { map?: string; zones?: boolean; spawns?: boolean; title?: string }
 const { map = 'foundry', zones = false, spawns = false, title } = Astro.props;
 const m = data.maps.find((x) => x.id === map)!;
-const H = data.half;
-const cells = Array.from({ length: 17 }, (_, i) => -H + i * 4);
-const skip = new Set(['the cubicles', 'the south spawn', 'the north spawn']);
+// Maps differ in size: each has its own half extent (older exports had one shared value).
+const H: number = (m as { half?: number }).half ?? (data as { half?: number }).half ?? 32;
+// The same ~4 m cells as the live belief grid (src/motion/belief.ts).
+const bw = Math.max(1, Math.round((H * 2) / 4));
+const cells = Array.from({ length: bw + 1 }, (_, i) => -H + (i * H * 2) / bw);
+// Labels are 1.15 m type (about 0.55 m per character); skip one wider than its zone.
+const fits = (z: { name: string; x0: number; x1: number }) => z.name.replace(/^the /, '').length * 0.55 <= (z.x1 - z.x0) * 1.1;
+const skip = new Set(['the cubicles', 'the south spawn', 'the north spawn', 'attacker spawn', 'defender spawn']);
 ---
 <svg class="plan" viewBox={`${-H} ${-H} ${H * 2} ${H * 2}`} role="img" aria-label={title ?? `Plan of ${m.label}`}>
   <g class="plan__grid">
@@ -18,7 +23,7 @@ const skip = new Set(['the cubicles', 'the south spawn', 'the north spawn']);
   {m.blocks.filter((b) => b.kind !== 'Wall').map((b) => (
     <rect class={b.kind === 'Tall' ? 'plan__tall' : 'plan__low'} x={b.x - b.hx} y={b.y - b.hy} width={b.hx * 2} height={b.hy * 2} />
   ))}
-  {zones && m.zones.filter((z) => !skip.has(z.name)).map((z) => (
+  {zones && m.zones.filter((z) => !skip.has(z.name) && fits(z)).map((z) => (
     <text class="plan__zone" x={(z.x0 + z.x1) / 2} y={(z.y0 + z.y1) / 2}>{z.name.replace(/^the /, '')}</text>
   ))}
   {spawns && m.enemySpawns.map((p, i) => (

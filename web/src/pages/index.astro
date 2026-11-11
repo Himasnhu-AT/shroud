@@ -3,8 +3,13 @@ import Base from '../layouts/Base.astro';
 import Shot from '../components/Shot.astro';
 import Plan from '../components/Plan.astro';
 import Ticks from '../components/Ticks.astro';
-import { home, difficulties, maps, gallery, facts, site } from '../data/site';
-import geo from '../data/maps.json';
+import { home, difficulties, shownMaps as maps, gallery, facts, site, countWord, TOTAL_MAPS, download } from '../data/site';
+// The hero name in lines: a multi-word name goes on two (first word, then the rest); the type is
+// sized from the longest line so it fills the column like a single short word would.
+const words = site.name.split(' ');
+const titleLines = site.name.length > 9 && words.length > 1 ? [words[0], words.slice(1).join(' ')] : [site.name];
+const titleStyle = `--n:${Math.max(6, ...titleLines.map((l) => l.length))};--l:${titleLines.length}`;
+const mapsLabel = maps.length >= TOTAL_MAPS ? `All ${countWord(TOTAL_MAPS)} maps, up close` : `${countWord(maps.length).replace(/^./, (c) => c.toUpperCase())} of the ${countWord(TOTAL_MAPS)} maps, up close`;
 const ghostMax = 0.25;
 ---
 <Base>
@@ -17,16 +22,19 @@ const ghostMax = 0.25;
     <div class="hero__col">
       <div class="hero__text">
         <p class="hero__kind" data-split="lines" data-intro data-delay="0.2">{site.kind}</p>
-        <h1 id="hero-title" class="hero__title" data-split="chars" data-intro>Shroud</h1>
+        <h1 id="hero-title" class="hero__title" style={titleStyle} data-split="chars" data-intro>{titleLines.map((l, i) => <>{i > 0 && <br />}{l}</>)}</h1>
         <p class="hero__line" data-split="lines" data-intro data-delay="0.45">{home.heroLine}</p>
+        <p class="hero__tag" data-reveal="fade" data-intro data-delay="0.7">{site.tagline}</p>
         <div class="hero__act">
-          <a class="btn target" href={home.heroCta.href} data-reveal="fade" data-intro data-delay="0.9"><span>{home.heroCta.label}</span><Ticks /></a>
+          <a class="btn btn--out target" href={download.href} rel="noopener" data-reveal="fade" data-intro data-delay="0.85"><span>{download.label}</span><Ticks /></a>
+          <a class="link-more target" href={home.heroCta.href} data-reveal="fade" data-intro data-delay="0.95"><span>{home.heroCta.label}</span><Ticks /></a>
+          <p class="hero__dl" data-reveal="fade" data-intro data-delay="0.95">{download.note}</p>
           <p class="hero__hint" data-reveal="fade" data-intro data-delay="0.8"><span class="pip pip--you" aria-hidden="true"></span>{home.heroHint}</p>
         </div>
       </div>
       <div class="hero__lower">
         <figure class="hero__feed" data-reveal="clip" data-intro data-delay="0.35">
-          <Shot src="firefight" alt="What the player sees on Foundry: red tracers over a low wall, an enemy at the right edge, and the kill feed showing Charlie reloading and Delta calling go." sizes="(max-width: 767px) 92vw, 22vw" widths={[400, 640, 960]} eager />
+          <Shot src="firefight" alt="What the player sees, in an earlier build on the original Foundry yard: red tracers over a low wall, an enemy at the right edge, and radio lines from Charlie reloading and Delta calling go." sizes="(max-width: 767px) 92vw, 22vw" widths={[400, 640, 960]} eager />
           <figcaption class="hero__feedcap">What you see</figcaption>
         </figure>
         <div class="hero__side" data-reveal="fade" data-intro data-delay="0.6">
@@ -114,21 +122,21 @@ const ghostMax = 0.25;
 
   <!-- 5. Index: the maps -->
   <section class="maps" id="maps" aria-labelledby="maps-title">
-    <h2 id="maps-title" class="label">Three of the six maps, up close</h2>
+    <h2 id="maps-title" class="label">{mapsLabel}</h2>
     <ul class="index" data-index>
       {maps.map((m) => (
         <li>
           <a class="index__row target" href={`/maps/${m.id}/`} data-preview={m.id}>
             <span class="index__name"><span>{m.name}</span><Ticks /></span>
             <span class="index__blurb">{m.blurb}</span>
-            <span class="index__meta">{geo.maps.find((g) => g.id === m.id)!.zones.length} named zones</span>
-            <span class="index__thumb"><Shot src={m.cover} alt="" sizes="40vw" widths={[480, 800]} /></span>
+            <span class="index__meta">{m.geo.zones.length} named zones</span>
+            {m.cover && <span class="index__thumb"><Shot src={m.cover} alt="" sizes="40vw" widths={[480, 800]} /></span>}
           </a>
         </li>
       ))}
     </ul>
     <div class="preview" aria-hidden="true">
-      {maps.map((m) => (<div class="preview__img" data-for={m.id}><Shot src={m.cover} alt="" sizes="26vw" widths={[480, 800]} /></div>))}
+      {maps.filter((m) => m.cover).map((m) => (<div class="preview__img" data-for={m.id}><Shot src={m.cover!} alt="" sizes="26vw" widths={[480, 800]} /></div>))}
     </div>
   </section>
 
@@ -180,6 +188,7 @@ const ghostMax = 0.25;
     <dl class="get__list">
       {facts.map((r) => (<div><dt>{r.label}</dt><dd>{r.value}</dd></div>))}
     </dl>
+    <p class="get__act"><a class="btn btn--out target" href={download.href} rel="noopener"><span>{download.label}</span><Ticks /></a><span>{download.note}</span></p>
     <p class="get__pending"><span class="pip pip--squad" aria-hidden="true"></span>{home.get.pending}</p>
   </section>
 </Base>

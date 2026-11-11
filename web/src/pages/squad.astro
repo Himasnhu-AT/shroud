@@ -4,10 +4,10 @@ import Shot from '../components/Shot.astro';
 import Plan from '../components/Plan.astro';
 import Ticks from '../components/Ticks.astro';
 import Floors from '../components/Floors.astro';
-import { squadPage as p, home } from '../data/site';
+import { squadPage as p, home, NAME } from '../data/site';
 const s = p.sections;
 ---
-<Base title={p.title} description="How Shroud's enemy squad hunts you: a shared belief grid, a LinUCB bandit that picks plays, split search, report and surround, and evolution between matches.">
+<Base title={p.title} description={`How ${NAME}'s enemy squad hunts you: a shared belief grid, a LinUCB bandit that picks plays, split search, report and surround, and evolution between matches.`}>
   <header class="page-head">
     <p class="label" data-split="lines" data-intro>The squad brain</p>
     <h1 class="page-title" data-split="chars" data-intro>{p.title}</h1>
@@ -19,7 +19,7 @@ const s = p.sections;
 
   <figure class="bleed" data-reveal="scale" data-intro>
     <Shot src="flank_break" alt={p.heroAlt} eager sizes="(max-width: 767px) calc(100vw - 32px), 100vw" widths={[480, 720, 1080, 1600, 1920]} />
-    <figcaption>Foundry, crouched in the south yard and taking fire from the squad.</figcaption>
+    <figcaption>An earlier build, on the original Foundry yard: crouched behind low cover and taking fire from the squad.</figcaption>
   </figure>
 
 
@@ -90,12 +90,12 @@ const s = p.sections;
         <Plan map="foundry" title="Plan of Foundry with the squad surrounding a camping player" />
         <canvas aria-hidden="true"></canvas>
       </div>
-      <figcaption>Foundry: a camper in the south yard, surrounded from three sides.</figcaption>
+      <figcaption>Foundry: a camper, surrounded from three sides.</figcaption>
     </figure>
   </section>
 
   <section class="shots shots--pair" aria-label="The squad in the game">
-    <figure data-reveal="clip"><Shot src="flank_fire" alt="On Foundry an enemy in red runs across the yard in front of a rust-green wall." sizes="(max-width: 767px) 100vw, 50vw" /><figcaption>A member crosses the open yard while the squad closes in.</figcaption></figure>
+    <figure data-reveal="clip"><Shot src="flank_fire" alt="The original Foundry yard in an earlier build: rust-green walls and sand-coloured low cover, a red tracer streaking against the nearest wall." sizes="(max-width: 767px) 100vw, 50vw" /><figcaption>Fire from the flank while you watch the front. Earlier build.</figcaption></figure>
     <figure data-reveal="clip"><Shot src="lean_peek" alt="An enemy in red leans out past a concrete wall with something in hand, close to the player." sizes="(max-width: 767px) 100vw, 50vw" /><figcaption>Leaning out past the wall instead of stepping into the open.</figcaption></figure>
   </section>
 
@@ -128,7 +128,7 @@ const s = p.sections;
     <div class="fact" data-reveal="up">
       <h3 class="fact__label">{home.results.ghost.label}</h3>
       <p class="fact__after">0.06</p>
-      <p class="fact__before">was 0.17, on Foundry</p>
+      <p class="fact__before">was 0.17, on Foundry before its rebuild</p>
       <p class="fact__note">Depot went from 0.23 to 0.15 and Ledger from 0.25 to 0.11.</p>
     </div>
   </section>

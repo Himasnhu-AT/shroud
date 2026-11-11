@@ -152,6 +152,10 @@ coordinator on the same map plan; it is labelled as such. The real one is Rust i
   cell transition (which names the destination: "Moving to Depot").
 - **"Status", not "Get Shroud".** There is nothing to buy or download yet, so the nav item and
   the finale show what is known and one line of what is still to be announced.
+  *Update (Nov 2026):* the game, now Pattern of Life, is a free download on itch.io. The hero's
+  primary button, the finale button, a "Download ↗" item in the header and menu, and a footer link
+  all go there (`download` in `src/data/site.ts`). The ↗ marks the only links that leave the site;
+  the header item is accent orange because it is the one action.
 - **Focus** shows the accent outline on every target; the corner ticks are the hover and
   current-page treatment.
 - **Heat scale** is absolute (probability × walkable cells), so a lost-contact grid reads as

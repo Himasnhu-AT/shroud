@@ -1,17 +1,18 @@
 ---
-import { nav } from '../data/site';
+import { nav, site, download } from '../data/site';
 import Ticks from './Ticks.astro';
 const year = new Date().getFullYear();
 ---
 <footer class="foot">
   <div class="foot__row">
-    <p class="foot__name">Shroud</p>
+    <p class="foot__name">{site.name}</p>
     <ul class="foot__links">
       <li><a class="util target" href="/"><span>Home</span><Ticks /></a></li>
       {nav.map((n) => <li><a class="util target" href={n.href}><span>{n.label}</span><Ticks /></a></li>)}
+      <li><a class="util foot__get target" href={download.href} rel="noopener"><span>{download.label}</span><Ticks /></a></li>
     </ul>
     <div class="foot__small">
-      <p>© {year} Shroud. Studio name to be announced.</p>
+      <p>© {year} {site.name}. Studio name to be announced.</p>
       <p>Set in Barlow and Barlow Condensed, the typefaces the game uses.</p>
       <p>Every image is an in-game capture.</p>
     </div>

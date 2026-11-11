@@ -2,7 +2,8 @@
 // running on the real map plans from crates/brain (src/data/maps.json).
 //
 // It follows the coordinator's rules in simplified form:
-// - a 16x16 belief grid over the 64 m arena; diffusion uses the same formula as Belief::diffuse
+// - a belief grid of 4 m cells over the map (the game's is 24x24 over 96 m, sized for the
+//   largest map); diffusion uses the same formula as Belief::diffuse
 // - cells clear only where a member looks and a crouched player would be seen (low cover blocks)
 // - Search: spots picked from the grid with repulsion, at most two members on the hottest one
 // - Encircle: the spotter holds, the others take distinct sectors, stage, then move on "go"
@@ -15,13 +16,14 @@ import data from '../data/maps.json';
 type V = { x: number; y: number };
 type Block = { x: number; y: number; hx: number; hy: number; h: number; kind: string; skin: string };
 type Zone = { name: string; x0: number; y0: number; x1: number; y1: number };
-type MapData = { id: string; label: string; blocks: Block[]; zones: Zone[]; playerSpawn: number[]; enemySpawns: number[][] };
+type MapData = { id: string; label: string; half?: number; blocks: Block[]; zones: Zone[]; playerSpawn: number[]; enemySpawns: number[][] };
 
-const HALF = data.half; // 32 m
-const SIZE = HALF * 2;
-const BW = 16; // belief cells per side (BELIEF_W)
-const BCELL = SIZE / BW; // 4 m
-const NW = 64; // nav cells per side (1 m)
+// Maps differ in size (64 to 90 m). Each map's own `half` comes from Arena::half(); an older
+// export only had the shared default at the top level.
+const DEFAULT_HALF: number = (data as { half?: number }).half ?? 32;
+export const halfOf = (m: { half?: number }) => m.half ?? DEFAULT_HALF;
+const ZONE_SKIP = new Set(['the cubicles', 'the south spawn', 'the north spawn', 'attacker spawn', 'defender spawn']);
+const CELL_M = 4; // belief cell size in metres, as in the game (BELIEF_CELL)
 const CALLSIGNS = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'];
 const SECTORS = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
 
@@ -51,36 +53,50 @@ class World {
   map: MapData;
   sight: Block[]; // blocks that stop a standing player's sight (walls, tall)
   crouch: Block[]; // plus low cover: what stops sight of a crouched player
-  walk = new Uint8Array(NW * NW);
+  half: number; // metres from the centre to the outer wall's centre line
+  size: number;
+  nw: number; // nav cells per side (1 m)
+  bw: number; // belief cells per side
+  bcell: number; // belief cell size (about 4 m)
+  walk: Uint8Array;
   beliefWalk: boolean[] = [];
 
   constructor(map: MapData) {
     this.map = map;
+    this.half = halfOf(map);
+    this.size = this.half * 2;
+    this.nw = Math.ceil(this.size);
+    this.bw = Math.max(1, Math.round(this.size / CELL_M));
+    this.bcell = this.size / this.bw;
+    this.walk = new Uint8Array(this.nw * this.nw);
     this.sight = map.blocks.filter((b) => b.kind !== 'Low');
     this.crouch = map.blocks;
-    for (let j = 0; j < NW; j++)
-      for (let i = 0; i < NW; i++) {
-        const p = { x: -HALF + i + 0.5, y: -HALF + j + 0.5 };
-        this.walk[j * NW + i] = this.inside(p, 0.45) ? 0 : 1;
+    for (let j = 0; j < this.nw; j++)
+      for (let i = 0; i < this.nw; i++) {
+        const p = { x: -this.half + i + 0.5, y: -this.half + j + 0.5 };
+        this.walk[j * this.nw + i] = this.inside(p, 0.45) ? 0 : 1;
       }
-    for (let j = 0; j < BW; j++)
-      for (let i = 0; i < BW; i++) {
+    for (let j = 0; j < this.bw; j++)
+      for (let i = 0; i < this.bw; i++) {
         let ok = false;
-        for (let a = 0; a < 4 && !ok; a++)
-          for (let b = 0; b < 4 && !ok; b++) ok = this.walkableAt({ x: -HALF + i * BCELL + a + 0.5, y: -HALF + j * BCELL + b + 0.5 });
+        const n = Math.ceil(this.bcell);
+        for (let a = 0; a < n && !ok; a++)
+          for (let b = 0; b < n && !ok; b++) ok = this.walkableAt({ x: -this.half + i * this.bcell + a + 0.5, y: -this.half + j * this.bcell + b + 0.5 });
         this.beliefWalk.push(ok);
       }
   }
 
   inside(p: V, pad = 0) {
-    if (Math.abs(p.x) > HALF - 1 - pad || Math.abs(p.y) > HALF - 1 - pad) return true;
+    if (Math.abs(p.x) > this.half - 1 - pad || Math.abs(p.y) > this.half - 1 - pad) return true;
     return this.map.blocks.some((b) => b.kind !== 'Wall' && Math.abs(p.x - b.x) < b.hx + pad && Math.abs(p.y - b.y) < b.hy + pad);
   }
   navIndex(p: V) {
-    const i = Math.max(0, Math.min(NW - 1, Math.floor(p.x + HALF)));
-    const j = Math.max(0, Math.min(NW - 1, Math.floor(p.y + HALF)));
-    return j * NW + i;
+    const i = Math.max(0, Math.min(this.nw - 1, Math.floor(p.x + this.half)));
+    const j = Math.max(0, Math.min(this.nw - 1, Math.floor(p.y + this.half)));
+    return j * this.nw + i;
   }
+  /** A point authored for the 64 m default map, scaled to this map's size. */
+  scaled(p: V): V { const f = this.half / DEFAULT_HALF; return { x: p.x * f, y: p.y * f }; }
   walkableAt(p: V) { return this.walk[this.navIndex(p)] === 1; }
   nearestWalkable(p: V): V {
     const start = this.navIndex(p);
@@ -89,9 +105,9 @@ class World {
       for (let dj = -r; dj <= r; dj++)
         for (let di = -r; di <= r; di++) {
           if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
-          const i = (start % NW) + di, j = Math.floor(start / NW) + dj;
-          if (i < 0 || j < 0 || i >= NW || j >= NW) continue;
-          if (this.walk[j * NW + i]) return { x: -HALF + i + 0.5, y: -HALF + j + 0.5 };
+          const i = (start % this.nw) + di, j = Math.floor(start / this.nw) + dj;
+          if (i < 0 || j < 0 || i >= this.nw || j >= this.nw) continue;
+          if (this.walk[j * this.nw + i]) return { x: -this.half + i + 0.5, y: -this.half + j + 0.5 };
         }
     return p;
   }
@@ -120,12 +136,12 @@ class World {
   path(from: V, to: V): V[] {
     const s = this.navIndex(from), g = this.navIndex(this.nearestWalkable(to));
     if (s === g) return [to];
-    const N = NW * NW;
+    const N = this.nw * this.nw;
     const cost = new Float32Array(N).fill(Infinity);
     const prev = new Int32Array(N).fill(-1);
     const open: number[] = [s];
-    const gx = g % NW, gy = Math.floor(g / NW);
-    const hcost = (i: number) => Math.hypot((i % NW) - gx, Math.floor(i / NW) - gy);
+    const gx = g % this.nw, gy = Math.floor(g / this.nw);
+    const hcost = (i: number) => Math.hypot((i % this.nw) - gx, Math.floor(i / this.nw) - gy);
     const f = new Float32Array(N).fill(Infinity);
     cost[s] = 0; f[s] = hcost(s);
     const closed = new Uint8Array(N);
@@ -137,22 +153,22 @@ class World {
       if (cur === g) break;
       if (closed[cur]) continue;
       closed[cur] = 1;
-      const cx = cur % NW, cy = Math.floor(cur / NW);
+      const cx = cur % this.nw, cy = Math.floor(cur / this.nw);
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
           if (!dx && !dy) continue;
           const nx = cx + dx, ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= NW || ny >= NW) continue;
-          const n = ny * NW + nx;
+          if (nx < 0 || ny < 0 || nx >= this.nw || ny >= this.nw) continue;
+          const n = ny * this.nw + nx;
           if (!this.walk[n] || closed[n]) continue;
-          if (dx && dy && (!this.walk[cy * NW + nx] || !this.walk[ny * NW + cx])) continue;
+          if (dx && dy && (!this.walk[cy * this.nw + nx] || !this.walk[ny * this.nw + cx])) continue;
           const c = cost[cur] + (dx && dy ? 1.4142 : 1);
           if (c < cost[n]) { cost[n] = c; prev[n] = cur; f[n] = c + hcost(n); open.push(n); }
         }
     }
     if (prev[g] === -1) return [this.nearestWalkable(to)];
     const cells: V[] = [];
-    for (let c = g; c !== -1 && c !== s; c = prev[c]) cells.push({ x: -HALF + (c % NW) + 0.5, y: -HALF + Math.floor(c / NW) + 0.5 });
+    for (let c = g; c !== -1 && c !== s; c = prev[c]) cells.push({ x: -this.half + (c % this.nw) + 0.5, y: -this.half + Math.floor(c / this.nw) + 0.5 });
     cells.reverse();
     // String pulling: skip waypoints while the straight line stays walkable.
     const out: V[] = [];
@@ -188,12 +204,12 @@ const GHOST_SPEED = 3.4;
 
 class Squad {
   w: World;
-  b = new Float32Array(BW * BW);
+  b: Float32Array;
   m: Member[] = [];
   mode: Mode;
   play: 'search' | 'encircle' = 'search';
   lastSeen = -99;
-  lastPos: V = { x: 0, y: 20 };
+  lastPos: V;
   spotter = -1;
   stageT = 0;
   go = false;
@@ -208,6 +224,8 @@ class Squad {
 
   constructor(w: World, mode: Mode, size: number, seed: number, bark: Bark) {
     this.w = w; this.mode = mode; this.rand = rng(seed); this.bark = bark;
+    this.b = new Float32Array(w.bw * w.bw);
+    this.lastPos = w.nearestWalkable(w.scaled({ x: 0, y: 20 }));
     const spawns = w.map.enemySpawns;
     for (let i = 0; i < size; i++) {
       const s = spawns[i % spawns.length];
@@ -229,23 +247,23 @@ class Squad {
   }
   /** Belief::diffuse, same formula: a = (secs * 4 / cell * 0.5).min(0.8). */
   diffuse(secs: number) {
-    const a = Math.min(0.8, (secs * 4) / BCELL * 0.5);
+    const a = Math.min(0.8, (secs * 4) / this.w.bcell * 0.5);
     const old = this.b.slice();
     for (let i = 0; i < old.length; i++) {
-      const x = i % BW, z = Math.floor(i / BW);
+      const x = i % this.w.bw, z = Math.floor(i / this.w.bw);
       let s = 0, n = 0;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = x + dx, nz = z + dz;
-        if (nx >= 0 && nz >= 0 && nx < BW && nz < BW && this.w.beliefWalk[nz * BW + nx]) { s += old[nz * BW + nx]; n++; }
+        if (nx >= 0 && nz >= 0 && nx < this.w.bw && nz < this.w.bw && this.w.beliefWalk[nz * this.w.bw + nx]) { s += old[nz * this.w.bw + nx]; n++; }
       }
       if (n > 0) this.b[i] = (1 - a) * old[i] + (a * s) / n;
     }
     this.normalize();
   }
-  cellCenter(i: number): V { return { x: -HALF + ((i % BW) + 0.5) * BCELL, y: -HALF + (Math.floor(i / BW) + 0.5) * BCELL }; }
+  cellCenter(i: number): V { return { x: -this.w.half + ((i % this.w.bw) + 0.5) * this.w.bcell, y: -this.w.half + (Math.floor(i / this.w.bw) + 0.5) * this.w.bcell }; }
   cellOf(p: V) {
-    const c = (v: number) => Math.max(0, Math.min(BW - 1, Math.floor((v + HALF) / BCELL)));
-    return c(p.y) * BW + c(p.x);
+    const c = (v: number) => Math.max(0, Math.min(this.w.bw - 1, Math.floor((v + this.w.half) / this.w.bcell)));
+    return c(p.y) * this.w.bw + c(p.x);
   }
   sees(m: Member, p: V, blocks: Block[]) {
     const d = dist(m.pos, p);
@@ -441,7 +459,7 @@ class Ghost {
   step(dt: number) {
     if (this.wait > 0) { this.wait -= dt; return; }
     if (!this.path.length) {
-      const goal = { x: (this.rand() - 0.5) * (SIZE - 12), y: (this.rand() - 0.5) * (SIZE - 12) };
+      const goal = { x: (this.rand() - 0.5) * (this.w.size - 12), y: (this.rand() - 0.5) * (this.w.size - 12) };
       this.path = this.w.path(this.pos, goal);
       this.wait = 0.8 + this.rand() * 1.6; // camps a moment at each spot
       return;
@@ -460,14 +478,14 @@ export type Options = {
   squad?: number;
   seed?: number;
   zones?: boolean; // label the zones
-  spawns?: boolean; // draw the 7 enemy spawns and the player spawn
+  spawns?: boolean; // draw the enemy spawns (7 or 8) and the player spawn
   interactive?: boolean; // pointer or tap becomes the player
   onBark?: Bark;
   onState?: (s: { mode: string; peak: string; peakPct: number; seen: number; spread: number }) => void;
 };
 
-export function cellName(i: number) {
-  return `${String.fromCharCode(65 + (i % BW))}${Math.floor(i / BW) + 1}`;
+export function cellName(i: number, bw: number) {
+  return `${String.fromCharCode(65 + (i % bw))}${Math.floor(i / bw) + 1}`;
 }
 
 export class BeliefView {
@@ -480,7 +498,7 @@ export class BeliefView {
   pointer: V | null = null;
   pointerT = -99;
   acc = 0;
-  heat = new Float32Array(BW * BW); // displayed (smoothed) belief
+  heat: Float32Array; // displayed (smoothed) belief
   size = 0;
   dpr = 1;
   running = false;
@@ -492,6 +510,7 @@ export class BeliefView {
     this.ctx = canvas.getContext('2d')!;
     const map = (data.maps as MapData[]).find((m) => m.id === (opts.map || 'foundry')) || (data.maps[0] as MapData);
     this.world = new World(map);
+    this.heat = new Float32Array(this.world.bw * this.world.bw);
     this.o = { map: map.id, mode: 'live', squad: 4, seed: 7, zones: false, spawns: false, interactive: true, ...opts };
     this.reset(this.o.mode);
     this.resize();
@@ -503,13 +522,13 @@ export class BeliefView {
     this.ghost = new Ghost(this.world, this.o.seed);
     if (mode === 'encircle') this.ghost.wait = 9999; // camps: the squad finds and surrounds it
     if (mode === 'belief') {
-      // Start from a sighting at the south yard so the spread reads at once.
-      const p = this.world.nearestWalkable({ x: 0, y: 20 });
+      // Start from a sighting south of the centre so the spread reads at once.
+      const p = this.world.nearestWalkable(this.world.scaled({ x: 0, y: 20 }));
       this.squad.b.fill(0); this.squad.b[this.squad.cellOf(p)] = 1;
       this.squad.lastPos = p;
     }
     if (mode === 'encircle') {
-      this.ghost.pos = this.world.nearestWalkable({ x: 4, y: 12 });
+      this.ghost.pos = this.world.nearestWalkable(this.world.scaled({ x: 4, y: 12 }));
     }
     if (mode === 'live') {
       // First frame: contact was lost near your spawn a moment ago; the guess is spreading
@@ -539,8 +558,8 @@ export class BeliefView {
     const r = this.canvas.getBoundingClientRect();
     const s = Math.min(r.width, r.height);
     const ox = r.left + (r.width - s) / 2, oy = r.top + (r.height - s) / 2;
-    const x = ((clientX - ox) / s) * SIZE - HALF, y = ((clientY - oy) / s) * SIZE - HALF;
-    if (Math.abs(x) > HALF - 1 || Math.abs(y) > HALF - 1) return null;
+    const x = ((clientX - ox) / s) * this.world.size - this.world.half, y = ((clientY - oy) / s) * this.world.size - this.world.half;
+    if (Math.abs(x) > this.world.half - 1 || Math.abs(y) > this.world.half - 1) return null;
     return { x, y };
   }
 
@@ -579,7 +598,7 @@ export class BeliefView {
       const ms = this.squad.m;
       let spread = 0, n = 0;
       for (let a = 0; a < ms.length; a++) for (let b = a + 1; b < ms.length; b++) { spread += dist(ms[a].pos, ms[b].pos); n++; }
-      this.o.onState({ mode: this.o.mode === 'belief' ? 'Watching' : this.squad.play === 'encircle' ? (this.squad.go ? 'Encircle: go' : 'Encircle: staging') : 'Search', peak: cellName(pk.i), peakPct: pk.v, seen: Math.max(0, this.squad.t - this.squad.lastSeen), spread: n ? spread / n : 0 });
+      this.o.onState({ mode: this.o.mode === 'belief' ? 'Watching' : this.squad.play === 'encircle' ? (this.squad.go ? 'Encircle: go' : 'Encircle: staging') : 'Search', peak: cellName(pk.i, this.world.bw), peakPct: pk.v, seen: Math.max(0, this.squad.t - this.squad.lastSeen), spread: n ? spread / n : 0 });
     }
   }
   loopT = 0;
@@ -589,26 +608,26 @@ export class BeliefView {
     const W = canvas.width, H = canvas.height;
     const s = Math.min(W, H);
     const ox = (W - s) / 2, oy = (H - s) / 2;
-    const k = s / SIZE; // px per metre
-    const X = (x: number) => ox + (x + HALF) * k;
-    const Y = (y: number) => oy + (y + HALF) * k;
+    const k = s / this.world.size; // px per metre
+    const X = (x: number) => ox + (x + this.world.half) * k;
+    const Y = (y: number) => oy + (y + this.world.half) * k;
     ctx.clearRect(0, 0, W, H);
     // Heat
     const n = this.world.beliefWalk.filter(Boolean).length;
     const cold = this.o.mode === 'cold' ? 0.55 : 1;
-    const cell = BCELL * k;
+    const cell = this.world.bcell * k;
     const gap = Math.max(1, this.dpr);
     for (let i = 0; i < this.heat.length; i++) {
       const v = Math.min(1, Math.sqrt(this.heat[i] * n) / 4);
       if (v < 0.05) continue;
       ctx.fillStyle = `rgba(${C.heat[0]},${C.heat[1]},${C.heat[2]},${(v * 0.88 * cold).toFixed(3)})`;
-      ctx.fillRect(ox + (i % BW) * cell + gap / 2, oy + Math.floor(i / BW) * cell + gap / 2, cell - gap, cell - gap);
+      ctx.fillRect(ox + (i % this.world.bw) * cell + gap / 2, oy + Math.floor(i / this.world.bw) * cell + gap / 2, cell - gap, cell - gap);
     }
     // Grid
     ctx.strokeStyle = C.grid;
     ctx.lineWidth = this.dpr;
     ctx.beginPath();
-    for (let i = 0; i <= BW; i++) {
+    for (let i = 0; i <= this.world.bw; i++) {
       ctx.moveTo(ox + i * cell, oy); ctx.lineTo(ox + i * cell, oy + s);
       ctx.moveTo(ox, oy + i * cell); ctx.lineTo(ox + s, oy + i * cell);
     }
@@ -626,19 +645,22 @@ export class BeliefView {
     }
     ctx.strokeStyle = 'rgba(236,235,231,0.3)';
     ctx.lineWidth = this.dpr * 1.5;
-    ctx.strokeRect(X(-HALF + 1), Y(-HALF + 1), (SIZE - 2) * k, (SIZE - 2) * k);
+    ctx.strokeRect(X(-this.world.half + 1), Y(-this.world.half + 1), (this.world.size - 2) * k, (this.world.size - 2) * k);
     // Peak cell outline
     const pk = this.squad.peak();
     ctx.strokeStyle = `rgba(${C.heat.join(',')},0.95)`;
     ctx.lineWidth = this.dpr * 1.5;
-    ctx.strokeRect(ox + (pk.i % BW) * cell + gap, oy + Math.floor(pk.i / BW) * cell + gap, cell - gap * 2, cell - gap * 2);
+    ctx.strokeRect(ox + (pk.i % this.world.bw) * cell + gap, oy + Math.floor(pk.i / this.world.bw) * cell + gap, cell - gap * 2, cell - gap * 2);
     const font = (px: number, w = 600) => `${w} ${Math.round(px * this.dpr)}px Barlow, system-ui, sans-serif`;
     // Zones
     if (this.o.zones && s / this.dpr >= 480) {
       ctx.fillStyle = C.zone; ctx.font = font(11, 500); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       for (const z of this.world.map.zones) {
-        if (z.name === 'the cubicles' || z.name === 'the south spawn' || z.name === 'the north spawn') continue;
-        ctx.fillText(z.name.replace(/^the /, ''), X((z.x0 + z.x1) / 2), Y((z.y0 + z.y1) / 2));
+        if (ZONE_SKIP.has(z.name)) continue;
+        const label = z.name.replace(/^the /, '');
+        // Small rooms on the big maps: a label wider than its zone would run into the next one.
+        if (ctx.measureText(label).width > (z.x1 - z.x0) * k * 1.1) continue;
+        ctx.fillText(label, X((z.x0 + z.x1) / 2), Y((z.y0 + z.y1) / 2));
       }
     }
     if (this.o.spawns) {

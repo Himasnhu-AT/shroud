@@ -3,13 +3,17 @@ import Base from '../../layouts/Base.astro';
 import Shot from '../../components/Shot.astro';
 import Ticks from '../../components/Ticks.astro';
 import Plan from '../../components/Plan.astro';
-import { maps } from '../../data/site';
+import { shownMaps as maps, countWord, TOTAL_MAPS, NAME } from '../../data/site';
+const all = maps.length >= TOTAL_MAPS;
+const names = maps.map((m) => m.name);
+const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names.join('');
+const upClose = all ? `All ${countWord(TOTAL_MAPS)} of ${NAME}'s bomb-defusal maps up close` : `${countWord(maps.length).replace(/^./, (c) => c.toUpperCase())} of ${NAME}'s ${countWord(TOTAL_MAPS)} bomb-defusal maps up close: ${list}`;
 ---
-<Base title="Maps" description="Three of Shroud's six bomb-defusal maps up close: Foundry, Depot and Ledger. You pick the map before each match.">
+<Base title="Maps" description={`${upClose}. You pick the map before each match.`}>
   <header class="page-head">
     <p class="label" data-split="lines" data-intro>Two bomb sites each</p>
     <h1 class="page-title" data-split="chars" data-intro>Maps</h1>
-    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">Shroud has six bomb-defusal maps: Sirocco, Gantry, Depot, Township, Ledger and Foundry. Three of them up close here. You pick one before each match, and the squad brain reasons about every one on the same flat plan you see below.</p>
+    <p class="page-summary" data-split="lines" data-intro data-delay="0.25">{NAME} has six bomb-defusal maps: Sirocco, Gantry, Depot, Township, Ledger and Foundry.{all ? '' : ` ${countWord(maps.length).replace(/^./, (c) => c.toUpperCase())} of them up close here.`} You pick one before each match, and the squad brain reasons about every one on the same flat plan you see below.</p>
   </header>
   <ul class="mapgrid">
     {maps.map((m, i) => (
@@ -17,7 +21,7 @@ import { maps } from '../../data/site';
         <a class="mapcard target" href={`/maps/${m.id}/`}>
           <span class="mapcard__media">
             <span class="mapcard__plan"><Plan map={m.id} title={`Plan of ${m.name}`} /></span>
-            <Shot src={m.cover} alt={m.coverAlt} sizes="(max-width: 767px) 55vw, 32vw" eager={i === 0} />
+            {m.cover && <Shot src={m.cover} alt={m.coverAlt ?? ''} sizes="(max-width: 767px) 55vw, 32vw" eager={i === 0} />}
           </span>
           <span class="mapcard__name">{m.name}</span>
           <span class="mapcard__blurb">{m.blurb}</span>

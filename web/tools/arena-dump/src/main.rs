@@ -11,6 +11,8 @@ fn main() {
             "id": format!("{id:?}").to_lowercase(),
             "label": id.label(),
             "blurb": id.blurb(),
+            // Each map's own size (64 to 90 m across); the top-level "half" is only the default.
+            "half": r(a.half()),
             "blocks": a.blocks.iter().map(|b| json!({
                 "x": r(b.center.x), "y": r(b.center.y), "hx": r(b.half.x), "hy": r(b.half.y),
                 "h": r(b.height), "kind": format!("{:?}", b.kind), "skin": format!("{:?}", b.skin),

@@ -1,6 +1,6 @@
-// All visible copy for the Shroud site lives here.
+// All visible copy for the site lives here. The game's name is NAME below.
 //
-// Facts come from the Shroud repo (crates/brain, crates/game, README) and the squad AI rework
+// Facts come from the game repo (codename Shroud: crates/brain, crates/game, README) and the squad AI rework
 // benchmarks. Map geometry comes from `src/data/maps.json`, exported from crates/brain/src/arena.rs
 // by tools/arena-dump.
 //
@@ -8,19 +8,34 @@
 // - release date, platforms, price, store/download link, studio name, repo URL, production domain.
 // - "Marl Games" / marlgames.com is only a candidate studio name and domain: not shown as fact.
 
-export type Placeholder = { label: string; value: string; placeholder: true; href?: string };
+import geo from './maps.json';
+
+export type Placeholder = { label: string; value: string; placeholder: boolean; href?: string };
+
+// The game's name (formerly the codename Shroud). Change it here. Other spots that still spell it out
+// (none of them visible copy) are listed in README.md under "Renaming".
+export const NAME = 'Pattern of Life';
+// The itch.io page: live, free download for Windows and macOS.
+export const ITCH_URL = 'https://himanshuat.itch.io/patternoflife';
+
+export const download = {
+  href: ITCH_URL,
+  label: 'Download free on itch.io',
+  short: 'Download',
+  note: 'Free for Windows and macOS.',
+} as const;
 
 export const site = {
-  name: 'Shroud',
+  name: NAME,
   // Production URL: canonical, OG and sitemap read it. PLACEHOLDER: marlgames.com is only a
   // candidate studio domain; replace before deploying.
   url: 'https://shroud.marlgames.com',
   urlPlaceholder: true,
-  title: 'Shroud: the squad learns from you',
+  title: `${NAME}: they get smarter, never faster`,
   description:
-    'Shroud is a first-person shooter written in Rust where one enemy squad hunts you round after round and learns from every match you play.',
-  tagline: 'They learn from you.',
-  kind: 'Adaptive squad shooter',
+    `${NAME} is a tactical shooter where the enemy squad builds your pattern of life, and plays against it. They get smarter, never faster.`,
+  tagline: 'They get smarter, never faster.',
+  kind: 'Tactical squad shooter',
 } as const;
 
 export const nav = [
@@ -31,7 +46,8 @@ export const nav = [
 
 // What is known today, shown in the finale.
 export const facts = [
-  { label: 'Status', value: 'In development' },
+  { label: 'Status', value: 'Playable, in development' },
+  { label: 'Get it', value: 'Free on itch.io, for Windows and macOS' },
   { label: 'Genre', value: 'First-person shooter, solo against a squad of 3 to 6' },
   { label: 'Mode', value: 'Bomb defusal, first to 3 rounds, with a round economy and buy menu' },
   { label: 'Maps', value: 'Sirocco, Gantry, Depot, Township, Ledger, Foundry' },
@@ -41,18 +57,18 @@ export const facts = [
   { label: 'Built with', value: 'Rust, Bevy 0.20, avian3d' },
 ] as const;
 
-// Unknown: shown as one honest line, every item flagged for the owner to replace.
+// Release details. `placeholder: true` items are still unknown and must be replaced by the owner.
 export const release: Placeholder[] = [
   { label: 'Release', value: 'Date to be announced', placeholder: true },
-  { label: 'Platforms', value: 'To be announced', placeholder: true },
-  { label: 'Price', value: 'To be announced', placeholder: true },
-  { label: 'Store page', value: 'Link to come', placeholder: true },
+  { label: 'Platforms', value: 'Windows and macOS', placeholder: false },
+  { label: 'Price', value: 'Free', placeholder: false },
+  { label: 'Store page', value: 'itch.io', placeholder: false, href: ITCH_URL },
   { label: 'Studio', value: 'To be announced', placeholder: true },
   { label: 'Source', value: 'Repository link to come', placeholder: true },
 ];
 
 export const home = {
-  heroLine: 'A first-person shooter where the enemy squad learns from your past matches.',
+  heroLine: 'A tactical shooter where the enemy squad builds your pattern of life, and plays against it.',
   heroHint: 'Live on Foundry: point at or tap the map. That is you.',
   heroCta: { href: '/squad/', label: 'See how they hunt' },
   statement:
@@ -62,8 +78,8 @@ export const home = {
     {
       id: 'belief',
       title: 'Where you probably are',
-      text: 'The squad shares one picture of the map: a 16 by 16 grid of where you might be. While nobody sees you, that guess spreads a little every second. A cell only goes cold when someone looks at it and a crouched player there would have been spotted.',
-      call: 'Lost him - last seen at the south yard',
+      text: 'The squad shares one picture of the map: a grid of 4 metre squares, each holding how likely you are to be there. While nobody sees you, that guess spreads a little every second. A cell only goes cold when someone looks at it and a crouched player there would have been spotted.',
+      call: 'Lost him - last seen at the copy room',
     },
     {
       id: 'search',
@@ -93,7 +109,7 @@ export const home = {
     ],
     ghost: {
       label: 'Ghost survival on Elite',
-      note: 'A scripted ghost player that only tries to stay alive. Its win rate, per map.',
+      note: 'A scripted ghost player that only tries to stay alive. Its win rate, per map, measured on the maps as they were then: Foundry has since been rebuilt as a steelworks.',
       rows: [
         { map: 'Foundry', before: 0.17, after: 0.06 },
         { map: 'Depot', before: 0.23, after: 0.15 },
@@ -110,12 +126,12 @@ export const home = {
     text: 'The game runs on Bevy 0.20 with avian3d physics. The squad brain is a separate Rust crate with no engine dependency, so the same code runs in the game and in a 2D trainer that plays rounds against your ghost while you sit in the menus.',
     engine:
       'Window, settings, menus, pause, UI kit, FPS controller, render budget, devtools and the metrics window come from a shared in-house engine.',
-    port: { before: '13,467', after: '7,833', label: 'lines of Shroud game code before and after the move onto the engine' },
+    port: { before: '13,467', after: '7,833', label: `lines of ${NAME} game code before and after the move onto the engine` },
   },
   get: {
     title: 'They are watching.',
     note: 'Before your first match, that is all the main menu tells you.',
-    pending: 'Release date, platforms, price, store page and studio name are still to be announced.',
+    pending: 'The studio name is still to be announced.',
   },
 } as const;
 
@@ -127,12 +143,13 @@ export const difficulties = [
 ] as const;
 
 export type MapInfo = {
-  id: 'foundry' | 'depot' | 'office';
-  name: string;
-  blurb: string; // the in-game blurb, verbatim
+  id: 'foundry' | 'depot' | 'office' | 'sirocco' | 'gantry' | 'township'; // MapId variant, lower case
+  name: string; // MapId::label
+  blurb: string; // MapId::blurb, verbatim
   about: string;
-  cover: string; // key in src/assets/shots
-  coverAlt: string;
+  cover?: string; // key in src/assets/shots; maps without a capture yet show only the plan
+  coverAlt?: string;
+  coverCaption?: string; // shown under the cover on the map page (e.g. to date an old capture)
   shots: { src: string; alt: string; caption: string }[];
   compare?: { low: string; high: string; alt: string; caption: string }[];
 };
@@ -141,14 +158,17 @@ export const maps: MapInfo[] = [
   {
     id: 'foundry',
     name: 'Foundry',
-    blurb: 'Open industrial yard around a central tower.',
+    blurb: 'Bomb sites in a steelworks. A in the casting hall, B at the loading docks, a ladle car on the rails down mid.',
     about:
-      'The original arena and a mirror image of itself. Lane walls with a gap at the middle, crates near the tower, pillars in the yards and long low walls by the spawns. Open enough that the squad sees you early, which is when it pays to surround.',
+      'A steelworks on a hazy evening, 80 metres across. A is the casting hall, with its furnace, ladles and a control room; B is the loading docks, where trailers back onto the dock shed. A long runs through the scrap yard and an S-bend between two balers, A short cuts off mid through the boiler house, mid has a ladle car on rails under a conveyor, and B ramp climbs the rail spur past hopper wagons. The west and east cuts link the lanes, and the defenders rotate through the hall’s east door and the B connector.',
+    // CAPTURES: these three predate the steelworks; they show the original open yard. Replace with
+    // new captures of the casting hall, mid and the loading docks.
     cover: 'enemies_foundry',
-    coverAlt: 'First-person view across Foundry: two rust-green walls frame a long sand-coloured low wall, rifle in hand.',
+    coverAlt: 'An earlier build of Foundry, when it was an open yard: two rust-green walls frame a long sand-coloured low wall, rifle in hand.',
+    coverCaption: 'An earlier build: Foundry before it became a steelworks. New captures to come.',
     shots: [
-      { src: 'player_firing', alt: 'The player fires on Foundry with a red damage vignette around the screen and an enemy at the right wall.', caption: 'Firing back at the right flank, health at 93.' },
-      { src: 'hud_killfeed', alt: 'Foundry HUD with the radio line: Delta, he is at the south yard, left side.', caption: 'A contact call names the zone and the side.' },
+      { src: 'player_firing', alt: 'The player fires in the original Foundry yard with a red damage vignette around the screen, an enemy at the right wall and radio lines from Charlie and Delta.', caption: 'Firing back at the right flank, health at 93. Earlier build, original yard.' },
+      { src: 'hud_killfeed', alt: 'The original Foundry yard: an enemy at the far end of a long low wall, and the kill feed top right listing Alpha and Bravo down.', caption: 'Two down, two pips left. Earlier build, original yard.' },
     ],
   },
   {
@@ -181,7 +201,49 @@ export const maps: MapInfo[] = [
       { low: 'low_office_lobby_long', high: 'high_office_lobby_long', alt: 'The long view down the Ledger lobby', caption: 'The lobby at Low and High quality.' },
     ],
   },
+  // No captures yet: these get a page with the plan only, once tools/arena-dump has exported them
+  // into maps.json (`pnpm arena`). Text from docs/GAMEPLAY.md.
+  {
+    id: 'gantry',
+    name: 'Gantry',
+    blurb: 'Bomb sites in a harbour rail yard. A inside the warehouse, trains across mid, B out on the quay.',
+    about:
+      'A harbour rail yard, 80 metres across. A is inside the warehouse, trains stand across mid, and B is out on the quay under the crane.',
+    shots: [],
+  },
+  {
+    id: 'township',
+    name: 'Township',
+    blurb: 'Bomb sites in a town block on a late afternoon. A in the warehouse loading yard, B in the office courtyard; long streets, alleys, houses with windows.',
+    about:
+      'The biggest map, 90 metres across: a town block on a late afternoon. A is the warehouse loading yard in the north-west, B the office courtyard in the north-east. The squad spawns on north Main Street between them; you start south, behind the bus.',
+    shots: [],
+  },
+  {
+    id: 'sirocco',
+    name: 'Sirocco',
+    blurb: 'Bomb sites in a whitewashed hill town. A on the fountain plaza, B in the market; the high street through the town gate, the vine alley, the procession road, the cellars.',
+    about:
+      'A whitewashed hill town, 80 metres across. A is the fountain plaza, B the market. The lower and high streets come in through the town gate, the vine alley runs under a pergola or through the baker’s house, the procession road is the long sight line from the bell arch, and the cellars are two roofed corridors to the cellar mouth.',
+    shots: [],
+  },
 ];
+
+type Geo = (typeof geo.maps)[number] & { half?: number };
+export type ShownMap = MapInfo & { geo: Geo; half: number };
+
+/** The maps the site can show: those with geometry in maps.json, in the order above. */
+export const shownMaps: ShownMap[] = maps.flatMap((m) => {
+  const g = (geo.maps as Geo[]).find((x) => x.id === m.id);
+  if (!g) return [];
+  if (g.label !== m.name || g.blurb !== m.blurb)
+    console.warn(`[site] ${m.id}: name or blurb differs from maps.json; update src/data/site.ts or run pnpm arena`);
+  return [{ ...m, geo: g, half: g.half ?? (geo as { half?: number }).half ?? 32 }];
+});
+
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+export const countWord = (n: number) => WORDS[n] ?? String(n);
+export const TOTAL_MAPS = 6; // MapId::ALL in crates/brain/src/arena.rs
 
 export const squadPage = {
   title: 'How they hunt',
@@ -193,12 +255,12 @@ export const squadPage = {
     { k: 'Runs in', v: 'the game and a 2D trainer sim' },
     { k: 'Squad', v: '3 to 6 callsigns, Alpha to Foxtrot' },
   ],
-  heroAlt: 'Foundry under fire: a red tracer crosses a sand-coloured crate and the screen edges glow red with damage.',
+  heroAlt: 'The original Foundry yard, in an earlier build, under fire: a red tracer crosses a sand-coloured crate and the screen edges glow red with damage.',
   sections: {
     belief: {
       title: 'One shared guess',
       paras: [
-        'The squad coordinator keeps a belief grid: 16 by 16 cells over the 64 metre arena, so each cell is 4 metres across. It holds how likely you are to be in each cell.',
+        'The squad coordinator keeps a belief grid: 24 by 24 cells, each 4 metres across, enough to cover the biggest map (Township, 90 metres). It holds how likely you are to be in each cell.',
         'A sighting collapses the grid onto where you were seen. After that, every second you stay hidden spreads the guess outward along walkable ground. Cells are cleared only when a member looks at them and even a crouched player there would have been seen, so hiding behind low cover still counts.',
       ],
     },
@@ -239,7 +301,7 @@ export const squadPage = {
       paras: [
         'The member who sees you calls the contact with the zone and the side, then keeps firing. The others are assigned sectors around you and routed through different corridors, so they do not walk in single file. When everyone is a step from their line of fire, or the stage takes too long, one call sends them all at once.',
       ],
-      calls: ['He’s at the center tower, left side', 'Flanking north-west', 'Cutting him off - south', 'All set - go go go'],
+      calls: ['He’s at the server room, left side', 'Flanking north-west', 'Cutting him off - south', 'All set - go go go'],
     },
     alone: {
       title: 'On their own',
@@ -252,7 +314,7 @@ export const squadPage = {
       title: 'Between matches',
       paras: [
         'Each enemy carries a trait genome evolved with a genetic algorithm. Only technique evolves: aggression, preferred range, flank bias, cover affinity, burst length, retreat health, team cohesion and prediction trust, plus which guns it buys and which counters it reaches for.',
-        'NEAT networks evolve combat moves. A player model keeps a decayed profile of you: a 32 by 32 heat grid of where you fight, your ranges and your habits. A 2D trainer runs simulated rounds against a ghost built from that model, in small steps while you are in the menus, and the HUD shows the squad generation going up.',
+        'NEAT networks evolve combat moves. A player model keeps a decayed profile of you: a 48 by 48 heat grid (2 metre cells) of where you fight, your ranges and your habits. A 2D trainer runs simulated rounds against a ghost built from that model, in small steps while you are in the menus, and the HUD shows the squad generation going up.',
         'They get smarter, never faster. Reaction time, aim error and damage per hit are fixed limits: a generation-20 squad aims exactly like a generation-1 squad. Only the difficulty you pick scales them. Everything the squad gains between matches is in how it plays you.',
       ],
     },
@@ -266,7 +328,7 @@ export const notFound = {
 };
 
 export const gallery = [
-  { src: 'main_menu', alt: 'Shroud main menu: the title, the line They learn from you, Play, Settings and Quit, and an Enemy brain panel reading Gen 1 and 2308 sim rounds.', caption: 'Main menu. The enemy brain panel counts the trainer’s simulated rounds.' },
+  { src: 'main_menu', alt: `The main menu from an earlier build, under the codename Shroud: the title, the line They learn from you, Play, Settings and Quit, and an Enemy brain panel reading Gen 1 and 2268 sim rounds.`, caption: 'Main menu, earlier build. The enemy brain panel counts the trainer’s simulated rounds.' },
   { src: 'match_setup', alt: 'Match setup screen with four difficulty cards, Recruit to Elite, and three map cards, Foundry, Depot and Office (since renamed Ledger).', caption: 'Match setup: difficulty and map. An earlier build with three maps.' },
   { src: 'settings_gameplay', alt: 'Settings, Gameplay tab: difficulty, squad callouts, crosshair colour and size, a crosshair preview and an About this setting panel.', caption: 'Every setting explains itself, with a live crosshair preview.' },
   { src: 'pause', alt: 'Pause menu over the frozen match with the score line, Resume, Settings, Restart match, Main menu and Quit game.', caption: 'Esc pauses with the score line.' },

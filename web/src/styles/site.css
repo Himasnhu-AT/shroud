@@ -63,6 +63,10 @@ body { background: var(--c-bg); font-family: var(--f-body); font-weight: 400; li
 .btn:focus-visible { background: var(--c-fg); }
 .btn:focus-visible > span:first-child::after { translate: 5px 0; }
 .btn .ticks { inset: -8px -10px; }
+/* Leaves the site (itch.io): the arrow points out, not along. */
+.btn--out > span:first-child::after { content: '↗'; }
+@media (hover: hover) { .btn--out:hover > span:first-child::after { translate: 3px -3px; } }
+.btn--out:focus-visible > span:first-child::after { translate: 3px -3px; }
 
 /* ------------------------------------------------------------------ frame (header) */
 .frame {
@@ -82,6 +86,8 @@ html.frame-away .frame { translate: 0 -120%; }
 .frame__nav a { display: inline-flex; align-items: center; min-height: 44px; font: 600 var(--t-s)/1 var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-muted); }
 .frame__nav a[aria-current='page'] > span:first-child { color: var(--c-fg); }
 .frame__nav a .ticks { inset: 6px -9px; }
+.frame__nav a.frame__get > span:first-child { color: var(--c-accent); } /* the one action: same orange as the CTA */
+.frame__nav a.frame__get > span:first-child::after { content: ' ↗'; }
 .frame__menu { display: none; min-height: 44px; padding: 0 0.25rem; font: 600 var(--t-s)/1 var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; }
 .frame__menu .ticks { inset: 6px -8px; }
 @media (max-width: 767px) {
@@ -99,6 +105,7 @@ html.frame-away .frame { translate: 0 -120%; }
 .menu li { overflow: clip; }
 .menu a { display: block; font: 700 clamp(3rem, 15vw, 5rem)/1 var(--f-display); text-transform: uppercase; padding: 0.08em 0; }
 .menu a[aria-current='page'] { color: var(--c-accent); }
+.menu a.menu__get > span::after { content: ' ↗'; font-size: 0.6em; vertical-align: 0.35em; }
 .menu__close { position: absolute; top: calc(var(--gutter) * 0.6); right: var(--gutter); min-height: 44px; font: 600 var(--t-s)/1 var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; }
 
 /* ------------------------------------------------------------------ live map (canvas over SVG) */
@@ -135,9 +142,12 @@ html.js [data-belief] .plan { visibility: hidden; }
 .hero__col { grid-column: 1 / span 6; position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 2rem; pointer-events: none; }
 .hero__col a, .hero__col figure { pointer-events: auto; }
 .hero__kind { font: 600 var(--t-s)/1.2 var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-accent); margin-bottom: 0.2rem; }
-.hero__title { font-size: min(var(--t-mega), 31svh, 15.5vw); margin-left: -0.045em; white-space: nowrap; width: max-content; text-shadow: 0 0 0.3em rgb(18 20 23 / 0.55); }
+/* --n: characters in the longest line (min 6), --l: lines; a one-word name of 6 letters gets the original size. */
+.hero__title { font-size: min(var(--t-mega), calc(31svh / var(--l, 1)), calc(15.5vw * 6 / var(--n, 6))); margin-left: -0.045em; white-space: nowrap; width: max-content; text-shadow: 0 0 0.3em rgb(18 20 23 / 0.55); }
 .hero__line { margin-top: 1.1rem; max-width: 24ch; font-size: var(--t-m); line-height: 1.3; font-weight: 500; }
-.hero__act { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.75rem; margin-top: 1.5rem; }
+.hero__tag { margin-top: 0.5rem; font-size: var(--t-m); line-height: 1.3; font-weight: 600; color: var(--c-fg); }
+.hero__act { display: flex; flex-wrap: wrap; align-items: center; gap: 0.9rem 1.5rem; margin-top: 1.25rem; }
+.hero__dl { font-size: var(--t-s); color: var(--c-muted); max-width: 14ch; line-height: 1.3; }
 .hero__hint { font-size: var(--t-s); color: var(--c-muted); max-width: 26ch; }
 .hero__lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--gutter); align-items: end; max-width: 40rem; }
 .hero__feed picture, .hero__feed img { display: block; width: 100%; height: auto; border-radius: var(--radius); }
@@ -153,7 +163,7 @@ html.js [data-belief] .plan { visibility: hidden; }
   .hero__map { position: relative; inset: auto; width: 100%; max-width: none; order: 0; }
   .hero__col { display: contents; }
   .hero__text { order: 1; }
-  .hero__title { font-size: 31vw; }
+  .hero__title { font-size: calc(31vw * 6 / var(--n, 6)); }
   .hero__lower { order: 2; grid-template-columns: 1fr; max-width: none; gap: 1.5rem; margin-top: 0.5rem; }
   .hero__side { order: -1; }
   .hero__side .radio { min-height: 0; }
@@ -302,6 +312,8 @@ html.js [data-belief] .plan { visibility: hidden; }
 .get__list div { border-top: 1px solid var(--c-line-2); padding-top: 0.6rem; }
 .get__list dt { font: 600 var(--t-xs)/1.2 var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-muted); }
 .get__list dd { font-size: var(--t-body); margin-top: 0.25rem; }
+.get__act { grid-column: 5 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; margin-top: 1rem; color: var(--c-muted); font-size: var(--t-s); }
+.foot__get > span:first-child::after { content: ' ↗'; }
 .get__pending { grid-column: 5 / -1; color: var(--c-muted); font-size: var(--t-s); margin-top: 0.5rem; }
 @media (max-width: 767px) { .get { grid-template-columns: 1fr; } .get > * { grid-column: 1 !important; } .get__list { grid-template-columns: 1fr; } }
 
@@ -447,7 +459,15 @@ html.js [data-belief] .plan { visibility: hidden; }
 .mapgrid li:nth-child(1) { grid-column: 1 / span 7; }
 .mapgrid li:nth-child(2) { grid-column: 8 / span 5; margin-top: 10rem; }
 .mapgrid li:nth-child(3) { grid-column: 3 / span 6; }
+/* Maps 4 to 6 continue the stagger (they appear once maps.json has all six). */
+.mapgrid li:nth-child(4) { grid-column: 9 / span 4; margin-top: 6rem; }
+.mapgrid li:nth-child(5) { grid-column: 1 / span 5; }
+.mapgrid li:nth-child(6) { grid-column: 7 / span 5; margin-top: 8rem; }
+.mapgrid li:nth-child(n + 7) { grid-column: span 4; }
+/* No capture yet: the plan alone, not stretched to the card width. */
+.mapcard__media:not(:has(picture, img)) { grid-template-columns: minmax(0, 1fr); max-width: 24rem; }
 .mapcard .ticks { inset: -0.6rem; }
+@media (max-width: 767px) { .mapcard .ticks { inset: -0.6rem -0.4rem; } } /* stay inside the 16 px gutter */
 @media (max-width: 767px) { .mapgrid { grid-template-columns: 1fr; } .mapgrid li { grid-column: 1 !important; margin: 0 !important; } }
 
 /* 404 */
