@@ -106,6 +106,38 @@ to re-cook. Metal, rust, gravel, asphalt, planks and all decals are cooked at 1K
 | `library/textures/ph-rusty-painted-metal/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Amal Kumar | https://polyhaven.com/a/rusty_painted_metal | CC0 1.0 |
 | `library/textures/ph-brown-planks-09/` | 2K JPG laid out as a Megascans surface, cooked at 1K (packing crates) | Rob Tuytel | https://polyhaven.com/a/brown_planks_09 | CC0 1.0 |
 
+## Foundry scans from Fab (`library/*/ms-*`, `library/*/fab-*`), local only
+Downloaded from fab.com by the owner (2026-11-12) and imported with the engine's importer:
+`ENGINE_ASSETS_ROOT=<this repo> python3 -I ~/codes/game/engine/scripts/assets.py import <zip>
+--source fab --license <licence> --url <listing> --author <seller> --name <item> [--lod-tris ..]`.
+3D downloads are Fab's "High" FBX with 4K JPG maps: Blender decimates LOD0..2 from the High mesh
+(caps below) and everything is cooked to 2K KTX2; the two surfaces are Fab's "UE" PNG layout
+(base colour, normal, packed ORM, height). **None of these files is committed**: the Fab Standard
+License forbids redistributing them (`.gitignore`), so a checkout without them uses the CC0
+stand-ins in the section above (docs/ASSETS.md, "Fab scans"). The ledger is
+`library/LICENSES.json`. Megascans under the Standard License need no attribution; they are
+listed anyway. CC-BY items must be credited in the game's credits screen.
+
+| Item | Listing | Seller | URL | License | In Foundry |
+|---|---|---|---|---|---|
+| `library/textures/ms-industrial-concrete-floor-sl2qedtp/` | Industrial Concrete Floor (2 x 2 m, 2 mm relief) | Quixel Megascans | https://www.fab.com/listings/2dece1ec-0941-406c-a7de-ae9fe08085a1 | Fab Standard ($0) | hall, room and yard floors (`foundry_concrete_floor`, `foundry_yard`) |
+| `library/textures/ms-painted-concrete-wall-tjenbgsfw/` | Painted Concrete Wall (2 x 2 m, 9 mm relief) | Quixel Megascans | https://www.fab.com/listings/08d82370-bf79-461c-96a1-8d7e6d052ec1 | Fab Standard ($0) | workshop and office walls (`foundry_lining_painted`), tinted from salmon to faded grey-green |
+| `library/props/ms-concrete-barrier-ubitfhtfa/` | Concrete Barrier (5.39 m Jersey section; LODs 15.8 k / 6 k / 1.5 k triangles) | Quixel Megascans | https://www.fab.com/listings/deab69d8-fee9-469b-8b45-579283a8ce46 | Fab Standard ($0) | low concrete cover where one section fits (the 3-7 m blocks) |
+| `library/props/ms-rusty-metal-barrel-tewscfuda/` | Rusty Metal Barrel (0.88 m drum; 9.4 k / 4 k / 1.2 k, `--lod-tris 12000,4000,1200`) | Quixel Megascans | https://www.fab.com/listings/8defe8ec-f655-4e87-8fde-1689af94597c | Fab Standard ($0) | the drum blocks (on a pallet) and the drums in corner clutter |
+| `library/props/ms-concrete-rubble-pile-tgdtfg0da/` | Concrete Rubble Pile (3.65 x 1.0 x 4.07 m; 16.9 k / 6 k / 1.5 k) | Quixel Megascans | https://www.fab.com/listings/aa404374-059d-4bab-9e0e-cc0ee6ff8c0f | Fab Standard Personal ($0) | heaps at about 0.4 scale (under 0.45 m) in empty concave corners |
+| `library/props/ms-rusty-metal-workbench-ukkiejiaw/` | Rusty Metal Workbench (1.04 x 0.83 x 0.75 m; 22 k source, 20 k / 6 k / 1.5 k) | Quixel Megascans | https://www.fab.com/listings/332869a5-a1a1-4f15-a96a-8fc383061b62 | Fab Standard ($0) | a corner workbench |
+| `library/props/ms-sheet-metal-corrugated-02-ydzmfhvs/` | Military Trenches Sheet Metal Corrugated 02 (0.84 x 0.69 m; 19 k source, `--lod-tris 4000,1500,500`) | Quixel Megascans | https://www.fab.com/listings/5a72636f-0abb-426a-9e9e-03deae8f957d | Fab Standard ($0) | scrap sheets leant on the pallets |
+| `library/props/fab-warehouse-wooden-pallet/` | Free – Warehouse Wooden Pallet (1.2 x 0.14 x 0.9 m; 2.2 k / 0.6 k, `--lod-tris 6000,2000,600`) | AshenCut | https://www.fab.com/listings/c1a98c17-5379-48b7-b129-216e21b6f423 | CC-BY 4.0: credit "Free - Warehouse Wooden Pallet by AshenCut (Fab), CC-BY 4.0" | under the drums, stacked and leant in corners |
+
+Evaluated and not used:
+- "Red Brick Wall Scan" by commonspence (https://www.fab.com/listings/bef94f7b-38f8-4d6a-99ae-b0b3dc16c669,
+  CC-BY 4.0): raw photogrammetry of a wall section lying flat (18 x 7 m, 2.76 M triangles, holes,
+  one colour map and no normal map). Neither a tiling surface nor a usable wall mesh: Foundry keeps
+  Poly Haven's `factory_brick`.
+- The corrugated sheet's maps as a cladding surface: they are a UV atlas of the sheet (two islands,
+  smeared padding) and the corrugation is in the mesh, not the maps, so they cannot tile; the
+  cladding keeps Poly Haven's corrugated sets.
+
 ## HDRI skies (`sky/*.ktx2`), CC0
 Poly Haven 2K Radiance `.hdr` files, converted by `scripts/hdri_to_cube.py` into KTX2 cubemaps
 (RGBA16F, zstd): normalised in brightness, the sun hot spot clamped (the map's directional light
@@ -188,11 +220,11 @@ where it is priced.
 | battlerifle | AKS Tactical Upgrade (suppressed, 1.21 m; PBR set re-applied after FBX conversion) | SpatialNeglect | https://www.fab.com/listings/587e3f02-f8a1-4a3d-8b35-3394e793cfc5 | Fab Standard, Personal tier (Professional ₹748.66) |
 | sniper, marksman | **SV-98 Sniper Rifle by SpatialNeglect, CC-BY 4.0** (offset bolt mesh dropped, 1.2 m) | SpatialNeglect | https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b | CC-BY 4.0 (credit required here and in-game) |
 | pistol | Pistol 9mm Custom (the pistol body only; attachments and display copies dropped; PBR set re-applied after FBX conversion) | DTry | https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732 | Fab Standard, Personal tier (Professional ₹1,498.26) |
-| (rifle, pending) | AR-15 style rifle | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
-| (smg, pending) | 10mm AUTO SMG | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
+| rifle | AR-15 style rifle (ACOG kept; GPS, loose rounds and sling dropped; 0.89 m; all five PBR sets kept by the importer's FBX conversion, matched to the FBX materials by name) | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
+| smg | 10mm AUTO SMG (loose FBX with its textures packed inside; red-dot and suppressor kept; scaled to 0.55 m, the FBX units read as 1.4 cm) | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
 
 ## Downloaded gear (local only, not in this repo)
 | Use | Model | Author | URL | Licence |
 |---|---|---|---|---|
 | enemy helmet (`models/gear/helmet.glb`: textures 1K, decimated to 35 %; replaces the modelled helmet when present) | Military Helmet | CG Vertexium | https://www.fab.com/listings/6c747a89-ceb4-4147-a154-801c6dbb1846 | Fab Standard (Personal and Professional both free) |
-| (pending: the engine's FBX conversion drops its skin and materials) | Tactical Soldier Outfit for MetaHuman (UE 5.6+) | RMDavid | https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7 | Fab Standard (Personal and Professional both free) |
+| imported, not used (`library/characters/tactical-soldier-outfit/`): the download ships no textures, and it is built on a taller MetaHuman than the enemy's (head joint 1.62 m against 1.43 m, shoulders 15 cm apart), so it cannot be rebound to the enemy skeleton without a retarget; the generated gear (`gear_mh.glb`) stays | Tactical Soldier Outfit for MetaHuman (UE 5.6+) | RMDavid | https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7 | Fab Standard (Personal and Professional both free) |
