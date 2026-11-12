@@ -1,0 +1,25 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    2.7,
+    2.7
+  ],
+  "height_m": 0.03,
+  "parallax": 0.01111,
+  "metallic": true,
+  "source": {
+    "megascans_id": "phcri002",
+    "name": "Corrugated Iron",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phcri002_2K_Albedo.jpg",
+      "ao": "phcri002_2K_AO.jpg",
+      "height": "phcri002_2K_Displacement.png",
+      "metal": "phcri002_2K_Metalness.jpg",
+      "normal": "phcri002_2K_NormalGL.jpg",
+      "rough": "phcri002_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "decal",
+  "normal_y": "gl",
+  "size_m": [
+    2.0,
+    1.0
+  ],
+  "alpha": "blend",
+  "source": {
+    "megascans_id": "acleak07",
+    "name": "Damp Wall Foot",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "acleak07_2K_Albedo.jpg",
+      "height": "acleak07_2K_Displacement.jpg",
+      "normal": "acleak07_2K_NormalGL.jpg",
+      "opacity": "acleak07_2K_Opacity.jpg",
+      "rough": "acleak07_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

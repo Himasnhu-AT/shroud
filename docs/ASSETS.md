@@ -6,6 +6,7 @@ All assets are **CC0**. The game must always run without them (primitive fallbac
 |---|---|---|---|
 | `assets/models/weapons/*.glb` | guns (first person, enemy hands, pickups) and their optics | Pichuliru CC0 gun set (poly.pizza); finishes applied in `weapon/finish.rs` | box primitives per gun |
 | `assets/textures/<set>/*` | PBR sets (cooked KTX2; 4K sets ship KTX2 only) | ambientCG | flat colours |
+| `assets/library/{textures,decals,props}/*` | Foundry's photoscanned surfaces, decals, fixtures and props (imported with the engine's `assets.py`, Megascans layout; ledger `library/LICENSES.json`) | Poly Haven, ambientCG | flat colours / procedural grime / box fixtures |
 | `assets/sky/*.ktx2` | HDRI sky cubemaps (Sirocco, Gantry; Office fill) from Poly Haven via `scripts/hdri_to_cube.py` | Poly Haven | the map's gradient sky |
 | `assets/models/enemy.glb` | enemy character with Idle / Run / Shoot / Death clips | Quaternius animated characters, or Kenney **Animated Characters** (glTF) | capsule + visor box |
 | `assets/models/props/*.glb` | crates, barrels, sci-fi set dressing | Kenney **Space Kit** / Quaternius sci-fi | none (plain blocks) |

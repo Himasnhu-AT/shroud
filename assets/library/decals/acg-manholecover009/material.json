@@ -1,0 +1,25 @@
+{
+  "kind": "decal",
+  "normal_y": "gl",
+  "size_m": [
+    1.0,
+    1.0
+  ],
+  "metallic": true,
+  "alpha": "blend",
+  "source": {
+    "megascans_id": "acmhc009",
+    "name": "Manhole Cover",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "acmhc009_2K_Albedo.jpg",
+      "ao": "acmhc009_2K_AO.jpg",
+      "height": "acmhc009_2K_Displacement.jpg",
+      "metal": "acmhc009_2K_Metalness.jpg",
+      "normal": "acmhc009_2K_NormalGL.jpg",
+      "opacity": "acmhc009_2K_Opacity.jpg",
+      "rough": "acmhc009_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    2.2,
+    2.2
+  ],
+  "height_m": 0.03,
+  "parallax": 0.01364,
+  "source": {
+    "megascans_id": "phrpm001",
+    "name": "Rusty Painted Metal",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phrpm001_2K_Albedo.jpg",
+      "ao": "phrpm001_2K_AO.jpg",
+      "height": "phrpm001_2K_Displacement.png",
+      "normal": "phrpm001_2K_NormalGL.jpg",
+      "rough": "phrpm001_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

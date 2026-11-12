@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    2.5,
+    2.5
+  ],
+  "height_m": 0.03,
+  "parallax": 0.012,
+  "source": {
+    "megascans_id": "phgrv003",
+    "name": "Gravel Floor",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phgrv003_2K_Albedo.jpg",
+      "ao": "phgrv003_2K_AO.jpg",
+      "height": "phgrv003_2K_Displacement.png",
+      "normal": "phgrv003_2K_NormalGL.jpg",
+      "rough": "phgrv003_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

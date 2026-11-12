@@ -1,0 +1,22 @@
+{
+  "kind": "decal",
+  "normal_y": "gl",
+  "size_m": [
+    2.0,
+    2.0
+  ],
+  "alpha": "blend",
+  "source": {
+    "megascans_id": "acleak01",
+    "name": "Leak Streaks A",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "acleak01_2K_Albedo.jpg",
+      "height": "acleak01_2K_Displacement.jpg",
+      "normal": "acleak01_2K_NormalGL.jpg",
+      "opacity": "acleak01_2K_Opacity.jpg",
+      "rough": "acleak01_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

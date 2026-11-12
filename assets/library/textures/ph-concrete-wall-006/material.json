@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    2.0,
+    2.0
+  ],
+  "height_m": 0.01,
+  "parallax": 0.005,
+  "source": {
+    "megascans_id": "phcw0006",
+    "name": "Concrete Wall Dark",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phcw0006_2K_Albedo.jpg",
+      "ao": "phcw0006_2K_AO.jpg",
+      "height": "phcw0006_2K_Displacement.png",
+      "normal": "phcw0006_2K_NormalGL.jpg",
+      "rough": "phcw0006_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

@@ -53,6 +53,49 @@ Notes:
 - `models/rifle.glb` and `models/enemy_rifle.glb` (Kenney) are no longer used by the game.
 - The 4K sets (`concrete_4k`, `asphalt_wet`, `peeling_paint`, `ripstop`) keep only the cooked `color.ktx2`, `normal.ktx2`, `orm.ktx2` and `color.avg`; the source JPGs were deleted after cooking to keep the repo small. Re-download the 4K-JPG zip from the URL to re-cook.
 
+## Foundry photoscans (`library/*`), CC0
+Poly Haven scanned textures and models and ambientCG scanned decals, brought in with the engine's
+importer (`~/codes/game/engine/scripts/assets.py import`; the Megascans path for surfaces and
+decals, so a real Megascans set can replace one by importing it and changing the path in
+`crates/game/src/map/look.rs` / `grime.rs` / `industry.rs`). The ledger is
+`library/LICENSES.json`. Source maps are not committed (`.gitignore`): re-download from the URL
+to re-cook.
+
+| Item | What | Author | URL | License |
+|---|---|---|---|---|
+| `library/decals/acg-leaking001/` | 2K JPG (Color, NormalGL, Roughness, Opacity, Displacement) laid out as a Megascans decal; cooked KTX2 + material.json committed, sources not | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Leaking001 | CC0 1.0 |
+| `library/decals/acg-leaking003/` | 2K JPG (Color, NormalGL, Roughness, Opacity, Displacement) laid out as a Megascans decal; cooked KTX2 + material.json committed, sources not | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Leaking003 | CC0 1.0 |
+| `library/decals/acg-leaking007/` | 2K JPG (Color, NormalGL, Roughness, Opacity, Displacement) laid out as a Megascans decal; cooked KTX2 + material.json committed, sources not | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Leaking007 | CC0 1.0 |
+| `library/decals/acg-manholecover009/` | 2K JPG (Color, NormalGL, Roughness, Opacity, Displacement) laid out as a Megascans decal; cooked KTX2 + material.json committed, sources not | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=ManholeCover009 | CC0 1.0 |
+| `library/decals/acg-tiretracks001/` | 2K JPG (Color, NormalGL, Roughness, Opacity, Displacement) laid out as a Megascans decal; cooked KTX2 + material.json committed, sources not | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=TireTracks001 | CC0 1.0 |
+| `library/props/ph-barrel-01/` | glTF with 1k JPG textures, unmodified | Jorge Camacho | https://polyhaven.com/a/Barrel_01 | CC0 1.0 |
+| `library/props/ph-barrel-03/` | glTF with 1k JPG textures, unmodified | Serhii Khromov | https://polyhaven.com/a/barrel_03 | CC0 1.0 |
+| `library/props/ph-cardboard-box-01/` | glTF with 1k JPG textures, unmodified | Rahul Chaudhary | https://polyhaven.com/a/cardboard_box_01 | CC0 1.0 |
+| `library/props/ph-cement-bag/` | glTF with 1k JPG textures, unmodified | PierreB3D | https://polyhaven.com/a/cement_bag | CC0 1.0 |
+| `library/props/ph-concrete-road-barrier-02/` | glTF with 1k JPG textures, unmodified | Amal Kumar | https://polyhaven.com/a/concrete_road_barrier_02 | CC0 1.0 |
+| `library/props/ph-hanging-industrial-lamp/` | glTF with 1k JPG textures, unmodified | Kuutti Siitonen | https://polyhaven.com/a/hanging_industrial_lamp | CC0 1.0 |
+| `library/props/ph-industrial-wall-lamp/` | glTF with 1k JPG textures, unmodified | Kuutti Siitonen | https://polyhaven.com/a/industrial_wall_lamp | CC0 1.0 |
+| `library/props/ph-metal-jerrycan/` | glTF with 1k JPG textures, unmodified | Sean Buckley | https://polyhaven.com/a/metal_jerrycan | CC0 1.0 |
+| `library/props/ph-old-tyre/` | glTF with 1k JPG textures, unmodified | MP | https://polyhaven.com/a/old_tyre | CC0 1.0 |
+| `library/props/ph-power-box-01/` | glTF with 1k JPG textures, unmodified | Rico Cilliers, Yann Kervran | https://polyhaven.com/a/power_box_01 | CC0 1.0 |
+| `library/props/ph-propane-tank/` | glTF with 1k JPG textures, unmodified | Slinc | https://polyhaven.com/a/propane_tank | CC0 1.0 |
+| `library/props/ph-utility-box-02/` | glTF with 1k JPG textures, unmodified | James Ray Cock | https://polyhaven.com/a/utility_box_02 | CC0 1.0 |
+| `library/textures/ph-asphalt-02/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/asphalt_02 | CC0 1.0 |
+| `library/textures/ph-concrete-floor-damaged/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/concrete_floor_damaged_01 | CC0 1.0 |
+| `library/textures/ph-concrete-wall-006/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dario Barresi, Charlotte Baglioni | https://polyhaven.com/a/concrete_wall_006 | CC0 1.0 |
+| `library/textures/ph-concrete-wall-008/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dario Barresi, Charlotte Baglioni | https://polyhaven.com/a/concrete_wall_008 | CC0 1.0 |
+| `library/textures/ph-container-side/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dimitrios Savva | https://polyhaven.com/a/container_side | CC0 1.0 |
+| `library/textures/ph-corrugated-iron-02/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Jenelle van Heerden, Sergej Majboroda | https://polyhaven.com/a/corrugated_iron_02 | CC0 1.0 |
+| `library/textures/ph-damaged-concrete-floor/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/damaged_concrete_floor | CC0 1.0 |
+| `library/textures/ph-dirty-concrete/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/dirty_concrete | CC0 1.0 |
+| `library/textures/ph-factory-brick/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/factory_brick | CC0 1.0 |
+| `library/textures/ph-gravel-floor-03/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Charlotte Baglioni | https://polyhaven.com/a/gravel_floor_03 | CC0 1.0 |
+| `library/textures/ph-metal-plate-02/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/metal_plate_02 | CC0 1.0 |
+| `library/textures/ph-rust-coarse-01/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dimitrios Savva, Rico Cilliers | https://polyhaven.com/a/rust_coarse_01 | CC0 1.0 |
+| `library/textures/ph-rusty-corrugated-iron/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Charlotte Baglioni | https://polyhaven.com/a/rusty_corrugated_iron | CC0 1.0 |
+| `library/textures/ph-rusty-metal-sheet/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Amal Kumar | https://polyhaven.com/a/rusty_metal_sheet | CC0 1.0 |
+| `library/textures/ph-rusty-painted-metal/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Amal Kumar | https://polyhaven.com/a/rusty_painted_metal | CC0 1.0 |
+
 ## HDRI skies (`sky/*.ktx2`), CC0
 Poly Haven 2K Radiance `.hdr` files, converted by `scripts/hdri_to_cube.py` into KTX2 cubemaps
 (RGBA16F, zstd): normalised in brightness, the sun hot spot clamped (the map's directional light
