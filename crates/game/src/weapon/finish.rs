@@ -64,7 +64,7 @@ fn furniture(kind: WeaponKind) -> Color {
         WeaponKind::Sniper => Color::srgb(0.17, 0.19, 0.13),
         // A two-tone Warden: tan frame under a black slide.
         WeaponKind::HeavyPistol => Color::srgb(0.33, 0.28, 0.2),
-        _ => Color::srgb(0.06, 0.06, 0.064),
+        _ => Color::srgb(0.15, 0.15, 0.155),
     }
 }
 
@@ -88,11 +88,13 @@ fn finish(kind: WeaponKind, name: &str) -> Option<(StandardMaterial, Set)> {
     };
     Some((match n {
         // Receiver, barrel, slide: black coated steel / anodised aluminium.
-        "Black" => m(Color::srgb(0.045, 0.046, 0.05), 0.0, 0.9),
+        // Albedos are measured-dark, not pure black (anodised / Cerakote ~0.03-0.05 linear),
+        // so a black gun still shows its shape in shade.
+        "Black" => m(Color::srgb(0.17, 0.17, 0.18), 0.0, 0.9),
         // Polymer furniture.
         "Black_Lighter" => m(furniture(kind), 0.0, 1.0),
-        "Grey_Darker" => m(Color::srgb(0.065, 0.066, 0.07), 0.0, 0.85),
-        "Grey_Dark" => m(Color::srgb(0.11, 0.11, 0.115), 0.0, 0.8),
+        "Grey_Darker" => m(Color::srgb(0.2, 0.2, 0.21), 0.0, 0.85),
+        "Grey_Dark" => m(Color::srgb(0.25, 0.25, 0.26), 0.0, 0.8),
         // Worn edges, bolt, small parts.
         "Grey_Light" | "Grey_Lighter" => m(Color::srgb(0.32, 0.32, 0.33), 0.9, 0.32),
         "White" => m(Color::srgb(0.55, 0.55, 0.52), 0.0, 0.6),

@@ -1,0 +1,135 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    4.5,
+    1.8,
+    17
+   ]
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 5
+  }
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "player.reload"
+ },
+ {
+  "sleep": 0.45
+ },
+ {
+  "shot": "r01_mag_out"
+ },
+ {
+  "sleep": 0.2
+ },
+ {
+  "shot": "r02_mag_falling"
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3,
+    0,
+    21.3
+   ]
+  }
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "shot": "r03_mag_on_floor"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "pistol"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    4.5,
+    1.8,
+    17
+   ]
+  }
+ },
+ {
+  "sleep": 1.0
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 3
+  }
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "player.reload"
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "shot": "r04_pistol_reload"
+ }
+]

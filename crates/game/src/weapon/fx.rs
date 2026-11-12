@@ -337,7 +337,7 @@ fn shot_fx(
     // Ejection port: a bit behind the muzzle along the barrel, on the right.
     let port_cam = muzzle.0 * Vec3::new(1.0, 1.0, 0.0) + Vec3::new(0.02, 0.03, f.hip.z + f.muzzle.z * 0.25);
     let mut casings = casings;
-    let mut eject = |kind: WeaponKind| {
+    let mut eject = |casings: &mut Option<ResMut<Casings>>, kind: WeaponKind| {
         if let Some(c) = casings.as_deref_mut() {
             c.eject(cam.transform_point(port_cam), cam.rotation, kind, &mut casing_mats);
         }
@@ -349,13 +349,22 @@ fn shot_fx(
         let at = Transform::from_translation(cam.transform_point(muzzle.0)).with_rotation(cam.rotation);
         vfx.play(muzzle_effect(s.kind), at);
         if !matches!(s.kind, WeaponKind::Shotgun | WeaponKind::Marksman | WeaponKind::Sniper) {
-            eject(s.kind);
+            eject(&mut casings, s.kind);
         }
     }
     for ev in events.read() {
         match ev {
-            GunEvent::Pump => eject(WeaponKind::Shotgun),
-            GunEvent::Bolt => eject(WeaponKind::Marksman),
+            GunEvent::Pump => eject(&mut casings, WeaponKind::Shotgun),
+            GunEvent::Bolt => eject(&mut casings, WeaponKind::Marksman),
+            GunEvent::MagOut { kind } => {
+                // The magazine well: under the receiver ahead of the grip (in the grip for pistols).
+                let f = fit(*kind);
+                let pivot = muzzle.0 - f.muzzle;
+                let well = if f.pistol { Vec3::new(0.0, -0.06, 0.0) } else { Vec3::new(0.0, -0.09, -0.1) };
+                if let Some(c) = casings.as_deref_mut() {
+                    c.drop_mag(cam.transform_point(pivot + well), cam.rotation, *kind);
+                }
+            }
             _ => {}
         }
     }

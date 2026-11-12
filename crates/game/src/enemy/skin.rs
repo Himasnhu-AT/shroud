@@ -276,7 +276,7 @@ fn setup(
     };
     let gear = std::array::from_fn(|i| set(&mut materials, "cordura", l[i].gear, CORDURA_AVG, Vec2::splat(3.0), 1.0));
     let helmet_mat = std::array::from_fn(|i| set(&mut materials, "cordura", l[i].helmet, CORDURA_AVG, Vec2::new(8.0, 2.0), 0.95));
-    let leather = set(&mut materials, "glove_leather", Color::srgb(0.035, 0.034, 0.033), LEATHER_AVG, Vec2::splat(3.0), 0.9);
+    let leather = set(&mut materials, "glove_leather", Color::srgb(0.18, 0.175, 0.17), LEATHER_AVG, Vec2::splat(3.0), 0.9);
     let cloth = std::array::from_fn(|i| {
         let m = materials.get(&fatigues[i]).cloned().unwrap_or_default();
         materials.add(StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(Vec2::new(5.0, 3.0)), ..m })

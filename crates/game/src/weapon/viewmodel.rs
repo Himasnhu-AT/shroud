@@ -526,8 +526,10 @@ fn spawn_mh_hands(commands: &mut Commands, k: &HandKit, mh: &MhHands, f: &Fit, g
 /// Black tactical gloves: the photoscanned leather set (`textures/glove_leather`, CC0), a fine
 /// grain at the hand's size.
 pub fn glove_leather(server: &AssetServer, dir: &AssetsDir, pending: &mut crate::gfx::PendingMips) -> Option<StandardMaterial> {
-    crate::gfx::load_pbr(server, dir, pending, "glove_leather", Color::srgb(0.55, 0.55, 0.58)).map(|m| StandardMaterial {
-        uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(6.0)),
+    // The set averages 0.009 linear; x2.2 gives a black synthetic glove (~0.02), not a void,
+    // without lifting its pale creases into a web. A fine grain (10 repeats over the hand).
+    crate::gfx::load_pbr(server, dir, pending, "glove_leather", Color::LinearRgba(LinearRgba::rgb(2.2, 2.2, 2.3))).map(|m| StandardMaterial {
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(10.0)),
         perceptual_roughness: 0.85,
         reflectance: 0.4,
         ..m
@@ -554,6 +556,10 @@ pub struct ViewModel {
     kick_vel: f32,
     jitter: f32,
     sway: Vec2,
+    sway_vel: Vec2,
+    /// Body motion the gun lags behind (smoothed, -1..1): sideways and vertical.
+    strafe: f32,
+    rise: f32,
     last_look: Option<Vec2>,
     bob_phase: f32,
     bob_amp: f32,
@@ -609,6 +615,17 @@ impl Spring3 {
 impl Default for Spring3 {
     fn default() -> Self {
         Spring3::new(1.0, 1.0)
+    }
+}
+
+/// Look-sway spring stiffness per gun: light guns snap back, long heavy ones swing.
+fn sway_stiffness(kind: WeaponKind) -> f32 {
+    match kind {
+        WeaponKind::Pistol | WeaponKind::HeavyPistol => 150.0,
+        WeaponKind::Smg => 125.0,
+        WeaponKind::Rifle | WeaponKind::BattleRifle => 100.0,
+        WeaponKind::Shotgun => 90.0,
+        WeaponKind::Marksman | WeaponKind::Sniper => 70.0,
     }
 }
 
@@ -842,12 +859,22 @@ fn animate_viewmodel(
         }
     }
 
-    // Look sway: the gun lags behind look rotation.
+    // Look sway: the gun lags behind look rotation on a spring, so a heavy gun swings past and
+    // settles (a little overshoot) where a pistol snaps back.
     let look_now = Vec2::new(look.yaw, look.pitch);
     let rate = vm.last_look.map_or(Vec2::ZERO, |l| (look_now - l) / dt);
     vm.last_look = Some(look_now);
     let target = (rate * 0.012).clamp(Vec2::splat(-0.06), Vec2::splat(0.06));
-    vm.sway = vm.sway.lerp(target, approach(10.0, dt));
+    let stiff = sway_stiffness(w.kind);
+    let damp = 2.0 * 0.72 * stiff.sqrt();
+    let acc = (target - vm.sway) * stiff - vm.sway_vel * damp;
+    vm.sway_vel += acc * dt;
+    let sway_vel = vm.sway_vel;
+    vm.sway += sway_vel * dt;
+    // Body inertia: moving sideways leaves the gun behind and tilts it; falling lifts it.
+    let local_v = Quat::from_rotation_y(-look.yaw) * motor.velocity;
+    vm.strafe += ((local_v.x / 6.0).clamp(-1.0, 1.0) - vm.strafe) * approach(6.0, dt);
+    vm.rise += ((motor.velocity.y / 6.0).clamp(-1.0, 1.0) - vm.rise) * approach(8.0, dt);
 
     // Bob: figure-eight while walking on the ground; bigger sprinting, tiny aimed.
     let speed = Vec2::new(motor.velocity.x, motor.velocity.z).length();
@@ -964,7 +991,8 @@ fn animate_viewmodel(
         + Vec3::new(-0.05 * sprint, -0.07 * sprint, 0.04 * sprint)
         + Vec3::new(-0.08 * insp, 0.03 * insp, 0.02 * insp)
         + Vec3::new(0.0, -0.28 * lowered, 0.06 * lowered)
-        + Vec3::new(0.0, -0.05 * w_push, w_push * 0.6);
+        + Vec3::new(0.0, -0.05 * w_push, w_push * 0.6)
+        + Vec3::new(-0.012 * vm.strafe, -0.014 * vm.rise, 0.0) * (1.0 - 0.6 * a);
     let rot = Quat::from_euler(
         EulerRot::YXZ,
         vm.sway.x * 1.2 * (1.0 - 0.7 * a) + vm.jitter * 0.012 + 0.55 * sprint + 0.9 * insp + insp_wiggle * insp,
@@ -972,7 +1000,8 @@ fn animate_viewmodel(
             + if bolt { 0.06 * cyc } else { 0.1 * cyc }
             - 0.04 * vm.land,
         vm.sway.x * 1.6 * (1.0 - 0.8 * a) + vm.jitter * 0.03 + 0.5 * rl + if bolt { 0.35 * cyc } else { 0.0 } - 0.35 * lowered + 0.25 * sprint
-            - 0.45 * insp,
+            - 0.45 * insp
+            - 0.07 * vm.strafe * (1.0 - 0.6 * a),
     );
     let (pos, rot) = if body {
         // Chest cam: the gun sits nearer the middle of the frame, held lower.
