@@ -30,6 +30,8 @@ pub struct ShroudSettings {
     pub camera_style: CameraStyle,
     /// Bodycam only: where the camera is worn (head height or the chest rig).
     pub bodycam_mount: BodycamMount,
+    /// Content: blood mist and spatter when a bullet hits a person (off: a dust puff instead).
+    pub blood: bool,
 }
 
 /// Where the bodycam sits (Bodycam style only; `bodycam::mount_offset`).
@@ -81,6 +83,7 @@ impl Default for ShroudSettings {
             primary: WeaponKind::Rifle,
             camera_style: CameraStyle::Classic,
             bodycam_mount: BodycamMount::Head,
+            blood: true,
         }
     }
 }
@@ -194,6 +197,15 @@ fn register_fields(app: &mut App) {
         kind: FieldKind::Toggle,
         get: |w| s(w).show_callouts as u8 as f32,
         set: |w, v| s_mut(w).show_callouts = v > 0.5,
+    })
+    .register_setting(FieldDef {
+        key: "blood",
+        tab: "Gameplay",
+        label: "Blood",
+        hint: "Blood mist and spatter on hits. Off: a dust puff instead.",
+        kind: FieldKind::Toggle,
+        get: |w| s(w).blood as u8 as f32,
+        set: |w, v| s_mut(w).blood = v > 0.5,
     })
     .register_setting(FieldDef {
         key: "crosshair_color",

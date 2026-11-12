@@ -113,6 +113,8 @@ Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
 | `audio/battle_rifle_shot.ogg` | `rifle_shot` pitched down ×0.86, bass shelf and a 2.5 kHz presence bump | Kenney / this project | derived from the files above |
 | `audio/sniper_shot.ogg` | `marksman_shot` pitched down ×0.84 with a bass shelf + `shotgun_shot` ×0.9 underneath | Kenney / this project | derived from the files above |
 | `audio/casing_0..2.ogg` | Impact `impactMetal_light_000/001/003` and `impactGlass_light_001/002`, pitched up ×1.5–2.4, highpassed, layered as decaying bounces | Kenney / this project | https://kenney.nl/assets/impact-sounds |
+| `audio/bullet_crack_0..2.ogg` | Synthesized by `scripts/make-combat-sounds.py` (stdlib Python, seeded): an N-wave shock front, a bright whiz and a swept wake hiss | this project | n/a |
+| `audio/shot_tail_indoor.ogg`, `shot_tail_outdoor.ogg` | Synthesized by `scripts/make-combat-sounds.py`: room early reflections + a 0.45 s RT60 tail; an open-air rumble with two slap-back echoes | this project | n/a |
 
 ## Fonts (`fonts/*.ttf`), SIL Open Font License 1.1
 Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back to Bevy's built-in font if these are missing.

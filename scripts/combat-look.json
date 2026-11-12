@@ -1,0 +1,313 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": 3.3,
+   "z": 19.6,
+   "face": [
+    3,
+    22.5
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": 0.5,
+   "z": 12.5,
+   "face": [
+    3,
+    22.5
+   ]
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.45,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "shot": "c01_enemy_3m"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0.5,
+    1.3,
+    12.5
+   ]
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "shot": "c02_enemy_10m"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c03_rifle_idle"
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "c04_rifle_firing"
+ },
+ {
+  "sleep": 0.05
+ },
+ {
+  "shot": "c05_rifle_firing_b"
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 8
+  }
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "shot": "c06_after_burst"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.3,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 3
+  }
+ },
+ {
+  "shot": "c07_enemy_hit"
+ },
+ {
+  "sleep": 0.12
+ },
+ {
+  "shot": "c07b_enemy_hit_mist"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "shot": "c08_enemy_hit_after"
+ },
+ {
+  "cmd": "player.reload"
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "shot": "c09_reload"
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "pistol"
+  }
+ },
+ {
+  "sleep": 1.0
+ },
+ {
+  "shot": "c10_pistol_idle"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -33,
+   "z": -6
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -31,
+    1.4,
+    -20
+   ]
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 6
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "c11_impacts_a_long"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -16,
+   "z": -29
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -28,
+    1.0,
+    -22
+   ]
+  }
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 6
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "c12_impacts_a_site"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -11,
+   "z": -7
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -24,
+    1.2,
+    -6
+   ]
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "shot": "c13_boiler_dark_idle"
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 1
+  }
+ },
+ {
+  "shot": "c14_boiler_dark_flash"
+ },
+ {
+  "cmd": "player.fire",
+  "params": {
+   "shots": 4
+  }
+ },
+ {
+  "sleep": 0.5
+ },
+ {
+  "shot": "c15_boiler_impacts"
+ }
+]

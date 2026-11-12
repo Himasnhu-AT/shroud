@@ -1,4 +1,4 @@
-//! Spent casings: a fixed pool of small cylinders (one shared mesh, a brass and a red-hull
+//! Spent casings: a fixed pool of small cartridge cases (one shared mesh, a brass and a red-hull
 //! material) thrown out of the ejection port, tumbling under gravity and bouncing off the
 //! level (one ray per moving casing per frame). Nothing is spawned or allocated per shot: the
 //! oldest casing is reused.
@@ -86,15 +86,9 @@ impl Casings {
 }
 
 pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mesh = meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(10));
-    let brass = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.95, 0.74, 0.36),
-        metallic: 0.65,
-        perceptual_roughness: 0.38,
-        // A touch of self-light (alpha 0: exposure-independent) so brass reads in shade.
-        emissive: LinearRgba::new(0.10, 0.07, 0.02, 0.0),
-        ..default()
-    });
+    let mesh = meshes.add(casing_mesh());
+    // Fired brass: metal, a little dulled by powder residue (reflects the room rather than glowing).
+    let brass = materials.add(StandardMaterial { base_color: Color::srgb(0.8, 0.6, 0.3), metallic: 1.0, perceptual_roughness: 0.32, ..default() });
     let hull = materials.add(StandardMaterial { base_color: Color::srgb(0.62, 0.07, 0.05), perceptual_roughness: 0.5, ..default() });
     let slots = (0..POOL)
         .map(|_| {
@@ -105,6 +99,19 @@ pub(super) fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mu
         })
         .collect();
     commands.insert_resource(Casings { slots, next: 0, brass, hull });
+}
+
+/// A unit cartridge case along +Y (radius 1, height 1, centred): the body, a shoulder and neck
+/// (rifle cases; on pistol cases it reads as the mouth), and the extractor groove above the rim.
+fn casing_mesh() -> Mesh {
+    let part = |r_bottom: f32, r_top: f32, h: f32, y: f32| {
+        ConicalFrustum { radius_top: r_top, radius_bottom: r_bottom, height: h }.mesh().resolution(10).segments(1).build().translated_by(Vec3::Y * y)
+    };
+    let mut m = part(1.0, 1.0, 0.06, -0.47);
+    for p in [part(0.82, 0.82, 0.05, -0.415), part(0.98, 0.95, 0.66, -0.06), part(0.95, 0.72, 0.08, 0.31), part(0.72, 0.72, 0.15, 0.425)] {
+        m.merge(&p).expect("same layout");
+    }
+    m
 }
 
 /// Moves, bounces and retires live casings.

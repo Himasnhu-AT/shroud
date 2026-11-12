@@ -44,6 +44,8 @@ const SOUNDS: &[(&str, usize)] = &[
     ("enemy_shot", 1),
     ("impact", 3),
     ("ricochet", 1),
+    // A supersonic round passing close (`scripts/make-combat-sounds.py`).
+    ("bullet_crack", 3),
     ("hit_marker", 1),
     ("headshot", 1),
     ("kill_confirm", 1),
@@ -210,7 +212,10 @@ fn enemy_bullet_sounds(
     for ev in fx.read() {
         let EnemyFx::Shot { from, to: Some(to), .. } = *ev else { continue };
         match bullet_heard(from, to, eye) {
-            BulletHeard::Whiz(at) => play(&mut commands, &sfx, &master, "ricochet", 0.7, Some(at)),
+            BulletHeard::Whiz(at) => {
+                let name = if sfx.has("bullet_crack") { "bullet_crack" } else { "ricochet" };
+                play(&mut commands, &sfx, &master, name, 0.8, Some(at));
+            }
             BulletHeard::Impact(at) if impacts < MAX_IMPACTS_PER_FRAME => {
                 impacts += 1;
                 play(&mut commands, &sfx, &master, "impact", 0.5, Some(at));
