@@ -32,7 +32,15 @@ pub struct ShroudSettings {
     pub bodycam_mount: BodycamMount,
     /// Content: blood mist and spatter when a bullet hits a person (off: a dust puff instead).
     pub blood: bool,
+    /// Settings revision this file was last migrated to ([`SETTINGS_REV`]); 0 = written before
+    /// revisions existed. Missing in older files, so it defaults to 0 there.
+    #[serde(default)]
+    pub rev: u32,
 }
+
+/// Current settings revision. Rev 1 (Nov 2026): Bodycam became the default camera style; files
+/// from before switch to it once (the player can go back to Classic in Settings → Video).
+pub const SETTINGS_REV: u32 = 1;
 
 /// Where the bodycam sits (Bodycam style only; `bodycam::mount_offset`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,11 +61,11 @@ impl BodycamMount {
     }
 }
 
-/// How the player's view is presented.
+/// How the player's view is presented. Bodycam is the default (the showcase look).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CameraStyle {
-    #[default]
     Classic,
+    #[default]
     Bodycam,
 }
 
@@ -81,9 +89,10 @@ impl Default for ShroudSettings {
             crosshair_size: 1.0,
             show_callouts: true,
             primary: WeaponKind::Rifle,
-            camera_style: CameraStyle::Classic,
+            camera_style: CameraStyle::Bodycam,
             bodycam_mount: BodycamMount::Head,
             blood: true,
+            rev: SETTINGS_REV,
         }
     }
 }
@@ -103,6 +112,11 @@ impl ShroudSettings {
         for c in &mut self.crosshair_color {
             *c = c.clamp(0.0, 1.0);
         }
+        // Migrations, once per file.
+        if self.rev < 1 {
+            self.camera_style = CameraStyle::Bodycam;
+        }
+        self.rev = self.rev.max(SETTINGS_REV);
         self
     }
 }
@@ -233,7 +247,7 @@ fn register_fields(app: &mut App) {
         key: "camera_style",
         tab: "Video",
         label: "Camera style",
-        hint: "Bodycam: wide chest-cam lens, free aim, no crosshair or health/ammo numbers (press R on a full mag to check ammo).",
+        hint: "Bodycam (default): body-camera footage: fisheye lens, a sensor that blows out daylight and loses the dark, free aim, no crosshair or health/ammo numbers (R on a full mag checks ammo, T the weapon light). Classic: centre crosshair, full HUD.",
         kind: FieldKind::Choice { options: CameraStyle::ALL.iter().map(|c| c.label()).collect() },
         get: |w| index_of(&CameraStyle::ALL, &s(w).camera_style),
         set: |w, v| s_mut(w).camera_style = pick(&CameraStyle::ALL, v),
@@ -274,6 +288,19 @@ mod tests {
         assert_eq!(s.crosshair_size, 0.5);
         assert_eq!(s.crosshair_color, [1.0, 0.0, 0.5]);
         assert_eq!(ShroudSettings::default().sanitized(), ShroudSettings::default());
+    }
+
+    #[test]
+    fn old_files_switch_to_bodycam_once() {
+        // A file from before revisions: Classic saved explicitly, no `rev`.
+        let old: ShroudSettings = serde_json::from_str(r#"{"camera_style":"Classic"}"#).unwrap();
+        assert_eq!(old.rev, 0);
+        let s = old.sanitized();
+        assert_eq!((s.camera_style, s.rev), (CameraStyle::Bodycam, SETTINGS_REV));
+        // Picking Classic after the migration sticks.
+        let picked = ShroudSettings { camera_style: CameraStyle::Classic, ..s }.sanitized();
+        assert_eq!(picked.camera_style, CameraStyle::Classic);
+        assert_eq!(ShroudSettings::default().camera_style, CameraStyle::Bodycam);
     }
 
     #[test]

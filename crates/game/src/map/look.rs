@@ -8,7 +8,7 @@ use avian3d::prelude::*;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use brain::arena::{Arena, Block, BlockKind, BuildingUse, FloorSkin, MapId, Skin};
-use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SkyLook, SkyMode, SunLook, ToneMap};
+use engine::look::{AmbientLook, ExposureLook, FogLook, FogMode, GradeSection, GradingLook, Look, Rgb, SkyLook, SkyMode, SunLook, ToneMap, VolumetricLook, WeaponLight};
 use engine::render_budget::SceneryRanges;
 
 use super::{ArenaRes, Gfx};
@@ -778,32 +778,47 @@ pub fn look_of(id: MapId) -> Look {
         ..FogLook::default()
     };
     let neutral = GradingLook { post_saturation: 1.05, midtones: GradeSection { contrast: 1.04, ..GradeSection::default() }, ..GradingLook::default() };
+    // Graded like camera footage: a little desaturated, contrasty mids, highlights pushed so the
+    // sun on concrete clips hot; `temperature` sets the white balance (< 0 cooler).
+    let footage = |temperature: f32| GradingLook {
+        temperature,
+        post_saturation: 0.86,
+        shadows: GradeSection { contrast: 1.04, ..GradeSection::default() },
+        midtones: GradeSection { contrast: 1.1, ..GradeSection::default() },
+        highlights: GradeSection { gain: 1.08, ..GradeSection::default() },
+        ..GradingLook::default()
+    };
     match id {
         // A hazy steelworks evening: a low amber sun from the south-west through smoke, long
-        // shadows down the lanes, a brown-grey haze.
+        // shadows down the lanes, a brown-grey haze with light shafts. Physical units: ~55 klx
+        // of low sun through haze, a ~4 kcd/m² evening sky, EV 14 (sunny-16 minus a stop for
+        // the low sun). Shade is lit by the blue sky (cool), sunlit faces by the amber sun
+        // (warm): the split that sells a real camera. Fill is the sky and the bake, not flat
+        // ambient (the residual ambient is dropped while a bake is applied).
         MapId::Foundry => Look {
             name: "foundry_evening".into(),
             sun: SunLook {
                 azimuth_deg: 235.0,
                 elevation_deg: 26.0,
-                illuminance: 70_000.0,
-                color: Rgb::new(1.0, 0.80, 0.58),
+                illuminance: 55_000.0,
+                color: Rgb::new(1.0, 0.80, 0.60),
                 ..arena_sun
             },
             sky: SkyLook {
                 mode: SkyMode::Gradient,
-                zenith: Rgb::new(0.22, 0.30, 0.46),
-                horizon: Rgb::new(0.86, 0.70, 0.54),
-                ground: Rgb::new(0.26, 0.24, 0.22),
-                brightness: 5200.0,
+                zenith: Rgb::new(0.20, 0.30, 0.50),
+                horizon: Rgb::new(0.84, 0.72, 0.58),
+                ground: Rgb::new(0.22, 0.21, 0.20),
+                brightness: 4000.0,
                 sun_glow: 0.9,
                 ..SkyLook::default()
             },
-            ambient: AmbientLook { color: Rgb::new(0.86, 0.82, 0.80), brightness: 950.0, env_intensity: 1.0 },
-            fog: FogLook { sun_color: Rgb::new(1.0, 0.72, 0.45), sun_amount: 0.4, ..fog([0.60, 0.56, 0.52], 35.0, fog_end(id)) },
-            exposure: ExposureLook { ev100: 12.6, ..ExposureLook::default() },
+            ambient: AmbientLook { color: Rgb::new(0.72, 0.80, 0.95), brightness: 220.0, env_intensity: 1.0 },
+            fog: FogLook { sun_color: Rgb::new(1.0, 0.72, 0.45), sun_amount: 0.4, ..fog([0.58, 0.55, 0.52], 35.0, fog_end(id)) },
+            volumetric: VolumetricLook { enabled: true, density: 0.012, color: Rgb::new(0.92, 0.86, 0.78), asymmetry: 0.72, ..VolumetricLook::default() },
+            exposure: ExposureLook { ev100: 14.0, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: GradingLook { temperature: 0.03, ..neutral },
+            grading: footage(-0.02),
             ..base
         },
         // High, hot desert sun behind the attackers; dusty warm haze.
@@ -822,11 +837,16 @@ pub fn look_of(id: MapId) -> Look {
         MapId::Office => Look {
             name: "office".into(),
             sun: SunLook { enabled: false, shadows: false, ..arena_sun },
-            ambient: AmbientLook { color: Rgb::new(0.97, 0.95, 0.92), brightness: 400.0, env_intensity: 0.06 },
+            // Unbaked fallback fill only: a bake (assets/baked/office) carries the lamps' bounce
+            // and drops this.
+            ambient: AmbientLook { color: Rgb::new(0.97, 0.95, 0.92), brightness: 250.0, env_intensity: 0.06 },
             fog: fog([0.30, 0.30, 0.32], 60.0, fog_end(id)),
-            exposure: ExposureLook { ev100: 7.8, ..ExposureLook::default() },
+            // Baked, the floor is physically lit: ~1.8 klx under a panel, a few lux of bounce
+            // between them (the lamps are 8-10 m apart). Auto exposure keeps Classic readable
+            // in both (Bodycam has its own meter).
+            exposure: ExposureLook { ev100: 7.0, auto: true, auto_min: -2.5, auto_max: 3.0, compensation: -0.5, ..ExposureLook::default() },
             tonemapping: ToneMap::Agx,
-            grading: GradingLook { midtones: GradeSection { contrast: 1.08, ..GradeSection::default() }, ..neutral },
+            grading: footage(-0.02),
             ..base
         },
         // Clear late afternoon: a warm sun from the west-south-west, low enough for long
@@ -1098,8 +1118,11 @@ pub(crate) fn apply_light_budget(
     mut shot_out: Query<(Option<&mut SpotLight>, Option<&mut PointLight>), (With<MapLamp>, With<super::lamps::LampOut>, Added<super::lamps::LampOut>)>,
     mut relit: RemovedComponents<super::lamps::LampOut>,
     cam: Query<&GlobalTransform, With<engine::gfx::MainCamera>>,
-    mut spots: Query<(Entity, &GlobalTransform, &mut SpotLight), (With<MapLamp>, Without<super::lamps::LampOut>)>,
-    mut points: Query<(Entity, &GlobalTransform, &mut PointLight), (With<MapLamp>, Without<SpotLight>, Without<super::lamps::LampOut>)>,
+    // Weapon lights (the player's, `engine::look::WeaponLight`) are never candidates: they keep
+    // their shadow whatever the budget or the governor does.
+    mut spots: Query<(Entity, &GlobalTransform, &mut SpotLight), (With<MapLamp>, Without<WeaponLight>, Without<super::lamps::LampOut>)>,
+    mut points: Query<(Entity, &GlobalTransform, &mut PointLight), (With<MapLamp>, Without<WeaponLight>, Without<SpotLight>, Without<super::lamps::LampOut>)>,
+    weapon_lights: Query<Ref<WeaponLight>>,
     governor: Option<Res<engine::render_budget::GovernorState>>,
     mut next: Local<f32>,
 ) {
@@ -1117,7 +1140,11 @@ pub(crate) fn apply_light_budget(
             l.shadow_maps_enabled = false;
         }
     }
-    let changed = settings.as_ref().is_some_and(|s| s.is_changed()) || !added.is_empty() || lamps_changed || governor.as_ref().is_some_and(|g| g.is_changed());
+    let changed = settings.as_ref().is_some_and(|s| s.is_changed())
+        || !added.is_empty()
+        || lamps_changed
+        || governor.as_ref().is_some_and(|g| g.is_changed())
+        || weapon_lights.iter().any(|w| w.is_changed());
     if !changed && now < *next {
         return;
     }
@@ -1128,6 +1155,9 @@ pub(crate) fn apply_light_budget(
     let (k_spot, k_point) = shadow_budget(settings.map(|s| s.quality).unwrap_or_default());
     // The engine governor's game steps (`GovernorStep::Game(n)`) trim lamp shadows under load.
     let (k_spot, k_point) = governed(k_spot, k_point, governor.map_or(0, |g| g.game_level));
+    // A lit weapon light is a shadowed spot too (one layer of the sun's shadow texture): the
+    // lamps give up one slot while it shines, so the layer count in view stays steady.
+    let k_spot = k_spot.saturating_sub(weapon_lights.iter().filter(|w| w.on && w.shadows).count());
     // Entities index the candidates; `index()` is stable for a lamp's lifetime.
     let rank = |q: &mut dyn Iterator<Item = (Entity, Vec3, bool)>, k: usize| -> Vec<Entity> {
         let all: Vec<(Entity, Vec3, bool)> = q.collect();

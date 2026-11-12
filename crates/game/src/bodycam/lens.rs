@@ -1,113 +1,42 @@
-//! Bodycam optics (spec §4): the sensor pass ([`BodycamLens`], a Bevy `FullscreenMaterial`
-//! scheduled after tonemapping and FXAA) on the main camera, and the look changes that go with
-//! it (auto exposure with slow dark / fast bright adaptation, AgX, stronger bloom; the engine
-//! look's own lens effects are off because the pass does them). The wide FOV is
-//! [`super::base_fov_deg`] (used by the ADS zoom in `weapon::arsenal`).
+//! Bodycam optics: the engine's body camera (`engine::look::BodycamLook`, engine docs/LOOK.md
+//! "Body camera") switched on in the map's [`Look`]. The engine renders it: a true fisheye at
+//! the wide FOV ([`super::BODYCAM_FOV_DEG`], also used by the ADS zoom in `weapon::arsenal`),
+//! a metering exposure that lags, overshoots and clips (it replaces Bevy's auto exposure on the
+//! camera), crushed blacks and hard-clipped highlights, sensor noise that grows in the dark,
+//! sharpening halos, motion smear, compression blocks, rolling shutter, edge chromatic
+//! aberration, a vignette and halation (bloom from what clips, where the tier has bloom).
+//! Its pipelines are warmed at render startup and are not in any material's pipeline key, so
+//! switching Classic ↔ Bodycam mid-play rebuilds nothing.
 //!
-//! Bloom stays on the quality tiers that have it (High, Ultra): adding it on Medium would change
-//! every material's pipeline key, a rebuild the guide forbids outside loads.
+//! UI is drawn after the pass (the [REC] stamp stays straight). Anything placed on screen from a
+//! world point goes through the lens with `engine::look::world_to_screen` (the hit marker,
+//! `ui::hud`).
 
-use bevy::core_pipeline::fullscreen_material::{FullscreenMaterial, FullscreenMaterialPlugin};
-use bevy::ecs::schedule::ScheduleConfigs;
-use bevy::ecs::system::BoxedSystem;
-use bevy::prelude::*;
-use bevy::render::extract_component::ExtractComponent;
-use bevy::render::render_resource::ShaderType;
-use bevy::shader::ShaderRef;
-use engine::gfx::MainCamera;
-use engine::look::Look;
+use engine::look::{BodycamLook, Look, ToneMap};
 
-use super::is_bodycam;
-use crate::settings::ShroudSettings;
-use crate::state::has_visuals;
-
-/// Per-camera bodycam sensor settings (spec §4.1 numbers; `time` animates the grain).
-#[derive(Component, ExtractComponent, Clone, Copy, ShaderType, Debug, PartialEq)]
-#[extract_app(bevy::render::RenderApp)]
-pub struct BodycamLens {
-    pub fisheye_strength: f32,
-    pub chromatic_aberration: f32,
-    pub vignette_intensity: f32,
-    pub sensor_grain_strength: f32,
-    pub sharpness_strength: f32,
-    pub time: f32,
-    pub _pad0: f32,
-    pub _pad1: f32,
+/// The chest camera Tells uses: the engine's `chest_cam` preset, tuned against the reference
+/// footage (daylight from a doorway blows out to white, interiors fall to near black, a slow
+/// swing of exposure when walking between them).
+pub fn chest_cam() -> BodycamLook {
+    let mut b = BodycamLook::chest_cam();
+    // A shade less magnification in the centre than the full fisheye: the reference camera
+    // bends the frame edges hard but keeps the middle of a room readable at range.
+    b.fisheye.strength = 0.85;
+    // Metered a touch over mid-grey: sunlit concrete clips hot (the reference look) while shade
+    // keeps detail. The sensor's gain still runs out at EV 3, so dark rooms stay dark and noisy.
+    b.exposure.compensation = 0.3;
+    b.saturation = 0.8;
+    b
 }
 
-impl Default for BodycamLens {
-    fn default() -> Self {
-        BodycamLens {
-            fisheye_strength: 0.32,
-            chromatic_aberration: 0.018,
-            vignette_intensity: 0.72,
-            sensor_grain_strength: 0.045,
-            sharpness_strength: 0.65,
-            time: 0.0,
-            _pad0: 0.0,
-            _pad1: 0.0,
-        }
-    }
-}
-
-impl FullscreenMaterial for BodycamLens {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://shroud/bodycam/bodycam_post.wesl".into()
-    }
-
-    /// After tonemapping and FXAA: the sensor sees the finished picture (grain is not smoothed
-    /// away, the vignette is not tonemapped).
-    fn schedule_configs(system: ScheduleConfigs<BoxedSystem>) -> ScheduleConfigs<BoxedSystem> {
-        system
-            .in_set(bevy::core_pipeline::Core3dSystems::PostProcess)
-            .after(bevy::core_pipeline::tonemapping::tonemapping)
-            .after(bevy::anti_alias::fxaa::fxaa)
-    }
-}
-
-pub(super) fn build(app: &mut App) {
-    if app.get_sub_app(bevy::render::RenderApp).is_none() {
-        return;
-    }
-    bevy::asset::embedded_asset!(app, "bodycam_post.wesl");
-    app.add_plugins(FullscreenMaterialPlugin::<BodycamLens>::default())
-        .add_systems(Update, (sync_lens, animate_lens.run_if(any_with_component::<BodycamLens>)).chain().run_if(has_visuals));
-}
-
-/// The sensor pass on the main camera exactly while bodycam is on.
-fn sync_lens(mut commands: Commands, settings: Res<ShroudSettings>, cams: Query<(Entity, Has<BodycamLens>), (With<MainCamera>, With<Camera3d>)>) {
-    let want = is_bodycam(&settings);
-    for (e, has) in &cams {
-        if want && !has {
-            commands.entity(e).insert(BodycamLens::default());
-        } else if !want && has {
-            commands.entity(e).remove::<BodycamLens>();
-        }
-    }
-}
-
-fn animate_lens(time: Res<Time<Real>>, mut q: Query<&mut BodycamLens>) {
-    let t = time.elapsed_secs() % 1000.0;
-    for mut l in &mut q {
-        l.time = t;
-    }
-}
-
-/// A map's look as the bodycam sees it: metered auto exposure (shadows adapt slowly, highlights
-/// blow out and recover fast), AgX, spec bloom, no engine lens effects (the pass does them).
+/// A map's look as the bodycam sees it: the engine body camera on, its metering exposure in
+/// charge (no histogram auto exposure), AgX. The look's own lens effects (vignette, CA,
+/// distortion, grain) are off: the bodycam pass does them.
 pub fn bodycam_look(mut look: Look) -> Look {
     look.name = format!("{} (bodycam)", look.name).into();
-    look.exposure.auto = true;
-    look.exposure.auto_min = -3.0;
-    look.exposure.auto_max = 3.0;
-    // EV per second: bright → dark is slow, dark → bright is fast.
-    look.exposure.speed_darken = 1.2;
-    look.exposure.speed_brighten = 3.5;
-    // Meter a little under mid-grey: open daylight keeps its contrast, dark rooms still lift.
-    look.exposure.compensation = -1.7;
-    look.tonemapping = engine::look::ToneMap::Agx;
-    look.bloom.intensity = 0.28;
-    look.bloom.low_frequency_boost = 0.6;
+    look.lens.bodycam = chest_cam();
+    look.exposure.auto = false;
+    look.tonemapping = ToneMap::Agx;
     look.lens.vignette.intensity = 0.0;
     look.lens.chromatic_aberration = 0.0;
     look.lens.distortion = 0.0;
@@ -120,12 +49,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bodycam_look_is_a_distinct_auto_exposed_look() {
+    fn bodycam_look_turns_on_the_engine_camera() {
         let base = Look::default();
         let b = bodycam_look(base.clone());
         assert_ne!(b.name, base.name);
-        assert!(b.exposure.auto && b.exposure.speed_darken < b.exposure.speed_brighten);
+        assert!(b.lens.bodycam.enabled && b.lens.bodycam.exposure.enabled);
+        // The engine meter is the only exposure control on the camera.
+        assert!(!b.exposure.auto);
         assert_eq!(b.lens.film_grain, 0.0);
-        assert_eq!(std::mem::size_of::<BodycamLens>() % 16, 0);
+        assert!(!base.lens.bodycam.enabled);
     }
 }

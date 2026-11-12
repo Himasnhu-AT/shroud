@@ -1,0 +1,39 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "cmd": "bake.run",
+  "params": {
+   "quality": "medium"
+  }
+ },
+ {
+  "wait": "bake.status",
+  "until": {
+   "result.phase.state": [
+    "done",
+    "failed"
+   ]
+  },
+  "timeout": 3600
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "cmd": "bake.status"
+ }
+]

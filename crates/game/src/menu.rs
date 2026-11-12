@@ -34,6 +34,7 @@ impl Plugin for MenuPlugin {
                 ("Reload", "R"),
                 ("Primary / sidearm", "1 / 2, mouse wheel"),
                 ("Last weapon / inspect", "Q / V"),
+                ("Weapon light", "T"),
                 ("Plant bomb (A / B) / pick up", "E (hold)"),
                 ("Grenade: equip / next", "4 or G"),
                 ("Throw: over / under", "Left / right mouse"),

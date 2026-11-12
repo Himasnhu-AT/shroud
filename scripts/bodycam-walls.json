@@ -1,0 +1,748 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Township"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "map.info"
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "cmd": "ui.setting",
+  "params": {
+   "key": "bodycam_mount",
+   "value": 1
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 40,
+   "z": 0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    50,
+    1.5,
+    0
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": false
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": false
+  }
+ },
+ {
+  "shot": "w_east_stand_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_stand_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_stand_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 40,
+   "z": 3
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    50,
+    1.5,
+    8
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": false
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": false
+  }
+ },
+ {
+  "shot": "w_east_glance_stand_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_glance_stand_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_glance_stand_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 40,
+   "z": 40
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    50,
+    1.5,
+    50
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": false
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": false
+  }
+ },
+ {
+  "shot": "w_corner_stand_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_corner_stand_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_corner_stand_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -40
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.5,
+    -50
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": false
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": false
+  }
+ },
+ {
+  "shot": "w_north_stand_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_north_stand_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_north_stand_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 40,
+   "z": 0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    50,
+    1.5,
+    0
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": true
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": true
+  }
+ },
+ {
+  "shot": "w_east_crouch_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_crouch_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_crouch_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 40,
+   "z": 3
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    50,
+    1.5,
+    8
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": true
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": true
+  }
+ },
+ {
+  "shot": "w_east_glance_crouch_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_glance_crouch_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_east_glance_crouch_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 40,
+   "z": 40
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    50,
+    1.5,
+    50
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": true
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": true
+  }
+ },
+ {
+  "shot": "w_corner_crouch_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_corner_crouch_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_corner_crouch_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -40
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.5,
+    -50
+   ]
+  }
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.6
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 1800,
+   "crouch": true
+  }
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 0.6,
+   "right": 0.8,
+   "ms": 700,
+   "crouch": true
+  }
+ },
+ {
+  "shot": "w_north_crouch_0"
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 90,
+   "strafe": 0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_north_crouch_turnL"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -180,
+   "strafe": -0.5,
+   "ms": 600
+  }
+ },
+ {
+  "sleep": 0.3
+ },
+ {
+  "shot": "w_north_crouch_turnR"
+ },
+ {
+  "sleep": 0.4
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "game.state"
+ },
+ {
+  "cmd": "player.crouch",
+  "params": {
+   "on": false
+  }
+ }
+]

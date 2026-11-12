@@ -1,0 +1,182 @@
+[
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "ui.setting",
+  "params": {
+   "key": "quality",
+   "value": 2
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "player.light",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -18,
+   "z": -18
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    2,
+    -34
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "look.feature",
+  "params": {
+   "name": "volumetric",
+   "on": false
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "look.feature",
+  "params": {
+   "name": "volumetric",
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.light",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3.5,
+   "z": 3.0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -1.5,
+    2,
+    -1.5
+   ]
+  }
+ },
+ {
+  "sleep": 8
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "sleep": 6
+ },
+ {
+  "cmd": "perf.stats"
+ }
+]

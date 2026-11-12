@@ -15,6 +15,7 @@
 //! - `pickups`: dropped guns (enemies drop theirs), hold E to swap, ammo from same-kind guns.
 //! - `sound`: per-gun shots and foley from [`GunEvent`]s.
 //! - `throwing`: the player's grenades (equip with 4 / G, throw, the hand that holds them).
+//! - `light`: the weapon light on the gun (T), the engine's `WeaponLight`.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -26,8 +27,10 @@ mod casings;
 mod dev;
 pub mod fire;
 pub mod fx;
+pub mod light;
 pub mod pickups;
 pub mod throwing;
+mod warm;
 pub mod finish;
 mod sound;
 pub mod viewmodel;
@@ -66,6 +69,8 @@ impl Plugin for WeaponPlugin {
         viewmodel::build(app);
         finish::build(app);
         fx::build(app);
+        light::build(app);
+        warm::build(app);
         pickups::build(app);
         throwing::build(app);
         sound::build(app);
@@ -198,6 +203,9 @@ pub const KILL_MARKER_S: f32 = 0.4;
 pub struct HitMarker {
     pub timer: f32,
     pub headshot: bool,
+    /// Where the hit landed (world). Bodycam shots leave the barrel, not the screen centre, so
+    /// the HUD puts the marker there, through the lens (`ui::hud`).
+    pub at: Option<Vec3>,
     pub kill: bool,
 }
 

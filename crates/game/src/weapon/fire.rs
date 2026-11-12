@@ -366,6 +366,7 @@ fn fire_one(
     let muzzle_world = cam.transform_point(muzzle_cam);
 
     hits.clear();
+    let mut hit_at: Option<Vec3> = None;
     for i in 0..spec.pellets.max(1) {
         let (u, v) = if spec.pellets > 1 { pellet_offset(i, spec.pellets) } else { (rand::random_range(0.0..1.0), rand::random_range(0.0..1.0)) };
         let dir = cone_dir(fwd, right, up, spread, u, v);
@@ -391,6 +392,7 @@ fn fire_one(
                 Err(_) => None,
             };
             if let Some((target, head)) = target {
+                hit_at.get_or_insert(p);
                 let amount = spec.damage_at(travelled) * mult * if head { spec.headshot_mult } else { 1.0 };
                 match hits.iter_mut().find(|h| h.0 == target) {
                     Some(h) => {
@@ -425,7 +427,7 @@ fn fire_one(
     for &(target, amount, headshot) in hits.iter() {
         out.damage.write(Damage { target, amount, source: player, headshot, cause: super::DamageCause::Gun(kind) });
         let head = headshot || (marker.timer > 0.0 && marker.headshot);
-        *marker = HitMarker { timer: super::HIT_MARKER_S, headshot: head, kill: false };
+        *marker = HitMarker { timer: super::HIT_MARKER_S, headshot: head, kill: false, at: hit_at };
     }
 }
 

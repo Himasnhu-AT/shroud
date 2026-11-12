@@ -10,8 +10,8 @@ and it has studied your habits: where you camp, the ranges you fight at, and whi
 pick; evolution only improves how the squad plays.
 
 > Status: in development and playable. Five-round bomb defusal (first to 3) with a round economy
-> and buy menu, grenades, six maps, a career with ranks and match objectives, and an optional
-> bodycam camera. Work tracking: [docs/TASKS.md](docs/TASKS.md), [TODO.md](TODO.md).
+> and buy menu, grenades, six maps, a career with ranks and match objectives, and a bodycam
+> camera (the default). Work tracking: [docs/TASKS.md](docs/TASKS.md), [TODO.md](TODO.md).
 
 ## How it gets harder
 1. **Traits evolve** (genetic algorithm): aggression, preferred range, flanking, cover use,

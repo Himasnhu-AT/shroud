@@ -1,0 +1,94 @@
+[
+ {
+  "cmd": "render.governor",
+  "params": {
+   "enabled": true,
+   "target_fps": 60
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 8,
+   "now": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 9
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 2500
+  }
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": 120,
+   "ms": 1200
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "right": 0.5,
+   "ms": 3000,
+   "sprint": true
+  }
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "fire": true,
+   "ms": 800
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "cmd": "video.bodycam",
+  "params": {
+   "turn": -200,
+   "strafe": 1,
+   "ms": 2000
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": -1,
+   "ms": 3000
+  }
+ },
+ {
+  "sleep": 12
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.governor"
+ },
+ {
+  "cmd": "perf.report"
+ }
+]

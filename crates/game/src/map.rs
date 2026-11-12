@@ -3,8 +3,9 @@
 //!
 //! Ground plane mapping: `V2 { x, y }` ↔ world `(x, h, y)`.
 //! Sky, sun and post-processing live in [`crate::gfx`]; per-map materials, lighting and set
-//! dressing in [`look`], [`dressing`], [`props`] and [`grime`].
+//! dressing in [`look`], [`dressing`], [`props`] and [`grime`]; baked lighting in [`bake`].
 
+pub mod bake;
 mod dressing;
 pub mod glass;
 mod grime;
@@ -37,6 +38,7 @@ impl Plugin for MapPlugin {
         app.insert_resource(ArenaRes(Arena::build(id)))
             .init_resource::<MapRequest>()
             .add_plugins((GlassPlugin, lamps::LampsPlugin))
+            .add_plugins(bake::build)
             .add_systems(Startup, (spawn_current_map, grime::setup.run_if(has_visuals)))
             .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
             // Map pieces are static scenery for the engine's render budget.
@@ -279,6 +281,8 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
         dressing::spawn(commands, arena, g, p, merged);
         industry::spawn(commands, arena, g, p);
         industry::clutter(commands, arena, g);
+        // Baked lighting for this map, when its cache exists (`assets/baked/<map>/`).
+        bake::spawn(commands, arena);
     }
 }
 
@@ -324,6 +328,7 @@ fn map_info_command(world: &mut World, _: serde_json::Value) -> Result<serde_jso
     let a = &world.resource::<ArenaRes>().0;
     Ok(serde_json::json!({
         "map": a.id.label(),
+        "half": a.half(),
         "blocks": a.blocks.len(),
         "cover": a.cover.len(),
         "player_spawn": [a.player_spawn.x, a.player_spawn.y],

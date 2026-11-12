@@ -16,6 +16,8 @@ steps.json: a list of steps, each one of
   {"sleep": 2.5}
   {"cmd": "player.look", "params": {"at": [0, 1.2, -27]}}
   {"shot": "name"}            -> DIR/name.png (windowed only)
+  {"wait": "bake.status", "until": {"result.phase.state": ["done", "failed"]}, "timeout": 1800}
+                              -> polls the command until the reply's fields match
   {"capture": "name", "seconds": 6, "fps": 60}
                               -> starts capture.frames into DIR/name/ (fixed time step; footage)
   {"wait_frame": 120}         -> waits until the running capture has rendered that many frames
@@ -27,6 +29,12 @@ Every reply is printed as one JSON line.
 """
 import json, os, re, socket, subprocess, sys, tempfile, time
 
+def dig(obj, path):
+    """`a.b.c` inside nested dicts (None when missing)."""
+    for k in path.split("."):
+        obj = obj.get(k) if isinstance(obj, dict) else None
+    return obj
+
 def main():
     args = sys.argv[1:]
     steps = json.load(open(args[0]))
@@ -37,7 +45,13 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # Build *this* checkout and snapshot the binary right away: the shared target dir means
     # another worktree's build can overwrite target/debug/shroud at any moment.
-    src = args[args.index("--exe") + 1] if "--exe" in args else "/Users/himanshu/codes/game/engine/target/debug/shroud"
+    if "--exe" in args:
+        src = args[args.index("--exe") + 1]
+    else:
+        # This checkout's cargo target dir (a worktree may have its own in .cargo/config.toml).
+        meta = subprocess.run(["cargo", "metadata", "--format-version", "1", "--no-deps"], cwd=root, capture_output=True, text=True)
+        target = json.loads(meta.stdout)["target_directory"] if meta.returncode == 0 else "/Users/himanshu/codes/game/engine/target"
+        src = os.path.join(target, "debug", "shroud")
     if "--no-build" not in args and "--exe" not in args:
         subprocess.run(["cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
     exe = os.path.join(out, "shroud")
@@ -89,6 +103,17 @@ def main():
         for st in steps:
             if "sleep" in st:
                 time.sleep(st["sleep"]); continue
+            if "wait" in st:
+                # Poll a command until fields of its reply match, e.g. a bake finishing.
+                until, end, r = st.get("until") or {}, time.time() + float(st.get("timeout", 600)), {}
+                while time.time() < end:
+                    r = call(st["wait"], st.get("params"))
+                    if all(dig(r, k) in (v if isinstance(v, list) else [v]) for k, v in until.items()):
+                        break
+                    time.sleep(0.5)
+                else:
+                    print(f"timed out waiting for {until}", file=sys.stderr, flush=True)
+                print(json.dumps(r)[:2000], flush=True); continue
             if "capture" in st:
                 cap = (st["capture"], st.get("fps", 60), st.get("keep", False))
                 r = call("capture.frames", {"dir": os.path.join(out, cap[0]), "fps": cap[1], "seconds": st.get("seconds", 5)})

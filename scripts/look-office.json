@@ -1,0 +1,137 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3.5,
+   "z": 3.0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -1.5,
+    2.0,
+    -1.5
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "o01_lamps"
+ },
+ {
+  "cmd": "lamp.info"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    10,
+    1.6,
+    10
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "o02_wide"
+ },
+ {
+  "cmd": "player.light",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": 0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    10,
+    1.6,
+    10
+   ]
+  }
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "shot": "o03_wide_light"
+ },
+ {
+  "cmd": "player.light",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "bake.status"
+ }
+]

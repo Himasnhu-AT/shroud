@@ -3,7 +3,8 @@
 //! The governor (engine `render_budget::QualityGovernor`) steps quality down when the GPU or
 //! memory can't keep up and back up when there is headroom. Each change sends a
 //! `QualityChanged`; we turn it into a toast. GPU/headroom changes can come in bursts, so they
-//! are rate-limited; memory changes always show (they never undo within a session).
+//! are rate-limited; memory changes always show (they never undo within a session). Nothing is
+//! shown during a round (`crate::quality` keeps the governor out of live play anyway).
 
 use bevy::prelude::*;
 use engine::render_budget::{GovernorReason, QualityChanged, QualityGovernor};
@@ -35,6 +36,7 @@ fn announce(
     governor: Option<Res<QualityGovernor>>,
     theme: Option<Res<Theme>>,
     time: Res<Time<Real>>,
+    state: Option<Res<State<crate::state::GameState>>>,
     mut last: Local<Option<f32>>,
 ) {
     let fps = governor.map(|g| g.target_fps).unwrap_or(60.0);
@@ -44,6 +46,11 @@ fn announce(
         return;
     };
     debug!("perf toast: {:?} level {}/{}", ev.reason, ev.level, ev.levels);
+    // Never over a round (freeze time included): the change is in the log and the perf overlay.
+    if state.is_some_and(|s| *s.get() == crate::state::GameState::Playing) {
+        info!("quality: {} (no toast in a round)", ev.text(fps));
+        return;
+    }
     let since = last.map(|t| now - t).unwrap_or(f32::INFINITY);
     if !should_show(ev.reason, since) {
         return;

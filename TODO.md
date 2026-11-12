@@ -92,10 +92,13 @@ CS2 maps or skins); CC0 assets with a primitive fallback; every cargo run throug
   hands have rounded forearms, gloved fingers wrapped on grip and handguard, and a watch on the left wrist
 
 ### Phase 4: bodycam optics (spec §4)
-- [x] Optional "Bodycam" camera style (Settings → Video, off by default; `video.camera_style`)
-- [x] WGSL post-process: barrel distortion, chromatic aberration, sensor grain, vignette, sharpen
-  (one `FullscreenMaterial` pass after tonemapping/FXAA; also on offscreen captures)
-- [x] AgX + auto-exposure (fast up, slow down) + bloom tuning; bloom only on tiers that have it
+- [x] "Bodycam" camera style (Settings → Video, the default since Nov 2026; `video.camera_style`)
+- [x] Optics from the engine's body camera (`engine::look::BodycamLook`, replacing Shroud's own
+  WGSL pass): fisheye, metering exposure, sensor curve, noise, smear, rolling shutter, halation
+- [x] Weapon light (T): engine `WeaponLight::tactical()` on the gun's rail, outside the lamp
+  shadow budget
+- [x] Baked lighting (`map/bake.rs`): `BakeLevel` per map, one probe volume, lamps `Indirect`;
+  Ledger (office) baked; Foundry to bake after its art pass
 - [x] 45 ms muzzle-flash point light (both styles; pooled, no shadows)
 - [x] [REC] timestamp stamp overlay; no crosshair / health / ammo (R on a full mag = ammo check)
 - [x] Muzzle light casting shadows (spec): only for the frames it is lit, on High and Ultra

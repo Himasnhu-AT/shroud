@@ -1,0 +1,297 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "bodycam"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 8,
+   "z": 34
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "f01_spawn_sun"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "f10_mid_from_spawn"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -18,
+   "z": -18
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    2.0,
+    -34
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "f06_a_site_furnace"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -11,
+   "z": -7
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -24,
+    1.5,
+    -6
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "f08_boiler_house"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 11,
+   "z": -10
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    24,
+    1.5,
+    -10
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "f14_scale_house"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 36,
+   "z": -17
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    20,
+    1.5,
+    -32
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "f18_b_docks"
+ },
+ {
+  "cmd": "player.light",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -11,
+   "z": -7
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -24,
+    1.5,
+    -6
+   ]
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "shot": "f08_boiler_house_light"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -18,
+   "z": -18
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    2.0,
+    -34
+   ]
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "shot": "f06_a_site_light"
+ },
+ {
+  "cmd": "player.light",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -33,
+   "z": -6
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -31,
+    1.6,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 5
+ },
+ {
+  "shot": "walk0_outside"
+ },
+ {
+  "cmd": "player.move",
+  "params": {
+   "forward": 1,
+   "ms": 2600
+  }
+ },
+ {
+  "shot": "walk1_inside_0s"
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "shot": "walk2_inside_1.5s"
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "shot": "walk3_inside_4.5s"
+ },
+ {
+  "cmd": "video.bodycam"
+ },
+ {
+  "cmd": "look.get"
+ }
+]

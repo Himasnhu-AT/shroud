@@ -27,7 +27,7 @@ impl Plugin for HudPlugin {
             .add_systems(
                 Update,
                 // (The kill feed lines are `ui::killfeed`'s, spawned into the `KillFeed` node.)
-                (tick_clock, (update_hud, update_pips, round_over_banner).run_if(has_visuals))
+                (tick_clock, ((update_hud, place_hit_marker).chain(), update_pips, round_over_banner).run_if(has_visuals))
                     .after(WeaponSet)
                     .run_if(in_state(GameState::Playing)),
             )
@@ -495,6 +495,39 @@ fn update_hud(
     }
 }
 
+/// Half the hit marker's box (px): its centre is the hit.
+const HIT_MARKER_HALF: f32 = 18.0;
+
+/// Classic aims through the screen centre, so the marker sits there. Bodycam shots leave the
+/// barrel (free aim, no crosshair): the marker goes where the hit landed, mapped through the
+/// engine's fisheye (`engine::look::world_to_screen` with the camera's `BodycamState` map), and
+/// follows that point while it shows.
+fn place_hit_marker(
+    settings: Res<ShroudSettings>,
+    marker: Res<HitMarker>,
+    cams: Query<(&Camera, &GlobalTransform, Option<&engine::look::BodycamState>), With<engine::gfx::MainCamera>>,
+    mut hit: Query<(&mut Node, &ChildOf), With<HitMarkerUi>>,
+    frames: Query<&ComputedNode>,
+) {
+    let Ok((mut node, parent)) = hit.single_mut() else { return };
+    let at = (crate::bodycam::is_bodycam(&settings) && marker.timer > 0.0).then_some(marker.at).flatten();
+    let place = at.and_then(|world| {
+        let (cam, tf, state) = cams.iter().next()?;
+        let frame = frames.get(parent.parent()).ok()?;
+        let size = frame.size() * frame.inverse_scale_factor();
+        let map = state.map_or(engine::look::FisheyeMap::IDENTITY, |s| s.map);
+        engine::look::world_to_screen(cam, tf, &map, world, size)
+    });
+    let (left, top) = match place {
+        Some(p) => (px(p.x - HIT_MARKER_HALF), px(p.y - HIT_MARKER_HALF)),
+        None => (Val::Auto, Val::Auto),
+    };
+    if node.left != left || node.top != top {
+        node.left = left;
+        node.top = top;
+    }
+}
+
 /// The hit marker's colour (white, headshot accent, kill red), scale and alpha: it punches
 /// out on the hit, settles, and fades over the last 40% of its time.
 fn hit_marker_look(m: &HitMarker) -> (Color, f32, f32) {
@@ -686,7 +719,7 @@ mod tests {
 
     #[test]
     fn hit_marker_pops_then_fades() {
-        let hit = |t: f32, kill: bool| hit_marker_look(&HitMarker { timer: t, headshot: false, kill });
+        let hit = |t: f32, kill: bool| hit_marker_look(&HitMarker { timer: t, headshot: false, kill, at: None });
         let fresh = hit(crate::weapon::HIT_MARKER_S, false);
         let mid = hit(crate::weapon::HIT_MARKER_S * 0.5, false);
         let end = hit(crate::weapon::HIT_MARKER_S * 0.1, false);
