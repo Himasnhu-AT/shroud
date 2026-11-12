@@ -1,0 +1,213 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -35,
+   "z": -24
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -38.6,
+    1.4,
+    -25
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d01_hall_wall_close"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -9.2
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    0.5,
+    -11.7
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d02_barrier_close"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -6.5,
+   "z": 6.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -8.4,
+    4.0,
+    8
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d03_wall_lamp"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -29,
+   "z": -23
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    6.5,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d04_high_bay"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -16,
+   "z": -33.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -20.5,
+    1.0,
+    -37.5
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d05_control_room_dark"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -3,
+   "z": 30
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -5,
+    2.5,
+    36
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d06_gatehouse_wall"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -5,
+   "z": 10
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -5,
+    0,
+    13
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d07_floor_close"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -30,
+   "z": 14
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -36,
+    0.6,
+    18
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "d08_scrap_corner"
+ }
+]

@@ -1,0 +1,166 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "render.governor",
+  "params": {
+   "enabled": false
+  }
+ },
+ {
+  "cmd": "settings.get"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 8,
+   "z": 34
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    2,
+    20
+   ]
+  }
+ },
+ {
+  "sleep": 10
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.governor"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "shot": "perf_spawn"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -18,
+   "z": -18
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -34,
+    2,
+    -34
+   ]
+  }
+ },
+ {
+  "sleep": 10
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.governor"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "shot": "perf_a_site"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.6,
+    -20
+   ]
+  }
+ },
+ {
+  "sleep": 10
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.governor"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "shot": "perf_mid"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 36,
+   "z": -17
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    20,
+    1.5,
+    -32
+   ]
+  }
+ },
+ {
+  "sleep": 10
+ },
+ {
+  "cmd": "perf.stats"
+ },
+ {
+  "cmd": "render.governor"
+ },
+ {
+  "cmd": "render.stats"
+ },
+ {
+  "shot": "perf_b_site"
+ }
+]

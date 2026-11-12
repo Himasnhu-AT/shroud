@@ -20,10 +20,12 @@ use bevy::pbr::decal::ForwardDecalMaterial;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use brain::arena::{Arena, Block, BlockKind, MapId, Skin};
-use engine::look::{decal_image, decal_material, spawn_decal};
+use engine::look::{decal_image, decal_material, load_decal_material, spawn_decal};
 use engine::settings::{CoreSettings, GraphicsQuality};
 
 use super::{ArenaPiece, ArenaRes};
+use crate::assets::AssetsDir;
+use crate::gfx::PendingMips;
 
 /// Edge-grime texture repeats every this many metres along a wall.
 const STRIP_TILE: f32 = 2.5;
@@ -36,6 +38,20 @@ pub(crate) struct GrimeAssets {
     stain: Handle<ForwardDecalMaterial<StandardMaterial>>,
     streak: Handle<ForwardDecalMaterial<StandardMaterial>>,
     marks: Handle<ForwardDecalMaterial<StandardMaterial>>,
+    /// Photoscanned decals (imported Megascans-style under `library/decals/`); empty when the
+    /// sets are missing.
+    scans: ScanDecals,
+}
+
+/// Scanned decal materials, each optional (the map keeps its procedural grime without them).
+#[derive(Default)]
+struct ScanDecals {
+    /// Rust / water streaks hanging from the top of a wall.
+    leaks: Vec<Handle<ForwardDecalMaterial<StandardMaterial>>>,
+    /// Damp band at the foot of a wall.
+    damp: Option<Handle<ForwardDecalMaterial<StandardMaterial>>>,
+    manhole: Option<Handle<ForwardDecalMaterial<StandardMaterial>>>,
+    tyres: Option<Handle<ForwardDecalMaterial<StandardMaterial>>>,
 }
 
 // ---------------------------------------------------------------- noise
@@ -163,7 +179,18 @@ pub(crate) fn setup(
     mut images: ResMut<Assets<Image>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
     mut decals: ResMut<Assets<ForwardDecalMaterial<StandardMaterial>>>,
+    server: Option<Res<AssetServer>>,
+    dir: Option<Res<AssetsDir>>,
+    pending: Option<ResMut<PendingMips>>,
 ) {
+    let mut scans = ScanDecals::default();
+    if let (Some(server), Some(dir), Some(mut pending)) = (server, dir, pending) {
+        let mut load = |name: &str| load_decal_material(&server, &dir, &mut pending, &format!("library/decals/{name}"), 0.06).map(|m| decals.add(m));
+        scans.leaks = ["acg-leaking001", "acg-leaking003"].into_iter().filter_map(&mut load).collect();
+        scans.damp = load("acg-leaking007");
+        scans.manhole = load("acg-manholecover009");
+        scans.tyres = load("acg-tiretracks001");
+    }
     let strip = |img: Handle<Image>| StandardMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(img),
@@ -189,6 +216,7 @@ pub(crate) fn setup(
         stain: decals.add(decal_material(stain, 0.06)),
         streak: decals.add(decal_material(streak, 0.06)),
         marks: decals.add(decal_material(marks, 0.06)),
+        scans,
     });
 }
 
@@ -378,6 +406,69 @@ pub(crate) fn spawn_grime(
         // Decal quad: local +Y = wall normal; texture top (v = 0) is local -Z, so -Z = up.
         let rot = Quat::from_mat3(&Mat3::from_cols(f.n.cross(Vec3::NEG_Y), f.n, Vec3::NEG_Y));
         decal(&mut commands, &g.streak, Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::new(w, 0.1, h)));
+    }
+    if arena.id == MapId::Foundry {
+        scanned(&mut commands, arena, &g.scans, &faces, &mut rng);
+    }
+}
+
+/// Foundry's photoscanned grime: rust and water runs down the walls, damp wall feet, manholes
+/// and tyre tracks. Placement is deterministic.
+fn scanned(commands: &mut Commands, arena: &Arena, s: &ScanDecals, faces: &[Face], rng: &mut Seq) {
+    let decal = |commands: &mut Commands, m: &Handle<ForwardDecalMaterial<StandardMaterial>>, tf: Transform| {
+        let e = spawn_decal(commands, m.clone(), tf);
+        commands.entity(e).insert((ArenaPiece, NotShadowCaster));
+    };
+    // Wall decal frame: local +Y = the face normal, -Z = up (the texture's top edge).
+    let wall_rot = |n: Vec3| Quat::from_mat3(&Mat3::from_cols(n.cross(Vec3::NEG_Y), n, Vec3::NEG_Y));
+    let tall: Vec<&Face> = faces.iter().filter(|f| f.len >= 2.0 && f.height >= 2.4).collect();
+    if !s.leaks.is_empty() && !tall.is_empty() {
+        for k in 0..70 {
+            let f = tall[(rng.next() * tall.len() as f32) as usize % tall.len()];
+            let w = rng.range(1.4, 3.2).min(f.len - 0.1);
+            let h = rng.range(1.6, 3.4).min(f.height - 0.2);
+            let t = Vec3::Y.cross(f.n);
+            let along = rng.range(-0.5, 0.5) * (f.len - w);
+            let top = f.height - rng.range(0.0, 0.25);
+            let at = f.at + t * along + f.n * 0.004 + Vec3::Y * (top - h * 0.5);
+            decal(commands, &s.leaks[k % s.leaks.len()], Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(w, 0.1, h)));
+        }
+    }
+    if let Some(m) = &s.damp {
+        for f in faces.iter().filter(|f| f.len >= 1.5) {
+            if rng.next() > 0.55 {
+                continue;
+            }
+            let w = rng.range(2.0, 4.0).min(f.len);
+            let h = rng.range(0.7, 1.3).min(f.height * 0.6);
+            let t = Vec3::Y.cross(f.n);
+            let at = f.at + t * (rng.range(-0.5, 0.5) * (f.len - w)) + f.n * 0.004 + Vec3::Y * (h * 0.5);
+            decal(commands, m, Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(w, 0.1, h)));
+        }
+    }
+    let half = arena.half() - 1.5;
+    let ground = |commands: &mut Commands, m: &Handle<ForwardDecalMaterial<StandardMaterial>>, count: usize, size: (f32, f32), aspect: f32, rng: &mut Seq| {
+        let mut placed = 0;
+        for _ in 0..count * 10 {
+            if placed == count {
+                break;
+            }
+            let p = Vec2::new(rng.range(-half, half), rng.range(-half, half));
+            let w = rng.range(size.0, size.1);
+            let l = w * aspect;
+            if !clear_of_blocks(arena, p, 0.1 + w.max(l) * 0.5) {
+                continue;
+            }
+            let yaw = rng.range(0.0, std::f32::consts::TAU);
+            decal(commands, m, Transform::from_xyz(p.x, 0.006, p.y).with_rotation(Quat::from_rotation_y(yaw)).with_scale(Vec3::new(w, 0.1, l)));
+            placed += 1;
+        }
+    };
+    if let Some(m) = &s.manhole {
+        ground(commands, m, 5, (0.9, 0.9), 1.0, rng);
+    }
+    if let Some(m) = &s.tyres {
+        ground(commands, m, 10, (1.0, 1.3), 3.5, rng);
     }
 }
 
