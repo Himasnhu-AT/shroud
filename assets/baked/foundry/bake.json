@@ -1,0 +1,3629 @@
+{
+  "format": 1,
+  "level": "foundry",
+  "hash": "85c2cdcf268758e4",
+  "light_hash": "2c31185b0c11c602",
+  "created": 1794465920,
+  "settings": {
+    "texels_per_m": 8.0,
+    "max_page": 2048,
+    "samples": 256,
+    "direct_samples": 64,
+    "probe_samples": 256,
+    "bounces": 4,
+    "margin_px": 3,
+    "min_area": 0.1,
+    "min_rect": 8,
+    "probe_spacing": 1.5,
+    "max_probes": 24000,
+    "oidn": true,
+    "denoise_radius": 0,
+    "dilate_px": 4,
+    "clamp_indirect": 0.0,
+    "device": "GPU"
+  },
+  "pages": [
+    {
+      "file": "lightmap0.ktx2",
+      "width": 2048,
+      "height": 2048
+    },
+    {
+      "file": "lightmap1.ktx2",
+      "width": 2048,
+      "height": 1904
+    }
+  ],
+  "meshes": [
+    {
+      "hash": "bc0c25e885cf5e59",
+      "offset": 0,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "728182a04579e3b0",
+      "offset": 432,
+      "vertex_count": 6018,
+      "index_count": 18804,
+      "source_vertices": 5068
+    },
+    {
+      "hash": "10a0def06430e6e5",
+      "offset": 147864,
+      "vertex_count": 912,
+      "index_count": 2154,
+      "source_vertices": 816
+    },
+    {
+      "hash": "9e8bc66104bf4b79",
+      "offset": 167424,
+      "vertex_count": 2558,
+      "index_count": 8046,
+      "source_vertices": 2052
+    },
+    {
+      "hash": "86056dc333c47cf1",
+      "offset": 230304,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "4b52eebf65df4da5",
+      "offset": 230736,
+      "vertex_count": 96,
+      "index_count": 144,
+      "source_vertices": 96
+    },
+    {
+      "hash": "2042a4306589eccd",
+      "offset": 232464,
+      "vertex_count": 336,
+      "index_count": 504,
+      "source_vertices": 336
+    },
+    {
+      "hash": "5a2ffc43ecd1aebb",
+      "offset": 238512,
+      "vertex_count": 1472,
+      "index_count": 4419,
+      "source_vertices": 1126
+    },
+    {
+      "hash": "694a87ff5b45055a",
+      "offset": 273852,
+      "vertex_count": 10091,
+      "index_count": 50856,
+      "source_vertices": 8757
+    },
+    {
+      "hash": "3452b22478a2d28e",
+      "offset": 598368,
+      "vertex_count": 216,
+      "index_count": 324,
+      "source_vertices": 216
+    },
+    {
+      "hash": "94b6f6cde67f0399",
+      "offset": 602256,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "7a8eb0ed3480e324",
+      "offset": 602688,
+      "vertex_count": 1844,
+      "index_count": 8571,
+      "source_vertices": 1422
+    },
+    {
+      "hash": "3008dba20ccf7ef9",
+      "offset": 659100,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "3f8cb702e80c6d81",
+      "offset": 659532,
+      "vertex_count": 312,
+      "index_count": 468,
+      "source_vertices": 312
+    },
+    {
+      "hash": "d00ad2606fd7c5c2",
+      "offset": 665148,
+      "vertex_count": 3585,
+      "index_count": 11094,
+      "source_vertices": 3078
+    },
+    {
+      "hash": "c88064e96d8be2c9",
+      "offset": 752544,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "1f42bf1ef0918bd3",
+      "offset": 752976,
+      "vertex_count": 14352,
+      "index_count": 71466,
+      "source_vertices": 12499
+    },
+    {
+      "hash": "7dfc53f850cf4529",
+      "offset": 1211064,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "abebb29e3ea0899c",
+      "offset": 1211496,
+      "vertex_count": 4926,
+      "index_count": 15714,
+      "source_vertices": 4461
+    },
+    {
+      "hash": "4bd608ca2c2f6981",
+      "offset": 1333464,
+      "vertex_count": 168,
+      "index_count": 252,
+      "source_vertices": 168
+    },
+    {
+      "hash": "f564716a26d72173",
+      "offset": 1336488,
+      "vertex_count": 960,
+      "index_count": 1440,
+      "source_vertices": 960
+    },
+    {
+      "hash": "ddf4ffaf1adfe399",
+      "offset": 1353768,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "338ae25b4c7169b1",
+      "offset": 1354200,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "3bde71bee0da0571",
+      "offset": 1354632,
+      "vertex_count": 96,
+      "index_count": 144,
+      "source_vertices": 96
+    },
+    {
+      "hash": "a70e4555b4423829",
+      "offset": 1356360,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "43382ea17c76f459",
+      "offset": 1356792,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "b094f93a0769c9fa",
+      "offset": 1357224,
+      "vertex_count": 576,
+      "index_count": 864,
+      "source_vertices": 576
+    },
+    {
+      "hash": "9097f78579811411",
+      "offset": 1367592,
+      "vertex_count": 144,
+      "index_count": 216,
+      "source_vertices": 144
+    },
+    {
+      "hash": "37387bb1c8c32535",
+      "offset": 1370184,
+      "vertex_count": 48,
+      "index_count": 72,
+      "source_vertices": 48
+    },
+    {
+      "hash": "c693761cda295219",
+      "offset": 1371048,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "36f68960967b63ce",
+      "offset": 1371480,
+      "vertex_count": 13476,
+      "index_count": 60066,
+      "source_vertices": 11392
+    },
+    {
+      "hash": "acdefadec474e256",
+      "offset": 1773456,
+      "vertex_count": 192,
+      "index_count": 288,
+      "source_vertices": 192
+    },
+    {
+      "hash": "d599a0a35a6df602",
+      "offset": 1776912,
+      "vertex_count": 180,
+      "index_count": 456,
+      "source_vertices": 164
+    },
+    {
+      "hash": "9cc076a4ae7d0eae",
+      "offset": 1780896,
+      "vertex_count": 720,
+      "index_count": 1824,
+      "source_vertices": 656
+    },
+    {
+      "hash": "0f65608228cc2199",
+      "offset": 1796832,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "1192670381a8ad7d",
+      "offset": 1797264,
+      "vertex_count": 7308,
+      "index_count": 16632,
+      "source_vertices": 6300
+    },
+    {
+      "hash": "c8d774912ca1d940",
+      "offset": 1951488,
+      "vertex_count": 792,
+      "index_count": 1188,
+      "source_vertices": 792
+    },
+    {
+      "hash": "5e90a8d27c12e529",
+      "offset": 1965744,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "ed455649cd81f43a",
+      "offset": 1966176,
+      "vertex_count": 3192,
+      "index_count": 4788,
+      "source_vertices": 3192
+    },
+    {
+      "hash": "5c9df87d4a5da3a5",
+      "offset": 2023632,
+      "vertex_count": 96,
+      "index_count": 144,
+      "source_vertices": 96
+    },
+    {
+      "hash": "ab5d0799a4d0d104",
+      "offset": 2025360,
+      "vertex_count": 792,
+      "index_count": 1188,
+      "source_vertices": 792
+    },
+    {
+      "hash": "1c66a85276963305",
+      "offset": 2039616,
+      "vertex_count": 144,
+      "index_count": 216,
+      "source_vertices": 144
+    },
+    {
+      "hash": "aa01e4c996673617",
+      "offset": 2042208,
+      "vertex_count": 9029,
+      "index_count": 26436,
+      "source_vertices": 8155
+    },
+    {
+      "hash": "9de8c7222ef75b89",
+      "offset": 2256300,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "81a5b976eb94f11f",
+      "offset": 2256732,
+      "vertex_count": 90,
+      "index_count": 228,
+      "source_vertices": 82
+    },
+    {
+      "hash": "1d05717423e68489",
+      "offset": 2258724,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "47fcd76f778b23b2",
+      "offset": 2259156,
+      "vertex_count": 25308,
+      "index_count": 45420,
+      "source_vertices": 19682
+    },
+    {
+      "hash": "3bafdf28818b0ce2",
+      "offset": 2744532,
+      "vertex_count": 240,
+      "index_count": 360,
+      "source_vertices": 240
+    },
+    {
+      "hash": "e469e4f73dd1a156",
+      "offset": 2748852,
+      "vertex_count": 180,
+      "index_count": 456,
+      "source_vertices": 164
+    },
+    {
+      "hash": "9c52b1b98dd6db49",
+      "offset": 2752836,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "91764ed9a5893edc",
+      "offset": 2753268,
+      "vertex_count": 840,
+      "index_count": 1260,
+      "source_vertices": 840
+    },
+    {
+      "hash": "ee88bd5f677d4473",
+      "offset": 2768388,
+      "vertex_count": 546,
+      "index_count": 1428,
+      "source_vertices": 506
+    },
+    {
+      "hash": "4b8421de0b34c449",
+      "offset": 2780652,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "46917f802819138a",
+      "offset": 2781084,
+      "vertex_count": 2688,
+      "index_count": 4032,
+      "source_vertices": 2688
+    },
+    {
+      "hash": "4be61be72cd54cc1",
+      "offset": 2829468,
+      "vertex_count": 288,
+      "index_count": 432,
+      "source_vertices": 288
+    },
+    {
+      "hash": "20265fdee71228ec",
+      "offset": 2834652,
+      "vertex_count": 456,
+      "index_count": 684,
+      "source_vertices": 456
+    },
+    {
+      "hash": "26cde5ea20beaecc",
+      "offset": 2842860,
+      "vertex_count": 384,
+      "index_count": 576,
+      "source_vertices": 384
+    },
+    {
+      "hash": "104bf68261dcbb15",
+      "offset": 2849772,
+      "vertex_count": 96,
+      "index_count": 144,
+      "source_vertices": 96
+    },
+    {
+      "hash": "4c9f45c466bfabab",
+      "offset": 2851500,
+      "vertex_count": 90,
+      "index_count": 228,
+      "source_vertices": 82
+    },
+    {
+      "hash": "da2228101fb0f3b6",
+      "offset": 2853492,
+      "vertex_count": 240,
+      "index_count": 648,
+      "source_vertices": 228
+    },
+    {
+      "hash": "ba676e7c460e99d9",
+      "offset": 2858964,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "aa93449fa0177504",
+      "offset": 2859396,
+      "vertex_count": 384,
+      "index_count": 576,
+      "source_vertices": 384
+    },
+    {
+      "hash": "c2c5f62fa6c9c129",
+      "offset": 2866308,
+      "vertex_count": 120,
+      "index_count": 180,
+      "source_vertices": 120
+    },
+    {
+      "hash": "9b091a48aa56e259",
+      "offset": 2868468,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "6b7175590c04eb15",
+      "offset": 2868900,
+      "vertex_count": 264,
+      "index_count": 396,
+      "source_vertices": 264
+    },
+    {
+      "hash": "82c60ed3ec9a8f99",
+      "offset": 2873652,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "e973a22be9dd15e6",
+      "offset": 2874084,
+      "vertex_count": 192,
+      "index_count": 288,
+      "source_vertices": 192
+    },
+    {
+      "hash": "67bbb50f0175ed3a",
+      "offset": 2877540,
+      "vertex_count": 624,
+      "index_count": 936,
+      "source_vertices": 624
+    },
+    {
+      "hash": "7c58843b72d0c879",
+      "offset": 2888772,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "216cdff54f980599",
+      "offset": 2889204,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "810ba0a9753f61a9",
+      "offset": 2889636,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "afee96cd6943091d",
+      "offset": 2890068,
+      "vertex_count": 96,
+      "index_count": 144,
+      "source_vertices": 96
+    },
+    {
+      "hash": "404a5097cdf19d4d",
+      "offset": 2891796,
+      "vertex_count": 96,
+      "index_count": 144,
+      "source_vertices": 96
+    },
+    {
+      "hash": "8f657e684132fa19",
+      "offset": 2893524,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "425b15b7cb791f3a",
+      "offset": 2893956,
+      "vertex_count": 216,
+      "index_count": 324,
+      "source_vertices": 216
+    },
+    {
+      "hash": "b0ce839db8bd4c40",
+      "offset": 2897844,
+      "vertex_count": 384,
+      "index_count": 576,
+      "source_vertices": 384
+    },
+    {
+      "hash": "0881f62cefd98a5c",
+      "offset": 2904756,
+      "vertex_count": 33024,
+      "index_count": 49536,
+      "source_vertices": 33024
+    },
+    {
+      "hash": "d36ff2dd4ab64279",
+      "offset": 3499188,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "65d5ee9d1d45ee69",
+      "offset": 3499620,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "1e6ff6209cc3a621",
+      "offset": 3500052,
+      "vertex_count": 48,
+      "index_count": 72,
+      "source_vertices": 48
+    },
+    {
+      "hash": "18830b507db8b08f",
+      "offset": 3500916,
+      "vertex_count": 720,
+      "index_count": 1080,
+      "source_vertices": 720
+    },
+    {
+      "hash": "a2c30b8a91fd4459",
+      "offset": 3513876,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "630e0bdaa2a24929",
+      "offset": 3514308,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "7074da2ecb7fed3b",
+      "offset": 3514740,
+      "vertex_count": 1296,
+      "index_count": 1944,
+      "source_vertices": 1296
+    },
+    {
+      "hash": "89b43eeaa270d8b0",
+      "offset": 3538068,
+      "vertex_count": 408,
+      "index_count": 612,
+      "source_vertices": 408
+    },
+    {
+      "hash": "ee8fbda6d0931789",
+      "offset": 3545412,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "581104d8aa9198b2",
+      "offset": 3545844,
+      "vertex_count": 240,
+      "index_count": 360,
+      "source_vertices": 240
+    },
+    {
+      "hash": "cbe8da7897b3d790",
+      "offset": 3550164,
+      "vertex_count": 18154,
+      "index_count": 41316,
+      "source_vertices": 15650
+    },
+    {
+      "hash": "252eb5e39840415d",
+      "offset": 3933276,
+      "vertex_count": 144,
+      "index_count": 216,
+      "source_vertices": 144
+    },
+    {
+      "hash": "62d18fffde016ed0",
+      "offset": 3935868,
+      "vertex_count": 6528,
+      "index_count": 9792,
+      "source_vertices": 6528
+    },
+    {
+      "hash": "3d6f5d6cb19352fc",
+      "offset": 4053372,
+      "vertex_count": 546,
+      "index_count": 1428,
+      "source_vertices": 506
+    },
+    {
+      "hash": "279e1948ad939c61",
+      "offset": 4065636,
+      "vertex_count": 10080,
+      "index_count": 15120,
+      "source_vertices": 10080
+    },
+    {
+      "hash": "ebab1afbbab628d9",
+      "offset": 4247076,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "f8f6754fe653c70e",
+      "offset": 4247508,
+      "vertex_count": 240,
+      "index_count": 360,
+      "source_vertices": 240
+    },
+    {
+      "hash": "c01a82815278413e",
+      "offset": 4251828,
+      "vertex_count": 576,
+      "index_count": 864,
+      "source_vertices": 576
+    },
+    {
+      "hash": "fb43446162c03499",
+      "offset": 4262196,
+      "vertex_count": 24,
+      "index_count": 36,
+      "source_vertices": 24
+    },
+    {
+      "hash": "08fddce319825a10",
+      "offset": 4262628,
+      "vertex_count": 408,
+      "index_count": 612,
+      "source_vertices": 408
+    }
+  ],
+  "instances": [
+    {
+      "key": "004ee69595df99b7",
+      "mesh": 0,
+      "page": 0,
+      "rect": [
+        0.5136719,
+        0.9291992,
+        0.57177734,
+        0.9873047
+      ]
+    },
+    {
+      "key": "00f60edd2c6cdb96",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.55908203,
+        0.9690126,
+        0.56933594,
+        0.98004204
+      ]
+    },
+    {
+      "key": "03e439de3f3a3b28",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.60498047,
+        0.9889706,
+        0.6088867,
+        0.9931723
+      ]
+    },
+    {
+      "key": "04b6fca84a3f8f43",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.8720703,
+        0.9690126,
+        0.8803711,
+        0.97794116
+      ]
+    },
+    {
+      "key": "04dc8bac6bdf5afb",
+      "mesh": 4,
+      "page": 1,
+      "rect": [
+        0.20654297,
+        0.81302524,
+        0.30517578,
+        0.9191176
+      ]
+    },
+    {
+      "key": "07611699c8ed731c",
+      "mesh": 5,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.92436975,
+        0.041503906,
+        0.96743697
+      ]
+    },
+    {
+      "key": "07d67f9a02a21f35",
+      "mesh": 6,
+      "page": 1,
+      "rect": [
+        0.42382812,
+        0.64495796,
+        0.5307617,
+        0.759979
+      ]
+    },
+    {
+      "key": "086ba3ab5e2d6260",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.88183594,
+        0.9690126,
+        0.8901367,
+        0.97794116
+      ]
+    },
+    {
+      "key": "08763cac34ab96b8",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.46044922,
+        0.9889706,
+        0.46533203,
+        0.9942227
+      ]
+    },
+    {
+      "key": "0902a9cd38151c94",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.5708008,
+        0.9690126,
+        0.5810547,
+        0.98004204
+      ]
+    },
+    {
+      "key": "0a30d25dc6bf5552",
+      "mesh": 9,
+      "page": 1,
+      "rect": [
+        0.79589844,
+        0.92436975,
+        0.81884766,
+        0.9490546
+      ]
+    },
+    {
+      "key": "0ab946e6cb5b2e0a",
+      "mesh": 10,
+      "page": 1,
+      "rect": [
+        0.6928711,
+        0.81302524,
+        0.73828125,
+        0.86186975
+      ]
+    },
+    {
+      "key": "0ac6ac466faca7da",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.89160156,
+        0.9690126,
+        0.89990234,
+        0.97794116
+      ]
+    },
+    {
+      "key": "0b6c18162d37d03e",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.1928711,
+        0.9690126,
+        0.20361328,
+        0.9805672
+      ]
+    },
+    {
+      "key": "0b9a2792e086ca21",
+      "mesh": 12,
+      "page": 1,
+      "rect": [
+        0.15771484,
+        0.64495796,
+        0.31054688,
+        0.80934876
+      ]
+    },
+    {
+      "key": "0c3a6e95e3358c20",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.9013672,
+        0.9690126,
+        0.90966797,
+        0.97794116
+      ]
+    },
+    {
+      "key": "0c47c16e36573a7c",
+      "mesh": 13,
+      "page": 1,
+      "rect": [
+        0.53222656,
+        0.64495796,
+        0.6386719,
+        0.7594538
+      ]
+    },
+    {
+      "key": "0cff19ab9121d377",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.61035156,
+        0.9889706,
+        0.6142578,
+        0.9931723
+      ]
+    },
+    {
+      "key": "0e15b6f3d0083a24",
+      "mesh": 15,
+      "page": 1,
+      "rect": [
+        0.7104492,
+        0.43592438,
+        0.8691406,
+        0.6066176
+      ]
+    },
+    {
+      "key": "0f595b6c02d4bb28",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.42285156,
+        0.9889706,
+        0.42919922,
+        0.9957983
+      ]
+    },
+    {
+      "key": "0febb85b803708b9",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.9111328,
+        0.9690126,
+        0.9194336,
+        0.97794116
+      ]
+    },
+    {
+      "key": "10f610c33d235ad5",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.92089844,
+        0.9690126,
+        0.9291992,
+        0.97794116
+      ]
+    },
+    {
+      "key": "11733c69b60af5ad",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.20507812,
+        0.9690126,
+        0.21582031,
+        0.9805672
+      ]
+    },
+    {
+      "key": "11db9902d3448153",
+      "mesh": 17,
+      "page": 1,
+      "rect": [
+        0.6401367,
+        0.64495796,
+        0.74658203,
+        0.7594538
+      ]
+    },
+    {
+      "key": "12676bbd79d62b29",
+      "mesh": 18,
+      "page": 1,
+      "rect": [
+        0.51123047,
+        0.9889706,
+        0.515625,
+        0.99369746
+      ]
+    },
+    {
+      "key": "129bd2e74e2b92c1",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.61572266,
+        0.9889706,
+        0.6196289,
+        0.9931723
+      ]
+    },
+    {
+      "key": "13c2bb48da48847c",
+      "mesh": 19,
+      "page": 0,
+      "rect": [
+        0.0014648438,
+        0.9291992,
+        0.067871094,
+        0.99560547
+      ]
+    },
+    {
+      "key": "13c67a2610612ea9",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.21728516,
+        0.9690126,
+        0.22802734,
+        0.9805672
+      ]
+    },
+    {
+      "key": "13e0ffacc191fb83",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.22949219,
+        0.9690126,
+        0.24023438,
+        0.9805672
+      ]
+    },
+    {
+      "key": "14c236cd2b35b21e",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.93066406,
+        0.9690126,
+        0.93896484,
+        0.97794116
+      ]
+    },
+    {
+      "key": "16679999b2a835f5",
+      "mesh": 20,
+      "page": 1,
+      "rect": [
+        0.93310547,
+        0.92436975,
+        0.9501953,
+        0.9427521
+      ]
+    },
+    {
+      "key": "16a76b4319fc5a76",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.62109375,
+        0.9889706,
+        0.625,
+        0.9931723
+      ]
+    },
+    {
+      "key": "16b6ce95c12e3c85",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.2939453,
+        0.9889706,
+        0.30126953,
+        0.99684876
+      ]
+    },
+    {
+      "key": "18b0335c1359ae32",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.45361328,
+        0.9889706,
+        0.45898438,
+        0.9947479
+      ]
+    },
+    {
+      "key": "19311b384029017a",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.9404297,
+        0.9690126,
+        0.94873047,
+        0.97794116
+      ]
+    },
+    {
+      "key": "195a437c1ad424b3",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.9501953,
+        0.9690126,
+        0.9584961,
+        0.97794116
+      ]
+    },
+    {
+      "key": "1b191d8b9874409d",
+      "mesh": 22,
+      "page": 1,
+      "rect": [
+        0.85498047,
+        0.64495796,
+        0.95947266,
+        0.75735295
+      ]
+    },
+    {
+      "key": "1b42434fb3bf2780",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.30273438,
+        0.9889706,
+        0.3100586,
+        0.99684876
+      ]
+    },
+    {
+      "key": "1c049578fe257083",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.58251953,
+        0.9690126,
+        0.59277344,
+        0.98004204
+      ]
+    },
+    {
+      "key": "1c0fca01aebdbc5c",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.24169922,
+        0.9690126,
+        0.2524414,
+        0.9805672
+      ]
+    },
+    {
+      "key": "1d8e801f8360f169",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.25390625,
+        0.9690126,
+        0.26464844,
+        0.9805672
+      ]
+    },
+    {
+      "key": "1f7212268a00d14b",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.95996094,
+        0.9690126,
+        0.9682617,
+        0.97794116
+      ]
+    },
+    {
+      "key": "209eb784cc736eb0",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.26611328,
+        0.9690126,
+        0.27685547,
+        0.9805672
+      ]
+    },
+    {
+      "key": "2126e01bc46d7476",
+      "mesh": 23,
+      "page": 1,
+      "rect": [
+        0.1616211,
+        0.92436975,
+        0.19824219,
+        0.9637605
+      ]
+    },
+    {
+      "key": "216f265836f6e66d",
+      "mesh": 24,
+      "page": 1,
+      "rect": [
+        0.10498047,
+        0.81302524,
+        0.20507812,
+        0.9206933
+      ]
+    },
+    {
+      "key": "21724cfc5e7560da",
+      "mesh": 25,
+      "page": 0,
+      "rect": [
+        0.8496094,
+        0.9291992,
+        0.8984375,
+        0.97802734
+      ]
+    },
+    {
+      "key": "22020e34bf57f7cb",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.96972656,
+        0.9690126,
+        0.97802734,
+        0.97794116
+      ]
+    },
+    {
+      "key": "222f696a14cf007e",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.2783203,
+        0.9690126,
+        0.2890625,
+        0.9805672
+      ]
+    },
+    {
+      "key": "235adc2f71bb3f22",
+      "mesh": 26,
+      "page": 1,
+      "rect": [
+        0.038085938,
+        0.9690126,
+        0.053222656,
+        0.9852941
+      ]
+    },
+    {
+      "key": "253fe0b74a8808c8",
+      "mesh": 27,
+      "page": 1,
+      "rect": [
+        0.87841797,
+        0.81302524,
+        0.921875,
+        0.8597689
+      ]
+    },
+    {
+      "key": "2682d93a6b8a82e2",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.5942383,
+        0.9690126,
+        0.6044922,
+        0.98004204
+      ]
+    },
+    {
+      "key": "272fae2f75c03dcc",
+      "mesh": 28,
+      "page": 1,
+      "rect": [
+        0.71435547,
+        0.92436975,
+        0.7402344,
+        0.9522059
+      ]
+    },
+    {
+      "key": "27da378a60044a0b",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.43066406,
+        0.9889706,
+        0.43701172,
+        0.9957983
+      ]
+    },
+    {
+      "key": "291c10eb41a91a5c",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.62646484,
+        0.9889706,
+        0.6303711,
+        0.9931723
+      ]
+    },
+    {
+      "key": "29b60d549980e2d9",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.9794922,
+        0.9690126,
+        0.98779297,
+        0.97794116
+      ]
+    },
+    {
+      "key": "29bfe8141e9e3c75",
+      "mesh": 29,
+      "page": 1,
+      "rect": [
+        0.4267578,
+        0.92436975,
+        0.45507812,
+        0.95483196
+      ]
+    },
+    {
+      "key": "2a500d528cf74404",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.31152344,
+        0.9889706,
+        0.31884766,
+        0.99684876
+      ]
+    },
+    {
+      "key": "2ba889425cd4181b",
+      "mesh": 30,
+      "page": 1,
+      "rect": [
+        0.51708984,
+        0.9889706,
+        0.5214844,
+        0.99369746
+      ]
+    },
+    {
+      "key": "2bc85aefccc0a124",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.60595703,
+        0.9690126,
+        0.61621094,
+        0.98004204
+      ]
+    },
+    {
+      "key": "2e840d0ea543d266",
+      "mesh": 31,
+      "page": 1,
+      "rect": [
+        0.95166016,
+        0.92436975,
+        0.96875,
+        0.9427521
+      ]
+    },
+    {
+      "key": "2ef3903e8689a7b7",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.46679688,
+        0.9889706,
+        0.4716797,
+        0.9942227
+      ]
+    },
+    {
+      "key": "3043c8eb5c3f8f47",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.9892578,
+        0.9690126,
+        0.9975586,
+        0.97794116
+      ]
+    },
+    {
+      "key": "31e7771061629ab7",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.63183594,
+        0.9889706,
+        0.6357422,
+        0.9931723
+      ]
+    },
+    {
+      "key": "359c025814131d7d",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.29052734,
+        0.9690126,
+        0.30126953,
+        0.9805672
+      ]
+    },
+    {
+      "key": "363b1bea1385359c",
+      "mesh": 18,
+      "page": 1,
+      "rect": [
+        0.5229492,
+        0.9889706,
+        0.52734375,
+        0.99369746
+      ]
+    },
+    {
+      "key": "36b0cd58ff4fcbed",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.30273438,
+        0.9690126,
+        0.31347656,
+        0.9805672
+      ]
+    },
+    {
+      "key": "3720d93a46047b9b",
+      "mesh": 32,
+      "page": 1,
+      "rect": [
+        0.8203125,
+        0.92436975,
+        0.8432617,
+        0.9490546
+      ]
+    },
+    {
+      "key": "3758d778ecb5647d",
+      "mesh": 33,
+      "page": 1,
+      "rect": [
+        0.020019531,
+        0.9690126,
+        0.036621094,
+        0.98686975
+      ]
+    },
+    {
+      "key": "37a528159fec7546",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.3203125,
+        0.9889706,
+        0.32763672,
+        0.99684876
+      ]
+    },
+    {
+      "key": "37cf354844fa1956",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.37304688,
+        0.9889706,
+        0.3798828,
+        0.9963235
+      ]
+    },
+    {
+      "key": "37fb9ca20fc77af9",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.12939453,
+        0.9690126,
+        0.140625,
+        0.98109245
+      ]
+    },
+    {
+      "key": "381390723135aaee",
+      "mesh": 18,
+      "page": 1,
+      "rect": [
+        0.5288086,
+        0.9889706,
+        0.5332031,
+        0.99369746
+      ]
+    },
+    {
+      "key": "38434e2a0ffe225d",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.63720703,
+        0.9889706,
+        0.6411133,
+        0.9931723
+      ]
+    },
+    {
+      "key": "39cc8e2430180349",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.9889706,
+        0.009765625,
+        0.9978992
+      ]
+    },
+    {
+      "key": "3baf417e14fb4173",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.38134766,
+        0.9889706,
+        0.3881836,
+        0.9963235
+      ]
+    },
+    {
+      "key": "3e5ead93c30bb4c2",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.6176758,
+        0.9690126,
+        0.6279297,
+        0.98004204
+      ]
+    },
+    {
+      "key": "42bdf8612fa6ecd1",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.28466797,
+        0.9889706,
+        0.29248047,
+        0.99737394
+      ]
+    },
+    {
+      "key": "455d79e578245d61",
+      "mesh": 34,
+      "page": 0,
+      "rect": [
+        0.13720703,
+        0.9291992,
+        0.20019531,
+        0.9921875
+      ]
+    },
+    {
+      "key": "45c0749706059a4e",
+      "mesh": 35,
+      "page": 0,
+      "rect": [
+        0.06933594,
+        0.9291992,
+        0.13574219,
+        0.99560547
+      ]
+    },
+    {
+      "key": "4793d33edd0fd643",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.3149414,
+        0.9690126,
+        0.3256836,
+        0.9805672
+      ]
+    },
+    {
+      "key": "47d6ddfcbd0baded",
+      "mesh": 36,
+      "page": 1,
+      "rect": [
+        0.48632812,
+        0.92436975,
+        0.5136719,
+        0.9537815
+      ]
+    },
+    {
+      "key": "48a87083487629a2",
+      "mesh": 37,
+      "page": 0,
+      "rect": [
+        0.453125,
+        0.9291992,
+        0.51220703,
+        0.98828125
+      ]
+    },
+    {
+      "key": "49463b82aae08575",
+      "mesh": 38,
+      "page": 1,
+      "rect": [
+        0.8691406,
+        0.92436975,
+        0.8901367,
+        0.9469538
+      ]
+    },
+    {
+      "key": "49e52ed88294b54f",
+      "mesh": 39,
+      "page": 1,
+      "rect": [
+        0.49121094,
+        0.81302524,
+        0.57177734,
+        0.89968485
+      ]
+    },
+    {
+      "key": "4e2739c5cbd40913",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.011230469,
+        0.9889706,
+        0.01953125,
+        0.9978992
+      ]
+    },
+    {
+      "key": "4e376a6995b95f47",
+      "mesh": 29,
+      "page": 1,
+      "rect": [
+        0.45654297,
+        0.92436975,
+        0.48486328,
+        0.95483196
+      ]
+    },
+    {
+      "key": "4eb9cafa0306c63b",
+      "mesh": 40,
+      "page": 1,
+      "rect": [
+        0.64501953,
+        0.81302524,
+        0.69140625,
+        0.86292017
+      ]
+    },
+    {
+      "key": "4f284263c13760ba",
+      "mesh": 26,
+      "page": 1,
+      "rect": [
+        0.0546875,
+        0.9690126,
+        0.06982422,
+        0.9852941
+      ]
+    },
+    {
+      "key": "4fc066e568a1a18b",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.32910156,
+        0.9889706,
+        0.33642578,
+        0.99684876
+      ]
+    },
+    {
+      "key": "500afe5622b9c554",
+      "mesh": 41,
+      "page": 1,
+      "rect": [
+        0.31201172,
+        0.64495796,
+        0.42236328,
+        0.7636555
+      ]
+    },
+    {
+      "key": "52c3e3061923a3be",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.53466797,
+        0.9889706,
+        0.5390625,
+        0.99369746
+      ]
+    },
+    {
+      "key": "54d70382685c4cb1",
+      "mesh": 43,
+      "page": 0,
+      "rect": [
+        0.32958984,
+        0.9291992,
+        0.390625,
+        0.9902344
+      ]
+    },
+    {
+      "key": "55010a4f61162043",
+      "mesh": 44,
+      "page": 1,
+      "rect": [
+        0.5727539,
+        0.92436975,
+        0.5996094,
+        0.9532563
+      ]
+    },
+    {
+      "key": "59f0719fced1fc9d",
+      "mesh": 45,
+      "page": 1,
+      "rect": [
+        0.30664062,
+        0.81302524,
+        0.40478516,
+        0.91859245
+      ]
+    },
+    {
+      "key": "5b4373d09c901ae6",
+      "mesh": 46,
+      "page": 0,
+      "rect": [
+        0.74365234,
+        0.9291992,
+        0.79541016,
+        0.98095703
+      ]
+    },
+    {
+      "key": "5b52c7c16e6d9378",
+      "mesh": 47,
+      "page": 1,
+      "rect": [
+        0.97021484,
+        0.92436975,
+        0.9873047,
+        0.9427521
+      ]
+    },
+    {
+      "key": "5cac44cdf5a4f5bc",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.32714844,
+        0.9690126,
+        0.33789062,
+        0.9805672
+      ]
+    },
+    {
+      "key": "5da796f1efd074ab",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.62939453,
+        0.9690126,
+        0.63964844,
+        0.98004204
+      ]
+    },
+    {
+      "key": "5f61b5e42d1cb34b",
+      "mesh": 48,
+      "page": 1,
+      "rect": [
+        0.9140625,
+        0.92436975,
+        0.9316406,
+        0.9432773
+      ]
+    },
+    {
+      "key": "5f75275f215346b2",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.47314453,
+        0.9889706,
+        0.47802734,
+        0.9942227
+      ]
+    },
+    {
+      "key": "60626bdf8ec7561a",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.54052734,
+        0.9889706,
+        0.5449219,
+        0.99369746
+      ]
+    },
+    {
+      "key": "608fa8143dc28615",
+      "mesh": 49,
+      "page": 1,
+      "rect": [
+        0.54541016,
+        0.43592438,
+        0.7089844,
+        0.61186975
+      ]
+    },
+    {
+      "key": "6247514489578172",
+      "mesh": 50,
+      "page": 0,
+      "rect": [
+        0.0014648438,
+        0.6376953,
+        0.2915039,
+        0.9277344
+      ]
+    },
+    {
+      "key": "63323d26b18eddc3",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6425781,
+        0.9889706,
+        0.6464844,
+        0.9931723
+      ]
+    },
+    {
+      "key": "6464529ed5a53618",
+      "mesh": 51,
+      "page": 1,
+      "rect": [
+        0.5151367,
+        0.92436975,
+        0.54248047,
+        0.9537815
+      ]
+    },
+    {
+      "key": "65f09603d95f8f10",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.83984375,
+        0.9690126,
+        0.8491211,
+        0.97899157
+      ]
+    },
+    {
+      "key": "67c429238d64e2ec",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.020996094,
+        0.9889706,
+        0.029296875,
+        0.9978992
+      ]
+    },
+    {
+      "key": "68984ee153963d48",
+      "mesh": 52,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.64495796,
+        0.15625,
+        0.8114496
+      ]
+    },
+    {
+      "key": "6c1d194dcf2063b9",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6479492,
+        0.9889706,
+        0.65185547,
+        0.9931723
+      ]
+    },
+    {
+      "key": "6c707a203001461f",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.38964844,
+        0.9889706,
+        0.39648438,
+        0.9963235
+      ]
+    },
+    {
+      "key": "6e77ec282ddead90",
+      "mesh": 53,
+      "page": 0,
+      "rect": [
+        0.94921875,
+        0.9291992,
+        0.99609375,
+        0.9760742
+      ]
+    },
+    {
+      "key": "6ea87d53974d9f96",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.33935547,
+        0.9690126,
+        0.35009766,
+        0.9805672
+      ]
+    },
+    {
+      "key": "6eb084d6d3a43361",
+      "mesh": 54,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.81302524,
+        0.103515625,
+        0.9227941
+      ]
+    },
+    {
+      "key": "6f4c97f977846803",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.3515625,
+        0.9690126,
+        0.3623047,
+        0.9805672
+      ]
+    },
+    {
+      "key": "6f9cce5f335dc92e",
+      "mesh": 55,
+      "page": 0,
+      "rect": [
+        0.5732422,
+        0.9291992,
+        0.6303711,
+        0.9863281
+      ]
+    },
+    {
+      "key": "71b808b37a07adbb",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.5463867,
+        0.9889706,
+        0.55078125,
+        0.99369746
+      ]
+    },
+    {
+      "key": "743a59cb9f27f6b5",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.6411133,
+        0.9690126,
+        0.6513672,
+        0.98004204
+      ]
+    },
+    {
+      "key": "7530fbff1cb5f065",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.030761719,
+        0.9889706,
+        0.0390625,
+        0.9978992
+      ]
+    },
+    {
+      "key": "753a0c692f125d3d",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.040527344,
+        0.9889706,
+        0.048828125,
+        0.9978992
+      ]
+    },
+    {
+      "key": "76004a9df98333fc",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.14208984,
+        0.9690126,
+        0.15332031,
+        0.98109245
+      ]
+    },
+    {
+      "key": "7766c646b9003d15",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6533203,
+        0.9889706,
+        0.65722656,
+        0.9931723
+      ]
+    },
+    {
+      "key": "77bfa17933d8ad26",
+      "mesh": 56,
+      "page": 0,
+      "rect": [
+        0.29296875,
+        0.6376953,
+        0.5649414,
+        0.90966797
+      ]
+    },
+    {
+      "key": "7b4054ceccf91ead",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.05029297,
+        0.9889706,
+        0.05859375,
+        0.9978992
+      ]
+    },
+    {
+      "key": "7b71d5189dd572ac",
+      "mesh": 57,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.0015756303,
+        0.4038086,
+        0.43434873
+      ]
+    },
+    {
+      "key": "7de6cc3f479643ba",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6586914,
+        0.9889706,
+        0.66259766,
+        0.9931723
+      ]
+    },
+    {
+      "key": "7e7b64fcf4d6d250",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.6640625,
+        0.9889706,
+        0.66796875,
+        0.9931723
+      ]
+    },
+    {
+      "key": "7ebea2e125f39547",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.65283203,
+        0.9690126,
+        0.66308594,
+        0.98004204
+      ]
+    },
+    {
+      "key": "8028900ca53ca91a",
+      "mesh": 18,
+      "page": 1,
+      "rect": [
+        0.5522461,
+        0.9889706,
+        0.5566406,
+        0.99369746
+      ]
+    },
+    {
+      "key": "821bfc853510fa0a",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.39794922,
+        0.9889706,
+        0.40478516,
+        0.9963235
+      ]
+    },
+    {
+      "key": "832fc8455f688be9",
+      "mesh": 58,
+      "page": 1,
+      "rect": [
+        0.76904297,
+        0.92436975,
+        0.7944336,
+        0.95168066
+      ]
+    },
+    {
+      "key": "849b68ca7f6f197c",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.6645508,
+        0.9690126,
+        0.6748047,
+        0.98004204
+      ]
+    },
+    {
+      "key": "84f512d8684b5eb2",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.060058594,
+        0.9889706,
+        0.068359375,
+        0.9978992
+      ]
+    },
+    {
+      "key": "8614d48105d4071b",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.06982422,
+        0.9889706,
+        0.078125,
+        0.9978992
+      ]
+    },
+    {
+      "key": "8623d5674771f6da",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.55810547,
+        0.9889706,
+        0.5625,
+        0.99369746
+      ]
+    },
+    {
+      "key": "875f336ae452e9eb",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.36376953,
+        0.9690126,
+        0.37451172,
+        0.9805672
+      ]
+    },
+    {
+      "key": "87dac1f9787aee03",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.67626953,
+        0.9690126,
+        0.68652344,
+        0.98004204
+      ]
+    },
+    {
+      "key": "894debff18e80c36",
+      "mesh": 59,
+      "page": 1,
+      "rect": [
+        0.6010742,
+        0.92436975,
+        0.6279297,
+        0.9532563
+      ]
+    },
+    {
+      "key": "89954d5f223c3527",
+      "mesh": 60,
+      "page": 1,
+      "rect": [
+        0.83251953,
+        0.81302524,
+        0.8769531,
+        0.86081934
+      ]
+    },
+    {
+      "key": "89e2917b3282115c",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.6879883,
+        0.9690126,
+        0.6982422,
+        0.98004204
+      ]
+    },
+    {
+      "key": "8a09ada5d005d059",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.079589844,
+        0.9889706,
+        0.087890625,
+        0.9978992
+      ]
+    },
+    {
+      "key": "8a2037cdccf693ce",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.33789062,
+        0.9889706,
+        0.34521484,
+        0.99684876
+      ]
+    },
+    {
+      "key": "8b0abf9846e6de4c",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6694336,
+        0.9889706,
+        0.67333984,
+        0.9931723
+      ]
+    },
+    {
+      "key": "8b2300d995600f95",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6748047,
+        0.9889706,
+        0.67871094,
+        0.9931723
+      ]
+    },
+    {
+      "key": "8cd4bf666fc5f6f5",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.115722656,
+        0.9690126,
+        0.12792969,
+        0.98214287
+      ]
+    },
+    {
+      "key": "8d2fcc119bfe8323",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.08935547,
+        0.9889706,
+        0.09765625,
+        0.9978992
+      ]
+    },
+    {
+      "key": "8d5e95a2b8d5545f",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.099121094,
+        0.9889706,
+        0.107421875,
+        0.9978992
+      ]
+    },
+    {
+      "key": "8e1bedec2bb8c597",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.56396484,
+        0.9889706,
+        0.5683594,
+        0.99369746
+      ]
+    },
+    {
+      "key": "8f63215bf40e5bee",
+      "mesh": 61,
+      "page": 0,
+      "rect": [
+        0.89990234,
+        0.9291992,
+        0.9477539,
+        0.9770508
+      ]
+    },
+    {
+      "key": "8fd5beede7b453bf",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.69970703,
+        0.9690126,
+        0.70996094,
+        0.98004204
+      ]
+    },
+    {
+      "key": "923d8737da43478b",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.10888672,
+        0.9889706,
+        0.1171875,
+        0.9978992
+      ]
+    },
+    {
+      "key": "934a385c2875e603",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.37597656,
+        0.9690126,
+        0.38671875,
+        0.9805672
+      ]
+    },
+    {
+      "key": "94f91642bc899cc8",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.118652344,
+        0.9889706,
+        0.12695312,
+        0.9978992
+      ]
+    },
+    {
+      "key": "960eb05a23f48bff",
+      "mesh": 62,
+      "page": 1,
+      "rect": [
+        0.8286133,
+        0.9690126,
+        0.8383789,
+        0.9795168
+      ]
+    },
+    {
+      "key": "9713da43ff43e926",
+      "mesh": 63,
+      "page": 0,
+      "rect": [
+        0.6894531,
+        0.9291992,
+        0.7421875,
+        0.9819336
+      ]
+    },
+    {
+      "key": "97b80260c708b2aa",
+      "mesh": 64,
+      "page": 1,
+      "rect": [
+        0.04296875,
+        0.92436975,
+        0.08300781,
+        0.96743697
+      ]
+    },
+    {
+      "key": "99104f1a71472c3c",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.40625,
+        0.9889706,
+        0.41308594,
+        0.9963235
+      ]
+    },
+    {
+      "key": "998cfeb5474875b0",
+      "mesh": 65,
+      "page": 1,
+      "rect": [
+        0.5732422,
+        0.81302524,
+        0.6435547,
+        0.8886555
+      ]
+    },
+    {
+      "key": "9a11d0c0826ac62a",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.12841797,
+        0.9889706,
+        0.13671875,
+        0.9978992
+      ]
+    },
+    {
+      "key": "9a9bda60abc4b10c",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.1381836,
+        0.9889706,
+        0.14648438,
+        0.9978992
+      ]
+    },
+    {
+      "key": "9aa2cc659892f4a6",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.7114258,
+        0.9690126,
+        0.7216797,
+        0.98004204
+      ]
+    },
+    {
+      "key": "9ddb9279687fbcb6",
+      "mesh": 66,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.9690126,
+        0.018554688,
+        0.9873949
+      ]
+    },
+    {
+      "key": "9e135ca26a33c3e9",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.14794922,
+        0.9889706,
+        0.15625,
+        0.9978992
+      ]
+    },
+    {
+      "key": "9f6a2f7c2c7cfdd5",
+      "mesh": 67,
+      "page": 1,
+      "rect": [
+        0.3334961,
+        0.92436975,
+        0.36328125,
+        0.95640755
+      ]
+    },
+    {
+      "key": "a381420ce12c7a69",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.72314453,
+        0.9690126,
+        0.73339844,
+        0.98004204
+      ]
+    },
+    {
+      "key": "a47a7396237e3f66",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.3881836,
+        0.9690126,
+        0.39892578,
+        0.9805672
+      ]
+    },
+    {
+      "key": "a57338adb4ead530",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.3466797,
+        0.9889706,
+        0.3540039,
+        0.99684876
+      ]
+    },
+    {
+      "key": "a5d77bc9628d2852",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.85058594,
+        0.9690126,
+        0.8598633,
+        0.97899157
+      ]
+    },
+    {
+      "key": "a7e8deeccf9d59e2",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.40039062,
+        0.9690126,
+        0.4111328,
+        0.9805672
+      ]
+    },
+    {
+      "key": "a9605cc5e0d01b98",
+      "mesh": 68,
+      "page": 1,
+      "rect": [
+        0.64501953,
+        0.0015756303,
+        0.8383789,
+        0.20955883
+      ]
+    },
+    {
+      "key": "a9c93017597d356f",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.15478516,
+        0.9690126,
+        0.16601562,
+        0.98109245
+      ]
+    },
+    {
+      "key": "aa0a4f05f2b3e62a",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.41259766,
+        0.9690126,
+        0.42333984,
+        0.9805672
+      ]
+    },
+    {
+      "key": "acbcf779509af9ad",
+      "mesh": 18,
+      "page": 1,
+      "rect": [
+        0.5698242,
+        0.9889706,
+        0.57421875,
+        0.99369746
+      ]
+    },
+    {
+      "key": "ad914e0af7f8b24b",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.15771484,
+        0.9889706,
+        0.16601562,
+        0.9978992
+      ]
+    },
+    {
+      "key": "b2adabd0c9f3a081",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.16748047,
+        0.9889706,
+        0.17578125,
+        0.9978992
+      ]
+    },
+    {
+      "key": "b43cffb651f81e40",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.41455078,
+        0.9889706,
+        0.42138672,
+        0.9963235
+      ]
+    },
+    {
+      "key": "b50b2477e636bd1e",
+      "mesh": 34,
+      "page": 0,
+      "rect": [
+        0.20166016,
+        0.9291992,
+        0.26464844,
+        0.9921875
+      ]
+    },
+    {
+      "key": "b50bdfa30d384d0c",
+      "mesh": 69,
+      "page": 0,
+      "rect": [
+        0.796875,
+        0.9291992,
+        0.84814453,
+        0.98046875
+      ]
+    },
+    {
+      "key": "b75223e263143426",
+      "mesh": 70,
+      "page": 1,
+      "rect": [
+        0.084472656,
+        0.92436975,
+        0.12158203,
+        0.96428573
+      ]
+    },
+    {
+      "key": "b77c4031b8dfb123",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.1772461,
+        0.9889706,
+        0.18554688,
+        0.9978992
+      ]
+    },
+    {
+      "key": "b7a27b6ad5223f90",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.18701172,
+        0.9889706,
+        0.1953125,
+        0.9978992
+      ]
+    },
+    {
+      "key": "b8071dd06e947054",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.4248047,
+        0.9690126,
+        0.43554688,
+        0.9805672
+      ]
+    },
+    {
+      "key": "b9b5d3a90cb51859",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.7348633,
+        0.9690126,
+        0.7451172,
+        0.98004204
+      ]
+    },
+    {
+      "key": "b9ddc4966b7d6272",
+      "mesh": 71,
+      "page": 1,
+      "rect": [
+        0.7397461,
+        0.81302524,
+        0.78466797,
+        0.8613445
+      ]
+    },
+    {
+      "key": "ba2e393bdc8e54d4",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.74658203,
+        0.9690126,
+        0.75683594,
+        0.98004204
+      ]
+    },
+    {
+      "key": "bac6c9247e3472a5",
+      "mesh": 72,
+      "page": 1,
+      "rect": [
+        0.7416992,
+        0.92436975,
+        0.7675781,
+        0.9522059
+      ]
+    },
+    {
+      "key": "bc09d3acf47d0e21",
+      "mesh": 73,
+      "page": 1,
+      "rect": [
+        0.62939453,
+        0.92436975,
+        0.65625,
+        0.9532563
+      ]
+    },
+    {
+      "key": "bc18facd0a797a96",
+      "mesh": 74,
+      "page": 1,
+      "rect": [
+        0.3959961,
+        0.92436975,
+        0.42529297,
+        0.9558824
+      ]
+    },
+    {
+      "key": "bc21b9e2c4898ddb",
+      "mesh": 73,
+      "page": 1,
+      "rect": [
+        0.65771484,
+        0.92436975,
+        0.6845703,
+        0.9532563
+      ]
+    },
+    {
+      "key": "bc2c76bfa966a36c",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.19677734,
+        0.9889706,
+        0.20507812,
+        0.9978992
+      ]
+    },
+    {
+      "key": "bfebe0da0bf10513",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.087402344,
+        0.9690126,
+        0.100097656,
+        0.98266804
+      ]
+    },
+    {
+      "key": "c2ad46c84e442159",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.43701172,
+        0.9690126,
+        0.4477539,
+        0.9805672
+      ]
+    },
+    {
+      "key": "c3fdf697f4603d57",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.7583008,
+        0.9690126,
+        0.7685547,
+        0.98004204
+      ]
+    },
+    {
+      "key": "c5a608fde3140ec3",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.20654297,
+        0.9889706,
+        0.21484375,
+        0.9978992
+      ]
+    },
+    {
+      "key": "c8789522aee544a0",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.1015625,
+        0.9690126,
+        0.11425781,
+        0.98266804
+      ]
+    },
+    {
+      "key": "c89f3413d56c22e6",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6801758,
+        0.9889706,
+        0.68408203,
+        0.9931723
+      ]
+    },
+    {
+      "key": "c97e06838bdb0c0f",
+      "mesh": 75,
+      "page": 1,
+      "rect": [
+        0.0014648438,
+        0.43592438,
+        0.19433594,
+        0.6433824
+      ]
+    },
+    {
+      "key": "c990c52ecca4b908",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.44921875,
+        0.9690126,
+        0.45996094,
+        0.9805672
+      ]
+    },
+    {
+      "key": "ca05c7a14b0d6780",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.77001953,
+        0.9690126,
+        0.78027344,
+        0.98004204
+      ]
+    },
+    {
+      "key": "ca722cbf25e40e10",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.2163086,
+        0.9889706,
+        0.22460938,
+        0.9978992
+      ]
+    },
+    {
+      "key": "ca9867fb9b376496",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.46142578,
+        0.9690126,
+        0.47216797,
+        0.9805672
+      ]
+    },
+    {
+      "key": "cb01ade595f62a77",
+      "mesh": 30,
+      "page": 1,
+      "rect": [
+        0.5756836,
+        0.9889706,
+        0.5800781,
+        0.99369746
+      ]
+    },
+    {
+      "key": "cc6322802c1dcedb",
+      "mesh": 14,
+      "page": 1,
+      "rect": [
+        0.6855469,
+        0.9889706,
+        0.6894531,
+        0.9931723
+      ]
+    },
+    {
+      "key": "cce4be0d62d6a62c",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.58154297,
+        0.9889706,
+        0.5859375,
+        0.99369746
+      ]
+    },
+    {
+      "key": "cd008e595487f685",
+      "mesh": 76,
+      "page": 1,
+      "rect": [
+        0.23730469,
+        0.92436975,
+        0.2685547,
+        0.9579832
+      ]
+    },
+    {
+      "key": "cfb76e4fd3858d99",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.69091797,
+        0.9889706,
+        0.6948242,
+        0.9931723
+      ]
+    },
+    {
+      "key": "d0de0b43f98f35ff",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.22607422,
+        0.9889706,
+        0.234375,
+        0.9978992
+      ]
+    },
+    {
+      "key": "d1ecb36d49bb3e02",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.7817383,
+        0.9690126,
+        0.7919922,
+        0.98004204
+      ]
+    },
+    {
+      "key": "d1f08d00d3204ade",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.4794922,
+        0.9889706,
+        0.484375,
+        0.9942227
+      ]
+    },
+    {
+      "key": "d1f75f1eb5cc2e2d",
+      "mesh": 77,
+      "page": 1,
+      "rect": [
+        0.37451172,
+        0.43592438,
+        0.5439453,
+        0.6181723
+      ]
+    },
+    {
+      "key": "d22a68f630cbcadb",
+      "mesh": 44,
+      "page": 1,
+      "rect": [
+        0.68603516,
+        0.92436975,
+        0.7128906,
+        0.9532563
+      ]
+    },
+    {
+      "key": "d27745ae13d54993",
+      "mesh": 32,
+      "page": 1,
+      "rect": [
+        0.84472656,
+        0.92436975,
+        0.8676758,
+        0.9490546
+      ]
+    },
+    {
+      "key": "d27c014a51fb83aa",
+      "mesh": 18,
+      "page": 1,
+      "rect": [
+        0.58740234,
+        0.9889706,
+        0.5917969,
+        0.99369746
+      ]
+    },
+    {
+      "key": "d2978df2422639e0",
+      "mesh": 51,
+      "page": 1,
+      "rect": [
+        0.5439453,
+        0.92436975,
+        0.57128906,
+        0.9537815
+      ]
+    },
+    {
+      "key": "d36331a50907b0bd",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.5932617,
+        0.9889706,
+        0.59765625,
+        0.99369746
+      ]
+    },
+    {
+      "key": "d6e4c990656728d7",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.23583984,
+        0.9889706,
+        0.24414062,
+        0.9978992
+      ]
+    },
+    {
+      "key": "d7340ad5ceec749c",
+      "mesh": 78,
+      "page": 1,
+      "rect": [
+        0.7861328,
+        0.81302524,
+        0.8310547,
+        0.8613445
+      ]
+    },
+    {
+      "key": "d879b228cde2ab33",
+      "mesh": 79,
+      "page": 0,
+      "rect": [
+        0.26611328,
+        0.9291992,
+        0.328125,
+        0.99121094
+      ]
+    },
+    {
+      "key": "d9522f73470eac42",
+      "mesh": 80,
+      "page": 1,
+      "rect": [
+        0.3647461,
+        0.92436975,
+        0.39453125,
+        0.95640755
+      ]
+    },
+    {
+      "key": "d9f94cfbf9932db7",
+      "mesh": 81,
+      "page": 0,
+      "rect": [
+        0.56640625,
+        0.6376953,
+        0.8105469,
+        0.88183594
+      ]
+    },
+    {
+      "key": "d9f9dcbf03bdb15e",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.4736328,
+        0.9690126,
+        0.484375,
+        0.9805672
+      ]
+    },
+    {
+      "key": "daa48ee72a5aba30",
+      "mesh": 42,
+      "page": 1,
+      "rect": [
+        0.5991211,
+        0.9889706,
+        0.6035156,
+        0.99369746
+      ]
+    },
+    {
+      "key": "dc04734257ac85b3",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.79345703,
+        0.9690126,
+        0.80371094,
+        0.98004204
+      ]
+    },
+    {
+      "key": "dc4a0bb2d8619c1d",
+      "mesh": 82,
+      "page": 1,
+      "rect": [
+        0.27001953,
+        0.92436975,
+        0.30029297,
+        0.9569328
+      ]
+    },
+    {
+      "key": "dc5493b09f5259a6",
+      "mesh": 83,
+      "page": 1,
+      "rect": [
+        0.07128906,
+        0.9690126,
+        0.0859375,
+        0.9847689
+      ]
+    },
+    {
+      "key": "dd2b9f6bf7498fa1",
+      "mesh": 84,
+      "page": 1,
+      "rect": [
+        0.40527344,
+        0.0015756303,
+        0.6435547,
+        0.25787815
+      ]
+    },
+    {
+      "key": "dd69dc4b6daff81f",
+      "mesh": 70,
+      "page": 1,
+      "rect": [
+        0.123046875,
+        0.92436975,
+        0.16015625,
+        0.96428573
+      ]
+    },
+    {
+      "key": "dd99a92f43ff91bb",
+      "mesh": 85,
+      "page": 1,
+      "rect": [
+        0.19580078,
+        0.43592438,
+        0.37304688,
+        0.62657565
+      ]
+    },
+    {
+      "key": "de9038ca2f913c90",
+      "mesh": 86,
+      "page": 1,
+      "rect": [
+        0.44628906,
+        0.9889706,
+        0.45214844,
+        0.9952731
+      ]
+    },
+    {
+      "key": "df92500a80376c48",
+      "mesh": 87,
+      "page": 1,
+      "rect": [
+        0.40625,
+        0.81302524,
+        0.4897461,
+        0.90283614
+      ]
+    },
+    {
+      "key": "dfcf866b26095c43",
+      "mesh": 88,
+      "page": 1,
+      "rect": [
+        0.7480469,
+        0.64495796,
+        0.8535156,
+        0.75840336
+      ]
+    },
+    {
+      "key": "e0c0571817f21822",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.24560547,
+        0.9889706,
+        0.25390625,
+        0.9978992
+      ]
+    },
+    {
+      "key": "e0cfea607d67b927",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.48583984,
+        0.9889706,
+        0.49072266,
+        0.9942227
+      ]
+    },
+    {
+      "key": "e180341399c9e200",
+      "mesh": 89,
+      "page": 0,
+      "rect": [
+        0.63183594,
+        0.9291992,
+        0.6879883,
+        0.98535156
+      ]
+    },
+    {
+      "key": "e1c903d372fdcc89",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.48583984,
+        0.9690126,
+        0.49658203,
+        0.9805672
+      ]
+    },
+    {
+      "key": "e37747abf8345a35",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.49804688,
+        0.9690126,
+        0.50878906,
+        0.9805672
+      ]
+    },
+    {
+      "key": "e44d7aaa2287372a",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.43847656,
+        0.9889706,
+        0.44482422,
+        0.9957983
+      ]
+    },
+    {
+      "key": "e4da51e5c9fe7673",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.69628906,
+        0.9889706,
+        0.7001953,
+        0.9931723
+      ]
+    },
+    {
+      "key": "e54c8a5fd6dc695f",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.2553711,
+        0.9889706,
+        0.26367188,
+        0.9978992
+      ]
+    },
+    {
+      "key": "e5614a765deb8c4f",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.8051758,
+        0.9690126,
+        0.8154297,
+        0.98004204
+      ]
+    },
+    {
+      "key": "e69304a0f24764e0",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.4921875,
+        0.9889706,
+        0.4970703,
+        0.9942227
+      ]
+    },
+    {
+      "key": "e6e31191faf224cf",
+      "mesh": 90,
+      "page": 1,
+      "rect": [
+        0.89160156,
+        0.92436975,
+        0.91259766,
+        0.9469538
+      ]
+    },
+    {
+      "key": "e80bf967c47f4751",
+      "mesh": 91,
+      "page": 1,
+      "rect": [
+        0.92333984,
+        0.81302524,
+        0.9667969,
+        0.8597689
+      ]
+    },
+    {
+      "key": "e87b9701fc14bde2",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.5102539,
+        0.9690126,
+        0.5209961,
+        0.9805672
+      ]
+    },
+    {
+      "key": "ecce84ae89dc85aa",
+      "mesh": 92,
+      "page": 1,
+      "rect": [
+        0.16748047,
+        0.9690126,
+        0.17871094,
+        0.98109245
+      ]
+    },
+    {
+      "key": "ed46b4d3e1bc3cd4",
+      "mesh": 93,
+      "page": 1,
+      "rect": [
+        0.3017578,
+        0.92436975,
+        0.33203125,
+        0.9569328
+      ]
+    },
+    {
+      "key": "f0310d56ce4a78bc",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.52246094,
+        0.9690126,
+        0.5332031,
+        0.9805672
+      ]
+    },
+    {
+      "key": "f1e9a1abe1a01f54",
+      "mesh": 3,
+      "page": 1,
+      "rect": [
+        0.35546875,
+        0.9889706,
+        0.36279297,
+        0.99684876
+      ]
+    },
+    {
+      "key": "f2819a6216717dae",
+      "mesh": 94,
+      "page": 1,
+      "rect": [
+        0.19970703,
+        0.92436975,
+        0.23583984,
+        0.9632353
+      ]
+    },
+    {
+      "key": "f3adb5104667e23f",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.49853516,
+        0.9889706,
+        0.50341797,
+        0.9942227
+      ]
+    },
+    {
+      "key": "f4c316ad5447f6ea",
+      "mesh": 1,
+      "page": 1,
+      "rect": [
+        0.81689453,
+        0.9690126,
+        0.82714844,
+        0.98004204
+      ]
+    },
+    {
+      "key": "f5ca3edd6238cde5",
+      "mesh": 8,
+      "page": 1,
+      "rect": [
+        0.5048828,
+        0.9889706,
+        0.5097656,
+        0.9942227
+      ]
+    },
+    {
+      "key": "f6ca2f1fafa43812",
+      "mesh": 95,
+      "page": 0,
+      "rect": [
+        0.0014648438,
+        0.0014648438,
+        0.63623047,
+        0.63623047
+      ]
+    },
+    {
+      "key": "f820d5655a360fed",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.8613281,
+        0.9690126,
+        0.87060547,
+        0.97899157
+      ]
+    },
+    {
+      "key": "f84c462cd734fd5b",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.26513672,
+        0.9889706,
+        0.2734375,
+        0.9978992
+      ]
+    },
+    {
+      "key": "fa8b4a6e04d48ae9",
+      "mesh": 16,
+      "page": 1,
+      "rect": [
+        0.53466797,
+        0.9690126,
+        0.54541016,
+        0.9805672
+      ]
+    },
+    {
+      "key": "faf3a754a45e781d",
+      "mesh": 96,
+      "page": 0,
+      "rect": [
+        0.39208984,
+        0.9291992,
+        0.45166016,
+        0.98876953
+      ]
+    },
+    {
+      "key": "fd2b3c1ad967db92",
+      "mesh": 21,
+      "page": 1,
+      "rect": [
+        0.3642578,
+        0.9889706,
+        0.37158203,
+        0.99684876
+      ]
+    },
+    {
+      "key": "fd9e9616cda69186",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.18017578,
+        0.9690126,
+        0.19140625,
+        0.98109245
+      ]
+    },
+    {
+      "key": "fe5012857863bcbd",
+      "mesh": 2,
+      "page": 1,
+      "rect": [
+        0.70166016,
+        0.9889706,
+        0.7055664,
+        0.9931723
+      ]
+    },
+    {
+      "key": "ffca4a72295ad18f",
+      "mesh": 11,
+      "page": 1,
+      "rect": [
+        0.546875,
+        0.9690126,
+        0.5576172,
+        0.9805672
+      ]
+    },
+    {
+      "key": "ffd80cc0f4e01f23",
+      "mesh": 7,
+      "page": 1,
+      "rect": [
+        0.27490234,
+        0.9889706,
+        0.28320312,
+        0.9978992
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "file": "probes0.ktx2",
+      "min": [
+        -40.0,
+        0.0,
+        -40.0
+      ],
+      "max": [
+        40.0,
+        8.8,
+        40.0
+      ],
+      "res": [
+        55,
+        7,
+        55
+      ]
+    }
+  ],
+  "stats": {
+    "instances": 261,
+    "lightmapped": 261,
+    "lights": 20,
+    "texels": 3116272,
+    "probes": 21175,
+    "bake_secs": 740.67861775,
+    "blender": "5.2.1 LTS",
+    "timings": {
+      "denoise_s": 5.48,
+      "direct_s": 338.6,
+      "indirect_s": 369.21,
+      "probes_s": 23.62,
+      "scene_s": 0.91,
+      "total_s": 738.41,
+      "unwrap_s": 0.51
+    }
+  }
+}
