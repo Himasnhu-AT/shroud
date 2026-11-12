@@ -155,13 +155,20 @@ fairness damage, scaled only by difficulty (see [AI.md](AI.md) §5).
 
 ### Combat feel (visual and sound only; no stat above depends on it)
 - **People.** The enemy is the MetaHuman (`assets/models/metahuman/enemy_mh.glb`, local only)
-  whenever it exists, else the CC0 mannequin. Over its uniform: loose ripstop trouser legs and
-  sleeves on the limb bones, combat boots fitted to the feet, leather gloves, a nylon (cordura)
-  plate carrier and helmet cover per squad look (`enemy/skin.rs`). Animation: aim offsets
+  whenever it exists, else the CC0 mannequin. With `gear_mh.glb` (`scripts/make-gear-mh.sh`,
+  local only) it wears skinned clothing bound to its own bones: a combat shirt and cargo trousers
+  made from the body's surface (relaxed, folds at knees, elbows and boot tops, cargo pockets),
+  boots, gloves, a black balaclava with an eye slot and neck gaiter, a plate carrier with
+  MOLLE, magazine and admin pouches, a belt, knee pads, a high-cut helmet (rails, NVG shroud,
+  chin strap) and the squad's pack; tinted per squad look (`enemy/skin.rs`). Without it: loose
+  ripstop tubes, primitive boots, gloves, carrier and helmet. Enemy guns are the low-detail
+  model (the high one within 4 m). Animation: aim offsets
   (Up/Neutral/Down blend + spine look-at), pelvis twist for strafing, hit reacts on chest and
   head, deaths that fall away from the shot (`enemy/animation.rs`).
 - **First person.** MetaHuman hands in black leather gloves, a charcoal combat shirt
-  (`weapon/viewmodel.rs`). Guns are photoscanned black coated steel and scuffed polymer on
+  (`weapon/viewmodel.rs`). Guns have two detail tiers by data (`viewmodel::fit`, built-in CC0
+  table plus `assets/models/weapons/guns.json` for downloaded packs): the hands always hold the
+  high model; pickups show it within 6 m and cross-fade to the low one beyond. Guns are photoscanned black coated steel and scuffed polymer on
   box-projected UVs (`weapon/finish.rs`, `meshprep.rs`). Recoil kick and recovery, look sway on a
   per-gun spring (heavier guns swing further), lag when strafing or falling, sprint pose,
   reloads that drop the spent magazine (it lies on the floor for 12 s).
