@@ -70,6 +70,9 @@ const MIN_SHOW_S: f64 = 0.6;
 /// Give up waiting on a stage after this long without progress (a missing asset must not trap
 /// the player).
 const STAGE_TIMEOUT_S: f64 = 25.0;
+/// Practice: seconds of the real view behind the cover for the quality governor (it steps after
+/// 0.5 s over budget; one step per session).
+pub const PRACTICE_MEASURE_S: f64 = 2.5;
 /// How long after loading we watch for stalls that escaped the warm-up.
 const AFTER_S: f64 = 5.0;
 
@@ -134,6 +137,8 @@ pub struct Loading {
     /// Worst frame while loading (s), frames.
     worst: f32,
     frames: u32,
+    /// Practice: the quality governor's measuring window ends here (real seconds).
+    measure_until: Option<f64>,
     /// Watching the first seconds after a load.
     after_until: Option<f64>,
     after_worst: f32,
@@ -163,6 +168,7 @@ impl Default for Loading {
             paused_time: false,
             worst: 0.0,
             frames: 0,
+            measure_until: None,
             after_until: None,
             after_worst: 0.0,
         }
@@ -173,6 +179,11 @@ impl Loading {
     /// Gameplay is held (everything but the final fade).
     pub fn holds(&self) -> bool {
         self.active && self.stage != Stage::Fade
+    }
+    /// The quality governor may judge now: a practice session's measuring window (the scene is
+    /// drawn and compiled, the cover still up).
+    pub fn measuring(&self) -> bool {
+        self.active && self.stage == Stage::Settle && self.measure_until.is_some()
     }
     /// 0..1 for the bar.
     fn progress(&self) -> f32 {
@@ -311,6 +322,8 @@ impl Plugin for LoadingPlugin {
             .add_message::<Loaded>()
             .add_message::<WarmShots>()
             .add_systems(Startup, (|mut c: Commands| c.queue(|w: &mut World| begin(w, Kind::Boot))).run_if(has_visuals))
+            .init_resource::<LastEntry>()
+            .add_systems(OnEnter(crate::state::AppState::MainMenu), |mut l: ResMut<LastEntry>| l.0 = None)
             .add_systems(
                 OnEnter(GameState::Playing),
                 begin_round_load.run_if(has_visuals).after(crate::map::MapSet).after(crate::match_flow::begin_round),
@@ -343,11 +356,26 @@ impl Plugin for LoadingPlugin {
 }
 
 /// Entering `Playing`: the full screen for a new match or a rebuilt map, else the short cover.
-fn begin_round_load(mut commands: Commands, flow: Res<crate::match_flow::MatchFlow>, arena: Res<ArenaRes>, mut last_map: Local<Option<brain::arena::MapId>>) {
-    let map = arena.0.id;
-    let kind = if flow.round <= 1 || *last_map != Some(map) { Kind::Match } else { Kind::Round };
-    *last_map = Some(map);
+/// What the last `Playing` entry was (map, practice), to tell a new session from a respawn.
+/// Cleared on the main menu.
+#[derive(Resource, Default)]
+struct LastEntry(Option<(brain::arena::MapId, bool)>);
+
+/// Entering `Playing`: the full screen for a new match, a new practice session or a rebuilt
+/// map; the short cover for a later round, a practice respawn or a restart.
+fn begin_round_load(mut commands: Commands, flow: Res<crate::match_flow::MatchFlow>, arena: Res<ArenaRes>, practice: Option<Res<crate::practice::Practice>>, mut last: ResMut<LastEntry>) {
+    let entry = (arena.0.id, practice.is_some_and(|p| p.on));
+    let kind = entry_kind(last.0, entry, flow.round);
+    last.0 = Some(entry);
     commands.queue(move |w: &mut World| begin(w, kind));
+}
+
+/// Full screen or short cover for a `Playing` entry after `last` (practice has no rounds: only
+/// a new session, or a map change, gets the full screen).
+fn entry_kind(last: Option<(brain::arena::MapId, bool)>, now: (brain::arena::MapId, bool), round: u32) -> Kind {
+    let new_session = last != Some(now);
+    let new_match = !now.1 && round <= 1;
+    if new_session || new_match { Kind::Match } else { Kind::Round }
 }
 
 /// Start (or restart) a load.
@@ -385,6 +413,7 @@ fn spawn_cover(world: &mut World, kind: Kind) {
     let map = world.get_resource::<ArenaRes>().map(|a| a.0.id.label().to_uppercase()).unwrap_or_default();
     let title = match kind {
         Kind::Boot => "UNIT 4 // BOOTING CAMERA".to_string(),
+        Kind::Match if world.get_resource::<crate::practice::Practice>().is_some_and(|p| p.on) => format!("UNIT 4 // PRACTICE — {map}"),
         Kind::Match => format!("UNIT 4 // DEPLOYING — {map}"),
         Kind::Round => String::new(),
     };
@@ -765,7 +794,17 @@ fn drive(world: &mut World) {
             l.last_total = total;
             let min_show = if l.kind == Kind::Round { 0.0 } else { MIN_SHOW_S };
             // The engine's warm-up draws for 3 frames; wait it out, then for quiet.
-            if (l.stage_frames > 4 && l.quiet >= QUIET_FRAMES && now - l.started >= min_show) || timed_out {
+            let quiet = l.stage_frames > 4 && l.quiet >= QUIET_FRAMES;
+            // A practice session has no freeze time for the quality governor to judge in: it
+            // gets [`PRACTICE_MEASURE_S`] of the real view behind the cover, once compiles are
+            // done, and picks the quality there (`quality::hold_in_rounds`).
+            let practice = world.get_resource::<crate::practice::Practice>().is_some_and(|p| p.on);
+            let mut l = world.resource_mut::<Loading>();
+            if quiet && practice && l.kind == Kind::Match && l.measure_until.is_none() {
+                l.measure_until = Some(now + PRACTICE_MEASURE_S);
+            }
+            let measured = l.measure_until.is_none_or(|t| now >= t);
+            if (quiet && measured && now - l.started >= min_show) || timed_out {
                 finish(world, now);
             }
         }
@@ -925,5 +964,19 @@ mod tests {
             last = p;
         }
         assert!(l.holds() == false && Loading { active: true, ..default() }.holds());
+    }
+
+    #[test]
+    fn full_screen_for_new_sessions_short_cover_for_respawns() {
+        use brain::arena::MapId::*;
+        // A match: round 1 full, later rounds short, a map change full.
+        assert_eq!(entry_kind(None, (Foundry, false), 1), Kind::Match);
+        assert_eq!(entry_kind(Some((Foundry, false)), (Foundry, false), 2), Kind::Round);
+        assert_eq!(entry_kind(Some((Foundry, false)), (Office, false), 3), Kind::Match);
+        // Practice (no rounds, the round counter stays put): session start full, respawns short.
+        assert_eq!(entry_kind(Some((Foundry, false)), (Foundry, true), 0), Kind::Match);
+        assert_eq!(entry_kind(Some((Foundry, true)), (Foundry, true), 0), Kind::Round);
+        // Back to a match from practice: full.
+        assert_eq!(entry_kind(Some((Foundry, true)), (Foundry, false), 1), Kind::Match);
     }
 }
