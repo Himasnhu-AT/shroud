@@ -3,7 +3,7 @@
 # MetaHuman: assets/models/gear/outfit_mh.glb. With it the enemy wears the outfit instead of the
 # generated gear (gear_mh.glb), which stays the fallback (enemy/skin.rs).
 #
-#   scripts/make-outfit-mh.sh [~/Downloads/soldier_outfit_textures.zip]
+#   scripts/make-outfit-mh.sh [~/Downloads/fab_assets_tells/soldier_outfit_textures.zip]
 #
 # Needs assets/models/metahuman/enemy_mh.glb (scripts/make-metahuman.sh) and the outfit imported
 # with the engine's importer (assets/library/characters/tactical-soldier-outfit/). The texture
@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BLENDER="${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}"
-ZIP="${1:-$HOME/Downloads/soldier_outfit_textures.zip}"
+ZIP="${1:-$HOME/Downloads/fab_assets_tells/soldier_outfit_textures.zip}"
 SRC=assets/models/metahuman/enemy_mh.glb
 LIB=assets/library/characters/tactical-soldier-outfit
 OUT=assets/models/gear/outfit_mh.glb
