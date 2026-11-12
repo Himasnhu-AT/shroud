@@ -28,7 +28,9 @@
 //! MOLLE and pouches, a belt, a high-cut helmet and the squad's pack. Each piece is a skinned
 //! mesh bound to the enemy's own bones by name (`SkinnedMesh` with the enemy's joint entities),
 //! so it deforms with every animation; materials are picked per squad look by the mesh name's
-//! `<part>.<material>` suffix. About 28k triangles in 22 draws per enemy.
+//! `<part>.<material>` suffix (pieces sharing a material are one mesh). About 28k triangles in
+//! 12 draws per enemy; only the bulky kit (carrier, pouches, helmet, pack) casts shadows, the
+//! close-fitting clothes leave that to the body.
 
 use std::collections::HashMap;
 
@@ -563,14 +565,15 @@ fn gear_name(n: &str) -> Option<(&str, &str)> {
 }
 
 /// The squad look's material for a gear piece.
-fn gear_material<'a>(kit: &'a Kit, part: &str, mat: &str, v: usize) -> Option<&'a Handle<StandardMaterial>> {
+fn gear_material<'a>(kit: &'a Kit, mat: &str, v: usize) -> Option<&'a Handle<StandardMaterial>> {
     let g = &kit.gear_mats;
     Some(match mat {
         // Shirt and trousers keep the body's UVs: the body's fatigues material.
         "shirt" | "trousers" => &kit.fatigues_mh[v],
         "trousers_pocket" => &g.cloth_box[v],
-        "leather" if part == "gloves" => &g.leather_mh,
-        "leather" => &g.leather_box,
+        // Gloves keep the body's UVs; boots are UV'd in metres.
+        "leather" => &g.leather_mh,
+        "boot" => &g.leather_box,
         "cordura" => &g.cordura_box[v],
         "helmet" => &g.helmet_box[v],
         "webbing" => &g.webbing,
@@ -599,7 +602,7 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
         if part.starts_with("pack_") && part != pack {
             continue;
         }
-        let (Some(mat), Some(mesh), Some(skin)) = (gear_material(kit, part, m, v), files.meshes.get(mh), files.skins.get(sh)) else {
+        let (Some(mat), Some(mesh), Some(skin)) = (gear_material(kit, m, v), files.meshes.get(mh), files.skins.get(sh)) else {
             warn!("enemy gear: skipping {}", node.name);
             continue;
         };
@@ -608,8 +611,11 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
             warn!("enemy gear: {} has joints the enemy lacks", node.name);
             return false;
         };
+        // Cloth, gloves, boots and the balaclava follow the body closely: its own shadow covers
+        // theirs. Only the bulky kit (carrier, pouches, helmet, packs) casts.
+        let casts = matches!(m, "cordura" | "helmet");
         for prim in &mesh.primitives {
-            commands.spawn((
+            let mut ec = commands.spawn((
                 Name::new("kit"),
                 Gear,
                 Mesh3d(prim.mesh.clone()),
@@ -618,6 +624,9 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
                 Transform::default(),
                 ChildOf(parent),
             ));
+            if !casts {
+                ec.insert(bevy::light::NotShadowCaster);
+            }
             spawned += 1;
         }
     }
@@ -833,6 +842,7 @@ mod tests {
     #[test]
     fn gear_names_split_into_part_and_material() {
         assert_eq!(gear_name("helmet.webbing.001"), Some(("helmet", "webbing")));
+        assert_eq!(gear_name("kit.cordura"), Some(("kit", "cordura")));
         assert_eq!(gear_name("pack_radio.webbing"), Some(("pack_radio", "webbing")));
         assert_eq!(gear_name("loose"), None);
     }

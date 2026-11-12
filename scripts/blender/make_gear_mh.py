@@ -415,7 +415,7 @@ def boot_shafts(pos, faces):
         axis = (k - f).normalized()
         t = (top - 0.008 - f.y) / max(axis.y, 1e-3)
         limb_ring(part, f + axis * t, axis, 0.012, 0.018, 0.005)
-    part.finish("boots", "leather", lambda p: body_weights(p, lambda b: b.startswith(("calf", "foot", "ankle")) and "knee" not in b, k=4), smooth=True)
+    part.finish("boots", "boot", lambda p: body_weights(p, lambda b: b.startswith(("calf", "foot", "ankle")) and "knee" not in b, k=4), smooth=True)
 
 
 def add_cargo_pockets():
@@ -1059,7 +1059,7 @@ def add_boot_feet(feet, shaft):
     part = Part()
     for bm in out:
         part.add(bm)
-    part.finish("boots", "leather", lambda p: body_weights(p, lambda b: b.startswith(("foot", "ball", "calf_twist_02", "ankle")), k=4), smooth=True)
+    part.finish("boots", "boot", lambda p: body_weights(p, lambda b: b.startswith(("foot", "ball", "calf_twist_02", "ankle")), k=4), smooth=True)
     add_soles(shaft + [BPOS[i] for i in feet])
 
 
@@ -1088,7 +1088,28 @@ def add_soles(boot_pos):
     sole.finish("boots", "sole", lambda p: body_weights(p, lambda b: b.startswith(("foot", "ball")), k=4), smooth=False)
 
 
+def merge_by_material():
+    """One mesh per material (`kit.<material>`), packs apart (one per squad look): fewer draws."""
+    groups = {}
+    for o in OUTS:
+        part, mat = o.name.split(".")[:2]
+        key = o.name.split(".")[0] if part.startswith("pack_") else "kit." + mat
+        groups.setdefault(key, []).append(o)
+    merged = []
+    for key, objs in groups.items():
+        if len(objs) > 1:
+            with bpy.context.temp_override(active_object=objs[0], selected_editable_objects=objs, object=objs[0]):
+                bpy.ops.object.join()
+        o = objs[0]
+        name = key if key.startswith("kit.") else o.name.split(".")[0] + "." + o.name.split(".")[1]
+        o.name = name
+        o.data.name = name
+        merged.append(o)
+    OUTS[:] = merged
+
+
 def export():
+    merge_by_material()
     # Joints: only the bones the gear uses (Bevy caps a skin at 256 joints).
     used = {g.name for o in OUTS for g in o.vertex_groups}
     bpy.ops.object.select_all(action="DESELECT")
