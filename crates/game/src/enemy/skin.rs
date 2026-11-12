@@ -21,10 +21,23 @@
 //! MetaHuman enemy (`models/metahuman/enemy_mh.glb`, when generated): its body mesh takes the
 //! fatigues (a full-body uniform), the head, eyes and teeth keep their own materials. Its bones
 //! run along X rather than Y, so limb gear is placed along each bone's direction to its child.
+//!
+//! With `models/metahuman/gear_mh.glb` (`scripts/make-gear-mh.sh`, local only like the
+//! MetaHuman) the MetaHuman wears real clothing instead of the primitive kit: a combat shirt,
+//! cargo trousers with pockets and knee pads, boots, gloves, a balaclava, a plate carrier with
+//! MOLLE and pouches, a belt, a high-cut helmet and the squad's pack. Each piece is a skinned
+//! mesh bound to the enemy's own bones by name (`SkinnedMesh` with the enemy's joint entities),
+//! so it deforms with every animation; materials are picked per squad look by the mesh name's
+//! `<part>.<material>` suffix (pieces sharing a material are one mesh). About 28k triangles in
+//! 12 draws per enemy; only the bulky kit (carrier, pouches, helmet, pack) casts shadows, the
+//! close-fitting clothes leave that to the body.
 
 use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
+use bevy::ecs::system::SystemParam;
+use bevy::gltf::{Gltf, GltfMesh, GltfNode, GltfSkin};
+use bevy::mesh::skinning::SkinnedMesh;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 
@@ -91,9 +104,44 @@ fn looks() -> [Look; 3] {
     ]
 }
 
+/// The MetaHuman's clothing and gear, skinned to its skeleton (local only, see the module docs).
+pub const GEAR_MH: &str = "models/metahuman/gear_mh.glb";
+
+/// A downloaded helmet (local only, `assets/models/gear/`, prepared with
+/// `scripts/blender/gun_prepare.py --muzzle +y --max-texture 1024` and decimated): front toward
+/// -Z, base at y = 0, metres. When it exists it replaces the modelled helmet, rigid on the head
+/// bone with its own materials. CREDITS.md has the listing.
+pub const HELMET_PACK: &str = "models/gear/helmet.glb";
+/// The pack helmet's base below the helmet frame's origin (the MetaHuman's head bone + 7 cm):
+/// its brow then clears the eyes and the crown sits about 4 cm over the scalp.
+const HELMET_PACK_DROP: f32 = 0.082;
+
+/// On a model under an enemy whose own materials stay (no fatigues recolour).
+#[derive(Component)]
+struct KeepMaterials;
+
+/// Materials for the skinned gear (by the mesh name's material suffix).
+struct GearMats {
+    /// Fatigues on box-projected metre UVs (pockets).
+    cloth_box: [Handle<StandardMaterial>; 3],
+    cordura_box: [Handle<StandardMaterial>; 3],
+    helmet_box: [Handle<StandardMaterial>; 3],
+    /// Gloves on the body's UVs; boots on metre UVs.
+    leather_mh: Handle<StandardMaterial>,
+    leather_box: Handle<StandardMaterial>,
+    webbing: Handle<StandardMaterial>,
+    balaclava: Handle<StandardMaterial>,
+    sole: Handle<StandardMaterial>,
+    metal: Handle<StandardMaterial>,
+    pads: Handle<StandardMaterial>,
+}
+
 /// Shared skin assets.
 #[derive(Resource)]
 struct Kit {
+    /// The skinned gear file, when it exists.
+    gear_mh: Option<Handle<Gltf>>,
+    gear_mats: GearMats,
     fatigues: [Handle<StandardMaterial>; 3],
     /// Same fabric at the MetaHuman body's UV scale (one 0..1 map for the whole body).
     fatigues_mh: [Handle<StandardMaterial>; 3],
@@ -143,6 +191,8 @@ struct Rig {
     feet: [Option<Entity>; 2],
     balls: [Option<Entity>; 2],
     arm: Option<Entity>,
+    /// The MetaHuman body mesh's node (skinned gear is parented beside it).
+    body: Option<Entity>,
     /// Rank in [`CHESTS`] of the chest found so far.
     chest_rank: usize,
     frames: u8,
@@ -289,7 +339,30 @@ fn setup(
         ..default()
     });
     let vest = std::array::from_fn(|i| meshes.add(tangents(vest_mesh(l[i].pack))));
+    let rescale = |materials: &mut Assets<StandardMaterial>, h: &Handle<StandardMaterial>, uv: Vec2| {
+        let m = materials.get(h).cloned().unwrap_or_default();
+        materials.add(StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(uv), ..m })
+    };
+    // Hard gear is UV'd at one unit per metre: a weave of a few centimetres.
+    let gear_mats = GearMats {
+        cloth_box: std::array::from_fn(|i| rescale(&mut materials, &fatigues[i], Vec2::splat(7.0))),
+        cordura_box: std::array::from_fn(|i| rescale(&mut materials, &gear[i], Vec2::splat(10.0))),
+        helmet_box: std::array::from_fn(|i| rescale(&mut materials, &helmet_mat[i], Vec2::splat(10.0))),
+        leather_mh: rescale(&mut materials, &leather, Vec2::splat(30.0)),
+        leather_box: rescale(&mut materials, &leather, Vec2::splat(8.0)),
+        webbing: set(&mut materials, "cordura", Color::srgb(0.035, 0.036, 0.034), CORDURA_AVG, Vec2::splat(14.0), 0.9),
+        balaclava: set(&mut materials, "cordura", Color::srgb(0.03, 0.03, 0.032), CORDURA_AVG, Vec2::splat(25.0), 1.0),
+        sole: mat(&mut materials, Color::srgb(0.025, 0.025, 0.025), 0.85),
+        metal: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), metallic: 0.7, perceptual_roughness: 0.45, ..default() }),
+        pads: mat(&mut materials, Color::srgb(0.05, 0.05, 0.052), 0.55),
+    };
+    let gear_mh = match (&server, &dir) {
+        (Some(s), Some(d)) if d.has(GEAR_MH) && crate::assets::enemy_model(d) == crate::assets::ENEMY_MODEL_MH => Some(s.load(GEAR_MH)),
+        _ => None,
+    };
     commands.insert_resource(Kit {
+        gear_mh,
+        gear_mats,
         fatigues,
         fatigues_mh,
         base,
@@ -431,6 +504,11 @@ fn find_bones(
                 }
             }
             ARM_L => r.arm = Some(e),
+            _ if n.starts_with("body_lod") => {
+                if r.body.is_none() {
+                    r.body = Some(e);
+                }
+            }
             _ => {}
         };
         let pair = |r: &mut Rig| {
@@ -450,7 +528,7 @@ fn find_bones(
             }
         };
         let paired = [HANDS, CALVES, THIGHS, UPPERARMS, LOWERARMS, FEET, BALLS].iter().any(|l| l.contains(&n));
-        if !HEADS.contains(&n) && !CHESTS.contains(&n) && n != ARM_L && !paired {
+        if !HEADS.contains(&n) && !CHESTS.contains(&n) && n != ARM_L && !paired && !n.starts_with("body_lod") {
             continue;
         }
         let Some(root) = owner(e, &parents, &enemies) else { continue };
@@ -473,10 +551,119 @@ fn find_bones(
     }
 }
 
+/// The loaded skinned-gear file's parts.
+#[derive(SystemParam)]
+struct GearFiles<'w> {
+    server: Res<'w, AssetServer>,
+    dir: Res<'w, crate::assets::AssetsDir>,
+    gltfs: Res<'w, Assets<Gltf>>,
+    nodes: Res<'w, Assets<GltfNode>>,
+    meshes: Res<'w, Assets<GltfMesh>>,
+    skins: Res<'w, Assets<GltfSkin>>,
+}
+
+/// Whether the skinned gear is ready (Some(true)), still loading (None), or unusable.
+fn gear_ready(kit: &Kit, files: &GearFiles) -> Option<bool> {
+    let h = kit.gear_mh.as_ref()?;
+    match files.server.load_state(h) {
+        bevy::asset::LoadState::Loaded => Some(files.gltfs.get(h).is_some()),
+        bevy::asset::LoadState::Failed(_) => Some(false),
+        _ => None,
+    }
+}
+
+/// `<part>.<material>[.NNN]` (Blender object names) -> (part, material).
+fn gear_name(n: &str) -> Option<(&str, &str)> {
+    let mut it = n.split('.');
+    Some((it.next()?, it.next()?))
+}
+
+/// The squad look's material for a gear piece.
+fn gear_material<'a>(kit: &'a Kit, mat: &str, v: usize) -> Option<&'a Handle<StandardMaterial>> {
+    let g = &kit.gear_mats;
+    Some(match mat {
+        // Shirt and trousers keep the body's UVs: the body's fatigues material.
+        "shirt" | "trousers" => &kit.fatigues_mh[v],
+        "trousers_pocket" => &g.cloth_box[v],
+        // Gloves keep the body's UVs; boots are UV'd in metres.
+        "leather" => &g.leather_mh,
+        "boot" => &g.leather_box,
+        "cordura" => &g.cordura_box[v],
+        "helmet" => &g.helmet_box[v],
+        "webbing" => &g.webbing,
+        "balaclava" => &g.balaclava,
+        "sole" => &g.sole,
+        "metal" => &g.metal,
+        "pads" => &g.pads,
+        _ => return None,
+    })
+}
+
+/// Spawn every skinned gear piece for squad look `v` beside the body mesh (`parent`), bound to
+/// the enemy's bones (`bones`: name -> entity). False if a piece can't be bound.
+fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize, bones: &HashMap<String, Entity>, parent: Entity, skip_helmet: bool) -> bool {
+    let Some(gltf) = kit.gear_mh.as_ref().and_then(|h| files.gltfs.get(h)) else { return false };
+    let pack = match looks()[v].pack {
+        Pack::Backpack => "pack_backpack",
+        Pack::Radio => "pack_radio",
+        Pack::None => "pack_none",
+    };
+    let mut spawned = 0;
+    for nh in &gltf.nodes {
+        let Some(node) = files.nodes.get(nh) else { continue };
+        let (Some(mh), Some(sh)) = (&node.mesh, &node.skin) else { continue };
+        let Some((part, m)) = gear_name(&node.name) else { continue };
+        if (part.starts_with("pack_") && part != pack) || (skip_helmet && part == "helmet") {
+            continue;
+        }
+        let (Some(mat), Some(mesh), Some(skin)) = (gear_material(kit, m, v), files.meshes.get(mh), files.skins.get(sh)) else {
+            warn!("enemy gear: skipping {}", node.name);
+            continue;
+        };
+        let joints: Option<Vec<Entity>> = skin.joints.iter().map(|j| files.nodes.get(j).and_then(|n| bones.get(&n.name).copied())).collect();
+        let Some(joints) = joints else {
+            warn!("enemy gear: {} has joints the enemy lacks", node.name);
+            return false;
+        };
+        // Cloth, gloves, boots and the balaclava follow the body closely: its own shadow covers
+        // theirs. Only the bulky kit (carrier, pouches, helmet, packs) casts.
+        let casts = matches!(m, "cordura" | "helmet");
+        for prim in &mesh.primitives {
+            let mut ec = commands.spawn((
+                Name::new("kit"),
+                Gear,
+                Mesh3d(prim.mesh.clone()),
+                MeshMaterial3d(mat.clone()),
+                SkinnedMesh { inverse_bindposes: skin.inverse_bind_matrices.clone(), joints: joints.clone() },
+                Transform::default(),
+                ChildOf(parent),
+            ));
+            if !casts {
+                ec.insert(bevy::light::NotShadowCaster);
+            }
+            spawned += 1;
+        }
+    }
+    spawned > 0
+}
+
+/// Every named entity under `root` (the enemy's bones).
+fn bone_names(root: Entity, children: &Query<&Children>, names: &Query<&Name>) -> HashMap<String, Entity> {
+    let mut out = HashMap::new();
+    for e in children.iter_descendants(root) {
+        if let Ok(n) = names.get(e) {
+            out.entry(n.as_str().to_owned()).or_insert(e);
+        }
+    }
+    out
+}
+
 /// Hang the kit on the bones once the rig has a pose.
+#[allow(clippy::too_many_arguments)]
 fn dress(
     mut commands: Commands,
     kit: Res<Kit>,
+    files: GearFiles,
     mut rigs: Query<(Entity, &Enemy, &mut Rig, &GlobalTransform), Without<Dressed>>,
     globals: Query<&GlobalTransform>,
     children: Query<&Children>,
@@ -512,6 +699,41 @@ fn dress(
             continue;
         }
         let v = enemy.slot % 3;
+        let mh = rig.chest_rank == CHESTS.len();
+        // MetaHuman with the skinned gear: real clothing instead of the primitive kit.
+        let mut skinned = false;
+        if mh && kit.gear_mh.is_some() {
+            match gear_ready(&kit, &files) {
+                None => continue,
+                Some(true) => {
+                    if let Some(body) = rig.body {
+                        let bones = bone_names(e, &children, &names);
+                        let pack_helmet = files.dir.has(HELMET_PACK);
+                        skinned = spawn_gear_mh(&mut commands, &kit, &files, v, &bones, body, pack_helmet);
+                        if skinned && pack_helmet && let Ok(g) = globals.get(head) {
+                            // Upright in the character's frame at the head's posed position, then
+                            // carried by the head bone.
+                            let at = g.translation() + root.rotation() * Vec3::new(0.0, 0.07, 0.005);
+                            let world = GlobalTransform::from(Transform::from_translation(at).with_rotation(root.rotation()));
+                            let tf = world.reparented_to(g).mul_transform(Transform::from_xyz(0.0, -HELMET_PACK_DROP, 0.0));
+                            let scene = files.server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(HELMET_PACK));
+                            commands.spawn((Name::new("kit helmet"), KeepMaterials, bevy::world_serialization::WorldAssetRoot(scene), tf, Visibility::default(), ChildOf(head)));
+                        }
+                    }
+                }
+                Some(false) => {}
+            }
+        }
+        if skinned {
+            // The team armband still goes on, over the sleeve.
+            if let Some(arm) = rig.arm {
+                let (dir, _) = axis(arm);
+                let tf = Transform::from_translation(dir * 0.12).with_rotation(Quat::from_rotation_arc(Vec3::Y, dir)).with_scale(Vec3::new(0.068, 0.05, 0.068));
+                commands.spawn((Name::new("kit"), Gear, Mesh3d(kit.band.clone()), MeshMaterial3d(kit.accent.clone()), tf, ChildOf(arm)));
+            }
+            commands.entity(e).insert(Dressed);
+            continue;
+        }
         // Helmet and vest: placed in the character's frame (upright, facing its forward) at the
         // bone's posed position, then expressed in the bone's space.
         let upright = |bone: Entity, local: Vec3| -> Option<Transform> {
@@ -593,6 +815,7 @@ fn recolour(
     parents: Query<&ChildOf>,
     enemies: Query<&Enemy>,
     guns: Query<(), With<super::gun::EnemyGun>>,
+    keep: Query<(), With<KeepMaterials>>,
     names: Query<&Name>,
     materials: Res<Assets<StandardMaterial>>,
 ) {
@@ -609,7 +832,7 @@ fn recolour(
         let mut gun = false;
         while let Ok(p) = parents.get(a) {
             a = p.parent();
-            gun |= guns.contains(a);
+            gun |= guns.contains(a) || keep.contains(a);
             if let Ok(en) = enemies.get(a) {
                 enemy = Some(en.slot % 3);
                 break;
@@ -634,5 +857,18 @@ fn recolour(
         if m.0 != *want {
             commands.entity(e).insert(MeshMaterial3d(want.clone()));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gear_names_split_into_part_and_material() {
+        assert_eq!(gear_name("helmet.webbing.001"), Some(("helmet", "webbing")));
+        assert_eq!(gear_name("kit.cordura"), Some(("kit", "cordura")));
+        assert_eq!(gear_name("pack_radio.webbing"), Some(("pack_radio", "webbing")));
+        assert_eq!(gear_name("loose"), None);
     }
 }

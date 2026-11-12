@@ -1,0 +1,13 @@
+[
+ {"cmd": "map.load", "params": {"name": "Office"}},
+ {"shot": "loading_a"},
+ {"cmd": "loading.status"},
+ {"shot": "loading_b"},
+ {"cmd": "loading.status"},
+ {"wait": "loading.status", "until": {"result.active": [false]}, "timeout": 300},
+ {"shot": "loaded"},
+ {"cmd": "map.load", "params": {"name": "Foundry"}},
+ {"shot": "loading_c"},
+ {"wait": "loading.status", "until": {"result.active": [false]}, "timeout": 300},
+ {"shot": "loaded_foundry"}
+]

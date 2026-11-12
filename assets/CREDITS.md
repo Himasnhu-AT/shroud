@@ -55,6 +55,9 @@ Notes:
 - The Kenney "Animated Characters" packs were checked and rejected: they only ship FBX and contain idle, run and jump clips, with no shoot or death.
 - Animation clip names are listed in `ANIMATIONS.md`.
 - The gun models (Pichuliru's set on poly.pizza, each page marked CC0 1.0) replace the earlier Kenney Blaster Kit toy guns. They are skinned meshes in real-world metres with named part bones (`Magazine`, `Bolt`, `Slide`) and `Attach_*` nodes; the game mounts the separate optics on `Attach_Scope` and swaps their flat colours for its own steel / polymer / wood finishes at load (`weapon/finish.rs`).
+- `models/weapons/lod/*.lod1.glb` are low-detail versions of the Pichuliru guns above (CC0, derived
+  here): rest pose baked, quadric-decimated to 35 % in headless Blender by `scripts/make-gun-lods.sh`.
+  Enemies carry them and distant pickups show them (`weapon/viewmodel.rs`, detail tiers).
 - `models/rifle.glb` and `models/enemy_rifle.glb` (Kenney) are no longer used by the game.
 - The 4K sets (`concrete_4k`, `asphalt_wet`, `peeling_paint`, `ripstop`) keep only the cooked `color.ktx2`, `normal.ktx2`, `orm.ktx2` and `color.avg`; the source JPGs were deleted after cooking to keep the repo small. Re-download the 4K-JPG zip from the URL to re-cook.
 
@@ -124,10 +127,10 @@ listed anyway. CC-BY items must be credited in the game's credits screen.
 | `library/props/ms-concrete-rubble-pile-tgdtfg0da/` | Concrete Rubble Pile (3.65 x 1.0 x 4.07 m; 16.9 k / 6 k / 1.5 k) | Quixel Megascans | https://www.fab.com/listings/aa404374-059d-4bab-9e0e-cc0ee6ff8c0f | Fab Standard Personal ($0) | heaps at about 0.4 scale (under 0.45 m) in empty concave corners |
 | `library/props/ms-rusty-metal-workbench-ukkiejiaw/` | Rusty Metal Workbench (1.04 x 0.83 x 0.75 m; 22 k source, 20 k / 6 k / 1.5 k) | Quixel Megascans | https://www.fab.com/listings/332869a5-a1a1-4f15-a96a-8fc383061b62 | Fab Standard ($0) | a corner workbench |
 | `library/props/ms-sheet-metal-corrugated-02-ydzmfhvs/` | Military Trenches Sheet Metal Corrugated 02 (0.84 x 0.69 m; 19 k source, `--lod-tris 4000,1500,500`) | Quixel Megascans | https://www.fab.com/listings/5a72636f-0abb-426a-9e9e-03deae8f957d | Fab Standard ($0) | scrap sheets leant on the pallets |
-| `library/props/fab-warehouse-wooden-pallet/` | Free – Warehouse Wooden Pallet (1.2 x 0.14 x 0.9 m; 2.2 k / 0.6 k, `--lod-tris 6000,2000,600`) | seller per listing (not named in the download; read it from the listing before shipping) | https://www.fab.com/listings/c1a98c17-5379-48b7-b129-216e21b6f423 | CC-BY 4.0 (credit required) | under the drums, stacked and leant in corners |
+| `library/props/fab-warehouse-wooden-pallet/` | Free – Warehouse Wooden Pallet (1.2 x 0.14 x 0.9 m; 2.2 k / 0.6 k, `--lod-tris 6000,2000,600`) | AshenCut | https://www.fab.com/listings/c1a98c17-5379-48b7-b129-216e21b6f423 | CC-BY 4.0: credit "Free - Warehouse Wooden Pallet by AshenCut (Fab), CC-BY 4.0" | under the drums, stacked and leant in corners |
 
 Evaluated and not used:
-- "Red Brick Wall Scan" (https://www.fab.com/listings/bef94f7b-38f8-4d6a-99ae-b0b3dc16c669,
+- "Red Brick Wall Scan" by commonspence (https://www.fab.com/listings/bef94f7b-38f8-4d6a-99ae-b0b3dc16c669,
   CC-BY 4.0): raw photogrammetry of a wall section lying flat (18 x 7 m, 2.76 M triangles, holes,
   one colour map and no normal map). Neither a tiling surface nor a usable wall mesh: Foundry keeps
   Poly Haven's `factory_brick`.
@@ -202,3 +205,26 @@ Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back t
 | `fonts/BarlowCondensed-SemiBold.ttf`, `fonts/BarlowCondensed-Bold.ttf` | Barlow Condensed | Jeremy Tribby (The Barlow Project Authors) | https://fonts.google.com/specimen/Barlow+Condensed | OFL 1.1 |
 
 Not CC0, not committed: `models/metahuman/` is generated locally by `scripts/make-metahuman.sh` from Epic's MetaHuman DNA files (UE 5.8 install or MetaHuman Creator export) under the MetaHuman license. The game falls back to `models/enemy.glb` when it is missing.
+
+## Downloaded gun packs (local only, not in this repo)
+Imported with the engine's `assets.py` into `assets/library/misc/gun-*` (ledger
+`library/LICENSES.json`), prepared by `scripts/import-gun.sh` into `models/weapons/hd/` and listed
+in `models/weapons/guns.json`. Fab Standard content is not redistributable: the files stay
+local (gitignored) and the game falls back to the CC0 set without them. Personal tier: free for
+individuals and companies under about $100k revenue; above that, the Professional tier is needed
+where it is priced.
+
+| Kind | Model | Author | URL | Licence |
+|---|---|---|---|---|
+| shotgun | Model 12 Pump Action Shotgun Free Standard (shells dropped, rolled upright, 1.2 m, textures 8K -> 2K) | the 9th Earl | https://www.fab.com/listings/c0761ef9-a19c-415b-a5c0-efe2ad238c4f | Fab Standard (Personal and Professional both free) |
+| battlerifle | AKS Tactical Upgrade (suppressed, 1.21 m; PBR set re-applied after FBX conversion) | SpatialNeglect | https://www.fab.com/listings/587e3f02-f8a1-4a3d-8b35-3394e793cfc5 | Fab Standard, Personal tier (Professional ₹748.66) |
+| sniper, marksman | **SV-98 Sniper Rifle by SpatialNeglect, CC-BY 4.0** (offset bolt mesh dropped, 1.2 m) | SpatialNeglect | https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b | CC-BY 4.0 (credit required here and in-game) |
+| pistol | Pistol 9mm Custom (the pistol body only; attachments and display copies dropped; PBR set re-applied after FBX conversion) | DTry | https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732 | Fab Standard, Personal tier (Professional ₹1,498.26) |
+| (rifle, pending) | AR-15 style rifle | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
+| (smg, pending) | 10mm AUTO SMG | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
+
+## Downloaded gear (local only, not in this repo)
+| Use | Model | Author | URL | Licence |
+|---|---|---|---|---|
+| enemy helmet (`models/gear/helmet.glb`: textures 1K, decimated to 35 %; replaces the modelled helmet when present) | Military Helmet | CG Vertexium | https://www.fab.com/listings/6c747a89-ceb4-4147-a154-801c6dbb1846 | Fab Standard (Personal and Professional both free) |
+| (pending: the engine's FBX conversion drops its skin and materials) | Tactical Soldier Outfit for MetaHuman (UE 5.6+) | RMDavid | https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7 | Fab Standard (Personal and Professional both free) |

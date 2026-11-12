@@ -42,7 +42,8 @@ impl Plugin for QualityPlugin {
         app.init_resource::<RoundQuality>()
             .add_systems(Startup, configure)
             .add_systems(OnEnter(GameState::Playing), |mut r: ResMut<RoundQuality>| *r = RoundQuality::default())
-            .add_systems(Update, hold_in_rounds);
+            .add_systems(Update, hold_in_rounds)
+            .add_systems(Update, cap_lens_overscan.run_if(crate::state::has_visuals));
     }
 }
 
@@ -100,9 +101,47 @@ fn hold_in_rounds(
     }
 }
 
+/// Ultra's bodycam lens renders the 3D view 1.25x larger (1.56x the pixels) so the fisheye's
+/// magnified centre stays sharp. That matters at 1080p; on a Retina window the centre already
+/// has the pixels, and the overscan cost 8 of Ultra's 40 GPU ms at 1080p (Metal System Trace)
+/// and scales with the window. So the overscan may only grow the rendered image up to what
+/// 1.25x gives a 1920x1080 window ([`OVERSCAN_PIXEL_BUDGET`]): 1.25 at 1080p, none from about
+/// 2560x1300 up (the owner's 3024x1964 window renders at 1.0).
+pub const OVERSCAN_PIXEL_BUDGET: f32 = 1920.0 * 1080.0 * 1.25 * 1.25;
+/// The engine's Ultra overscan (`QualityPreset::lens_overscan`).
+pub const ULTRA_OVERSCAN: f32 = 1.25;
+
+/// Largest lens overscan for a window of `w` x `h` physical pixels (steps of 0.05).
+pub fn overscan_for_window(w: f32, h: f32) -> f32 {
+    let px = (w * h).max(1.0);
+    let s = (OVERSCAN_PIXEL_BUDGET / px).sqrt().clamp(1.0, ULTRA_OVERSCAN);
+    (s * 20.0).floor() / 20.0
+}
+
+fn cap_lens_overscan(windows: Query<&Window, With<bevy::window::PrimaryWindow>>, preset: Option<ResMut<engine::gfx::QualityPreset>>) {
+    let (Ok(w), Some(mut preset)) = (windows.single(), preset) else { return };
+    // `--offscreen` renders 1920x1080 whatever the hidden window is.
+    let (pw, ph) = if engine::cli::dev_flag("offscreen") { (1920.0, 1080.0) } else { (w.physical_width() as f32, w.physical_height() as f32) };
+    let cap = overscan_for_window(pw, ph);
+    if preset.lens_overscan[3] != cap {
+        info!("quality: Ultra lens overscan {cap} for a {pw}x{ph} window");
+        preset.lens_overscan[3] = cap;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ultra_overscan_only_where_the_window_is_small() {
+        assert_eq!(overscan_for_window(1920.0, 1080.0), 1.25);
+        assert_eq!(overscan_for_window(1280.0, 720.0), 1.25);
+        assert_eq!(overscan_for_window(3024.0, 1964.0), 1.0);
+        assert_eq!(overscan_for_window(2560.0, 1440.0), 1.0);
+        let mid = overscan_for_window(2200.0, 1240.0);
+        assert!(mid > 1.0 && mid < 1.25, "{mid}");
+    }
 
     #[test]
     fn the_governor_only_decides_in_freeze_time_once_per_round() {

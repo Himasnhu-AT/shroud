@@ -26,3 +26,11 @@ graft/.cache/
 # rows are. Foundry falls back to the CC0 stand-ins without them (docs/ASSETS.md).
 /assets/library/*/ms-*/
 /assets/library/*/fab-*/
+
+# Gun packs under a no-redistribution licence (Fab / Sketchfab Standard): local only.
+/assets/models/weapons/hd/
+
+# Fab Standard (Personal) guns and outfits: not redistributable; local only, ledger committed.
+/assets/library/misc/
+/assets/library/characters/
+/assets/models/gear/

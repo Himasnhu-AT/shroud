@@ -54,9 +54,10 @@ pub struct GunLink {
 pub(super) struct EnemyGun {
     owner: Entity,
     rot: Option<Quat>,
-    /// The kind it is currently showing, and that model's entity.
+    /// The kind it is currently showing, and that model's entities (low tier, and the high
+    /// tier that fades in when the camera is within arm's reach).
     kind: Option<WeaponKind>,
-    model: Option<Entity>,
+    model: [Option<Entity>; 2],
     muzzle: Entity,
 }
 
@@ -199,7 +200,7 @@ fn attach_guns(mut commands: Commands, names: Query<(Entity, &Name), Added<Name>
         let Some(owner) = owner_enemy(hand, &parents, &enemies) else { continue };
         let gun = commands.spawn((Name::new("enemy gun"), Transform::default(), Visibility::default(), ChildOf(hand))).id();
         let muzzle = commands.spawn((Transform::default(), Visibility::default(), ChildOf(gun))).id();
-        commands.entity(gun).insert(EnemyGun { owner, rot: None, kind: None, model: None, muzzle });
+        commands.entity(gun).insert(EnemyGun { owner, rot: None, kind: None, model: [None; 2], muzzle });
         commands.entity(owner).insert(GunLink { gun, muzzle });
     }
 }
@@ -222,26 +223,27 @@ fn restyle_guns(
             continue;
         }
         g.kind = Some(kind);
-        if let Some(old) = g.model.take() {
+        for old in g.model.iter_mut().filter_map(Option::take) {
             commands.entity(old).despawn();
         }
         let fit = viewmodel::fit(kind);
         let k = THIRD_PERSON;
         let model = if dir.has(fit.path) {
-            let tf = Transform::from_translation(fit.offset * k).with_scale(Vec3::splat(fit.scale * k));
-            viewmodel::spawn_gun_model(&mut commands, &server, &dir, kind, tf, gun)
+            let tf = Transform::from_translation(fit.offset * k).with_rotation(Quat::from_rotation_y(fit.yaw)).with_scale(Vec3::splat(fit.scale * k));
+            viewmodel::spawn_gun_tiers(&mut commands, &server, &dir, kind, viewmodel::ENEMY_HIGH_M, tf, gun)
         } else {
             let size = fit.body * k;
-            commands
+            let e = commands
                 .spawn((
                     Mesh3d(parts.body.clone()),
                     MeshMaterial3d(parts.mat.clone()),
                     Transform::from_xyz(0.0, 0.0, -size.z * 0.4).with_scale(size),
                     ChildOf(gun),
                 ))
-                .id()
+                .id();
+            [Some(e), None]
         };
-        g.model = Some(model);
+        g.model = model;
         if let Ok(mut m) = transforms.get_mut(g.muzzle) {
             m.translation = fit.muzzle * k;
         }
