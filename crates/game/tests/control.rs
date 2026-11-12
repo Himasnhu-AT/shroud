@@ -311,6 +311,9 @@ fn practice_statues_take_hits_reset_and_nothing_is_recorded() {
     let n = p["targets"].as_array().map_or(0, Vec::len);
     assert!(n >= 6, "every spawn gets a statue: {p}");
     let recorded = p["recorded"].clone();
+    // Play is held behind the practice loading screen (shaders, then the governor's look), which
+    // takes longer on a loaded machine: wait until it lets go before moving or shooting.
+    wait_for(&mut c, "loading.status", 120, |s| s["holds"] == json!(false));
     std::thread::sleep(Duration::from_millis(300));
 
     // Statues don't move: same spots a second later.

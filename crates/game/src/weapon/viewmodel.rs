@@ -152,6 +152,8 @@ pub struct Fit {
     pub low_mesh_m: f32,
     /// The model brings its own textured materials (a downloaded pack): no flat finish swap.
     pub own_materials: bool,
+    /// Pack material scales (base colour, roughness); (1, 1) = untouched.
+    pub pack_tune: (f32, f32),
 }
 
 /// Detail tier of a gun model. First person is always [`Detail::High`]; enemies carry
@@ -200,6 +202,13 @@ pub struct GunAsset {
     /// Mounted optic: its file and model-space position.
     #[serde(default)]
     pub optic: Option<(String, [f32; 3])>,
+    /// `own_materials` packs only: scale the pack's base colour (and so a metal's reflectance)
+    /// and its roughness, for a finish that stays plausible under the game's lights (see
+    /// `finish::PackFinish`). 1 = the file as it is.
+    #[serde(default = "one")]
+    pub albedo: f32,
+    #[serde(default = "one")]
+    pub roughness: f32,
 }
 
 fn one() -> f32 {
@@ -249,6 +258,8 @@ pub fn builtin_models() -> Vec<GunAsset> {
         center,
         support,
         optic: optic.map(|(p, at)| (format!("models/weapons/{p}.glb"), at)),
+        albedo: 1.0,
+        roughness: 1.0,
     };
     vec![
         g("pistol", "pistol", 1.0, [0.0, -0.03, 0.05], [0.0, 0.025, -0.117], 0.042, [0.0, -0.025, -0.02], [-0.022, -0.045, 0.035], None),
@@ -300,6 +311,7 @@ pub fn fit_of(kind: WeaponKind, m: &GunAsset, has: &dyn Fn(&str) -> bool) -> Fit
         // Generated LODs (asset-pipe) are written in metres.
         low_mesh_m: if low.is_some() && m.mesh_m != 1.0 && m.low.as_deref().is_some_and(|l| l.contains("/lod/")) { 1.0 } else { m.mesh_m },
         own_materials: m.own_materials,
+        pack_tune: (m.albedo, m.roughness),
     }
 }
 
@@ -383,6 +395,8 @@ pub fn spawn_gun_model(commands: &mut Commands, server: &AssetServer, dir: &Asse
     let model = commands.spawn((bevy::world_serialization::WorldAssetRoot(scene(path)), tf, Visibility::default(), ChildOf(parent))).id();
     if !f.own_materials {
         commands.entity(model).insert(super::finish::GunFinish { kind, mesh_m });
+    } else if f.pack_tune != (1.0, 1.0) {
+        commands.entity(model).insert(super::finish::PackFinish { albedo: f.pack_tune.0, roughness: f.pack_tune.1 });
     }
     if let Some((path, at)) = f.optic
         && dir.has(path)

@@ -10,6 +10,9 @@
 //!   one step per round ([`RoundQuality`]). During live play (and while paused) its ladder is cut
 //!   at the level it applied and step-ups are off: it holds whatever it chose. Memory
 //!   emergencies still act (they would otherwise end in a crash).
+//! - **Practice** has no freeze time: the governor judges in the loading screen's measuring window
+//!   at the start of a session (`loading::PRACTICE_MEASURE_S` of the real view behind the cover)
+//!   and holds for the rest of the session.
 //! - **Cheap levers first.** Shadow resolution and the lamp-shadow budget (`Game(n)`) go before
 //!   any render-scale step, and the scale never goes below 75 %.
 //! - **No toast in a round** (`ui::perf_toast`): changes are logged; the perf overlay shows them.
@@ -73,6 +76,8 @@ pub fn may_decide(state: Option<GameState>, paused: bool, freeze_left: f32, free
 }
 
 fn hold_in_rounds(
+    loading: Option<Res<crate::loading::Loading>>,
+    practice: Option<Res<crate::practice::Practice>>,
     state: Option<Res<State<GameState>>>,
     paused: Option<Res<Paused>>,
     phase: Option<Res<RoundPhase>>,
@@ -86,14 +91,19 @@ fn hold_in_rounds(
     let (changes, level) = gov_state.as_ref().map_or((0, 0), |s| (s.changes, s.level));
     let start = *round.changes_at_start.get_or_insert(changes);
     round.freeze_total = round.freeze_total.max(freeze_left);
-    let open = may_decide(state, paused.is_some_and(|p| p.0), freeze_left, round.freeze_total - freeze_left, changes > start);
+    let open = if practice.is_some_and(|p| p.on) && state == Some(GameState::Playing) {
+        // Practice has no freeze time: the loading screen's measuring window, once a session.
+        loading.is_some_and(|l| l.measuring()) && changes == start
+    } else {
+        may_decide(state, paused.is_some_and(|p| p.0), freeze_left, round.freeze_total - freeze_left, changes > start)
+    };
     // Closed: the ladder ends at the level already applied (nothing left to step down to, the
     // applied steps stay as they are) and nothing counts as headroom (no step back up). Toggling
     // `enabled` instead would reset it to full quality, itself a mid-round change.
     let all = steps();
     let (want_steps, up_at) = if open { (all, UP_AT) } else { (all[..level.min(all.len())].to_vec(), 0.0) };
     if g.steps != want_steps {
-        info!("quality: governor {} (level {level})", if open { "may step now (freeze time)" } else { "holds (live round)" });
+        info!("quality: governor {} (level {level})", if open { "may step now (freeze time, or a practice session's loading screen)" } else { "holds (live round)" });
         g.steps = want_steps;
     }
     if g.up_at != up_at {

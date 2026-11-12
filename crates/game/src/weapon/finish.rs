@@ -54,9 +54,63 @@ pub struct GunFinish {
     pub mesh_m: f32,
 }
 
+/// On a gun scene root whose model keeps its own (pack) materials: scale every material under it
+/// (`guns.json` `albedo` / `roughness`). Downloaded packs are often authored bright and glossy
+/// (a polished silver receiver): under the bodycam's interior exposure their metal mirrored the
+/// sky probe and clipped. A coated or blued gun reflects little (F0 ~0.05-0.1) and is satin.
+/// One tuned copy per source material, shared by every instance; the files aren't touched.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct PackFinish {
+    pub albedo: f32,
+    pub roughness: f32,
+}
+
+/// A pack material with its `PackFinish` scales applied.
+pub fn tuned(m: &StandardMaterial, t: PackFinish) -> StandardMaterial {
+    let c = m.base_color.to_linear();
+    StandardMaterial {
+        base_color: LinearRgba::new(c.red * t.albedo, c.green * t.albedo, c.blue * t.albedo, c.alpha).into(),
+        // A factor on the texture's roughness, so it may exceed 1 (the shader clamps the product).
+        perceptual_roughness: (m.perceptual_roughness * t.roughness).clamp(0.089, 4.0),
+        ..m.clone()
+    }
+}
+
 pub(super) fn build(app: &mut App) {
     app.add_systems(Startup, load_sets.run_if(crate::state::has_visuals))
-        .add_systems(Update, apply_finish.run_if(crate::state::has_visuals).run_if(resource_exists::<GunSets>));
+        .add_systems(Update, apply_finish.run_if(crate::state::has_visuals).run_if(resource_exists::<GunSets>))
+        .add_systems(Update, apply_pack_finish.run_if(crate::state::has_visuals));
+}
+
+#[allow(clippy::type_complexity)]
+fn apply_pack_finish(
+    mut commands: Commands,
+    added: Query<(Entity, &MeshMaterial3d<StandardMaterial>), Added<MeshMaterial3d<StandardMaterial>>>,
+    parents: Query<&ChildOf>,
+    roots: Query<&PackFinish>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cache: Local<HashMap<(AssetId<StandardMaterial>, u32, u32), Handle<StandardMaterial>>>,
+    mut ours: Local<Vec<AssetId<StandardMaterial>>>,
+) {
+    for (e, mat) in &added {
+        if ours.contains(&mat.id()) {
+            continue;
+        }
+        let Some(t) = parents.iter_ancestors(e).find_map(|a| roots.get(a).ok()).copied() else { continue };
+        let key = (mat.id(), t.albedo.to_bits(), t.roughness.to_bits());
+        let handle = match cache.get(&key) {
+            Some(h) => h.clone(),
+            None => {
+                let Some(src) = materials.get(&mat.0) else { continue };
+                let new = tuned(src, t);
+                let h = materials.add(new);
+                ours.push(h.id());
+                cache.insert(key, h.clone());
+                h
+            }
+        };
+        commands.entity(e).insert(MeshMaterial3d(handle));
+    }
 }
 
 /// Furniture (polymer stock/grip/handguard) colour per gun.
@@ -190,6 +244,15 @@ fn apply_finish(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pack_finish_scales_colour_and_roughness_within_range() {
+        let m = StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.9, metallic: 1.0, ..default() };
+        let t = tuned(&m, PackFinish { albedo: 0.5, roughness: 1.3 });
+        assert!((t.base_color.to_linear().red - 0.5).abs() < 1e-6);
+        assert!((t.perceptual_roughness - 1.17).abs() < 1e-5);
+        assert_eq!(t.metallic, 1.0);
+    }
 
     #[test]
     fn known_materials_get_finishes() {

@@ -1,0 +1,307 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "match.time_limit"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "pistol"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -22.07,
+   "z": -6.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -22.07,
+    1.2,
+    -12.4
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "pistol_lowbay"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -16
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.2,
+    -28
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "pistol_shade"
+ },
+ {
+  "cmd": "light.viewmodel"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "battlerifle"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -22.07,
+   "z": -6.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -22.07,
+    1.2,
+    -12.4
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "battlerifle_lowbay"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -16
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.2,
+    -28
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "battlerifle_shade"
+ },
+ {
+  "cmd": "light.viewmodel"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "shotgun"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -22.07,
+   "z": -6.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -22.07,
+    1.2,
+    -12.4
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "shotgun_lowbay"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -16
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.2,
+    -28
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "shotgun_shade"
+ },
+ {
+  "cmd": "light.viewmodel"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "sniper"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -22.07,
+   "z": -6.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -22.07,
+    1.2,
+    -12.4
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "sniper_lowbay"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -16
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.2,
+    -28
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "sniper_shade"
+ },
+ {
+  "cmd": "light.viewmodel"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "marksman"
+  }
+ },
+ {
+  "sleep": 1.5
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -22.07,
+   "z": -6.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -22.07,
+    1.2,
+    -12.4
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "marksman_lowbay"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 0,
+   "z": -16
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0,
+    1.2,
+    -28
+   ]
+  }
+ },
+ {
+  "sleep": 2.5
+ },
+ {
+  "shot": "marksman_shade"
+ },
+ {
+  "cmd": "light.viewmodel"
+ }
+]
