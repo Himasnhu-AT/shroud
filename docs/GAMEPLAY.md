@@ -92,6 +92,7 @@ maps by the lower-case variant (`office`), so a display rename never breaks eith
 | Move | WASD, Shift sprint, Space jump, Ctrl/C crouch (eye height 1.0 m) |
 | Look | mouse (cursor locked while playing; Esc releases) |
 | Shoot / reload | LMB / R |
+| Weapon light | T (on the gun, both camera styles; stays on across rounds) |
 | Plant bomb / take gun | hold E (in a site with the bomb: plant; a gun in reach wins) |
 | HP | 100 |
 
@@ -157,14 +158,21 @@ Crosshair, hit marker, HP, armor, money (with +/- changes), ammo, enemies left, 
 round N/5, freeze countdown, a "B Buy menu" hint while buying is possible, and **Generation N** in
 the corner.
 
-## Camera style: Bodycam (Settings → Video; off by default)
-Classic (crosshair, full HUD) is the default above. Bodycam (`bodycam/`) turns the round into chest-cam
-footage:
-- **Lens**: ~130° horizontal (100° vertical) plus one post pass after tonemapping: barrel
-  distortion (corners kept), radial chromatic aberration, unsharp mask, shadow-weighted sensor
-  grain at 30 Hz, heavy vignette (`bodycam_post.wesl`). Auto exposure adapts dark → bright fast
-  (3.5 EV/s) and bright → dark slowly (1.2 EV/s); AgX; bloom 0.28 where the quality tier has
-  bloom (High, Ultra).
+## Camera style: Bodycam (Settings → Video; the default)
+Bodycam (`bodycam/`) is the default camera style and turns the round into chest-cam footage.
+Classic (crosshair, full HUD, the HUD above) stays in Settings → Video. Settings files from before
+Nov 2026 switch to Bodycam once (`ShroudSettings::rev`); picking Classic afterwards sticks.
+- **Lens and sensor**: the engine's body camera (`engine::look::BodycamLook`, engine
+  docs/LOOK.md "Body camera"), `chest_cam` preset tuned in `bodycam::lens::chest_cam`, rendered
+  at 100° vertical (≈ 130° horizontal): a true fisheye (corners kept, centre magnified), a
+  metering exposure that lags, overshoots and clips (≈ 4 s to adapt into a dark room, faster
+  back out; it replaces auto exposure on the camera; the sensor's gain runs out at EV 3, so dark
+  rooms stay dark and noisy), crushed blacks and hard-clipped highlights, a little
+  desaturation, noise that grows in the dark, sharpening halos, motion smear and compression
+  blocks on fast turns, rolling shutter, edge chromatic aberration, vignette, halation around
+  what clips. What runs depends on the quality tier: Low fisheye + curve + vignette, Medium +
+  CA, sharpening, noise, High/Ultra + smear, blocks, rolling shutter; Ultra renders 1.25×
+  overscan. No pipeline rebuild when switching styles.
 - **Free aim**: the mouse moves the gun inside an 18° × 12° box; the camera follows only past
   its edge (stiffness 14, 35 aimed); ADS collapses the box so the sight lines up. Dutch roll
   from turning speed and strafing (±7°), a small vest shock per shot.
@@ -172,6 +180,8 @@ footage:
   wall (0.65 m of barrel past the body) the gun folds up to high ready. **Shots leave the
   muzzle along the barrel**, not the screen centre (no crosshair).
 - **HUD**: [REC] stamp with local time and a device id; no crosshair, health or ammo numbers.
+  The hit marker appears where the hit landed, mapped through the fisheye
+  (`engine::look::world_to_screen`), not at the screen centre.
   Money, timer, score, kill feed, freeze time and the buy menu stay (the round loop needs them).
   **Ammo check**: R on a full magazine turns the gun and shows the ammo panel for 2 s (it also
   shows while reloading). This replaces the spec's press-check animation (no arm rig yet).
@@ -179,13 +189,43 @@ footage:
   Chest (spec §2.1: 0.22 m lower, 0.08 m right, the dutch roll ×1.35, a side-to-side step bob
   and a breath). Only the view moves: shots still leave the barrel, and the body, hitboxes
   and every AI sight line stay at the head. Check: `scripts/bodycam-chest.json`.
+- **Weapon light** (both styles, **T**): the engine's `WeaponLight::tactical()` (a shadowed
+  spot plus a dim spill) riding the gun's rail just ahead of the muzzle and along the barrel
+  (`weapon::light`), so its hot spot is where the shots go and props throw thin hard shadows the
+  lens sees. It never loses its shadow to the lamp budget; the map lamps give up one shadow slot
+  while it shines. Lights don't change what the enemies perceive. Control port: `player.light {on?}`.
 - Muzzle flash light (both styles): one pooled 45 ms point light at the muzzle. It casts
   shadows (only while lit) on High and Ultra unless the render governor is cutting game
   levels; measured cost on High: p95 within ±0.3 ms on Ledger and Sirocco
   (`scripts/muzzle-shadows-perf.json`; dev A/B `muzzle.shadows {on}`).
 - Control port: `video.camera_style {style}`, `video.bodycam` (state, incl. `mount_offset`;
-  `{turn, strafe, fire, ms}` drives the player for screenshots). Visual check:
-  `scripts/bodycam.json`.
+  `{turn, strafe, fire, ms}` drives the player for screenshots); the engine's `look.get` /
+  `look.set` show and patch the live bodycam (`lens.bodycam`). Visual checks:
+  `scripts/bodycam.json`, `scripts/look-foundry.json`, `scripts/look-office.json`.
+
+## Lighting: per-map looks and baked light
+Each map has one engine `Look` (`map/look.rs`, `look_of`): sun, sky, fog, volumetric shafts
+(Foundry; Ultra only, they cost 5-6 ms GPU on High), exposure for Classic, grading like camera footage (`footage`: a little desaturated,
+contrasty mids, hot highlights; shade is cool because the blue sky lights it, sunlit faces warm).
+Sun and sky are in physical units (lux, cd/m²); flat ambient is only a fallback fill for maps
+without a bake. SSAO, contact shadows and TAA come with High and Ultra. Ledger (Office) is
+baked (draft quality, 4.8 MB in `assets/baked/office/`); Foundry is not yet. Lamp-out check:
+`scripts/bake-lamp-out.json`; looks: `scripts/look-foundry.json`, `scripts/look-office.json`;
+cost on High: `scripts/perf-render.json`.
+
+**Baked lighting** (`map/bake.rs`, engine docs/BAKE.md): lightmaps on the static level and one
+light-probe volume per map, from headless Blender, cached in `assets/baked/<map>/`
+(`MapId::Office` → `office`). A map without a cache keeps the look's ambient and sky light.
+- Static = every `ArenaPiece` (`Scenery`); moving things are `Actor` and never baked; lamp glows
+  are `NoBake`.
+- Map lamps are baked `Indirect`: direct light stays realtime (they can be shot out); their
+  bounce is baked and stays when one dies, until the round ends (a fraction of the fill at the
+  spot; see `bake.rs`). Sun and sky are baked (the sun's direct light stays realtime).
+- Probes: one box over the playable area, floor to the highest roof, ≤ 1.5 m apart.
+- Bake a map (Blender 4.2+ in /Applications): `python3 -I scripts/play.py
+  scripts/bake-<map>.json --out .tmp/bake` (scripts exist for Office and Foundry; copy one for
+  another map), then commit `assets/baked/<map>/`. A changed sun/sky/lamp or level geometry
+  makes the bake stale (`bake.status`): re-bake. `bake.unload` A/Bs it live.
 
 ## Breakable lights
 Every map lamp (`Decor::lamps`; its index is the lamp id) breaks when any bullet's path, the
