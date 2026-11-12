@@ -43,8 +43,13 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `textures/asphalt_wet/*` | Asphalt025C (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Asphalt025C | CC0 1.0 |
 | `textures/peeling_paint/*` | PaintedPlaster018 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedPlaster018 | CC0 1.0 |
 | `textures/ripstop/*` | Fabric061 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Fabric061 | CC0 1.0 |
+| `textures/gun_metal/*` | Metal029 (1K JPG: Color, NormalGL, Roughness): black powder-coated steel with scratches; gun receivers, barrels, slides | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Metal029 | CC0 1.0 |
+| `textures/gun_polymer/*` | Plastic012B (1K JPG: Color, NormalGL, Roughness): scuffed black plastic; gun furniture | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Plastic012B | CC0 1.0 |
+| `textures/glove_leather/*` | Leather032 (1K JPG: Color, NormalGL, Roughness): scratched black leather; first-person gloves, enemy gloves and boots | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Leather032 | CC0 1.0 |
+| `textures/cordura/*` | Fabric062 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion): tight woven nylon; enemy plate carriers and helmet covers (tinted per squad look) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Fabric062 | CC0 1.0 |
 
 Notes:
+- `gun_metal`, `gun_polymer`, `glove_leather` and `cordura` were fetched with the engine importer's ambientCG fetcher (`fetch_ambientcg` in `~/codes/game/engine/scripts/assets.py`: safe unzip, licence ledger entry `ambientcg`, CC0-1.0, fetched 2026-11-12) and cooked with the engine's cook.
 - ambientCG maps are renamed to `color.jpg`, `normal.jpg` (OpenGL convention), `rough.jpg` and `ao.jpg` and are otherwise unmodified. Mipmaps are built at load time (`gfx.rs`).
 - The Blaster Kit GLBs referenced their colour map as an external file (`Textures/colormap.png`). The texture was embedded into each GLB so the file is self-contained. Geometry and materials are otherwise unchanged.
 - The Kenney "Animated Characters" packs were checked and rejected: they only ship FBX and contain idle, run and jump clips, with no shoot or death.
@@ -153,6 +158,8 @@ Processed with ffmpeg (trim, pitch, filter, layering) and re-encoded to Vorbis.
 | `audio/battle_rifle_shot.ogg` | `rifle_shot` pitched down ×0.86, bass shelf and a 2.5 kHz presence bump | Kenney / this project | derived from the files above |
 | `audio/sniper_shot.ogg` | `marksman_shot` pitched down ×0.84 with a bass shelf + `shotgun_shot` ×0.9 underneath | Kenney / this project | derived from the files above |
 | `audio/casing_0..2.ogg` | Impact `impactMetal_light_000/001/003` and `impactGlass_light_001/002`, pitched up ×1.5–2.4, highpassed, layered as decaying bounces | Kenney / this project | https://kenney.nl/assets/impact-sounds |
+| `audio/bullet_crack_0..2.ogg` | Synthesized by `scripts/make-combat-sounds.py` (stdlib Python, seeded): an N-wave shock front, a bright whiz and a swept wake hiss | this project | n/a |
+| `audio/shot_tail_indoor.ogg`, `shot_tail_outdoor.ogg` | Synthesized by `scripts/make-combat-sounds.py`: room early reflections + a 0.45 s RT60 tail; an open-air rumble with two slap-back echoes | this project | n/a |
 
 ## Fonts (`fonts/*.ttf`), SIL Open Font License 1.1
 Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back to Bevy's built-in font if these are missing.

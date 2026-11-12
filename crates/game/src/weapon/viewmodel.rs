@@ -349,20 +349,17 @@ struct HandKit {
 impl HandKit {
     fn new(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Self {
         HandKit {
-            tube: meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(16).segments(1)),
-            ball: meshes.add(Sphere::new(1.0).mesh().uv(16, 10)),
-            capsule: meshes.add(Capsule3d::new(1.0, 2.0).mesh().rings(2).latitudes(8).longitudes(12)),
-            // Black tactical gloves (synthetic leather palm, rubber knuckle guard), coyote
-            // combat shirt, the player team's teal cuff band, a black field watch.
+            // Tangents: the glove and shirt materials are normal-mapped photoscans.
+            tube: meshes.add(tangents(Cylinder::new(1.0, 1.0).mesh().resolution(16).segments(1).build())),
+            ball: meshes.add(tangents(Sphere::new(1.0).mesh().uv(16, 10))),
+            capsule: meshes.add(tangents(Capsule3d::new(1.0, 2.0).mesh().rings(2).latitudes(8).longitudes(12).build())),
+            // Black tactical gloves (synthetic leather palm, rubber knuckle guard), a charcoal
+            // combat shirt with its cuff, a black field watch. Textured sets replace the glove
+            // and shirt when present (`glove_leather`, `sleeve_fabric`).
             glove: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), perceptual_roughness: 0.72, ..default() }),
             knuckle: materials.add(StandardMaterial { base_color: Color::srgb(0.035, 0.035, 0.04), perceptual_roughness: 0.5, ..default() }),
-            sleeve: materials.add(StandardMaterial { base_color: Color::srgb(0.34, 0.29, 0.21), perceptual_roughness: 0.9, ..default() }),
-            cuff: materials.add(StandardMaterial {
-                base_color: Color::srgb(0.08, 0.33, 0.3),
-                emissive: LinearRgba::rgb(0.01, 0.05, 0.045),
-                perceptual_roughness: 0.7,
-                ..default()
-            }),
+            sleeve: materials.add(StandardMaterial { base_color: Color::srgb(0.085, 0.088, 0.095), perceptual_roughness: 0.9, ..default() }),
+            cuff: materials.add(StandardMaterial { base_color: Color::srgb(0.07, 0.072, 0.078), perceptual_roughness: 0.9, ..default() }),
             watch_case: materials.add(StandardMaterial { base_color: Color::srgb(0.05, 0.05, 0.055), metallic: 0.6, perceptual_roughness: 0.4, ..default() }),
             watch_face: materials.add(StandardMaterial {
                 base_color: Color::srgb(0.02, 0.025, 0.02),
@@ -389,7 +386,12 @@ impl HandKit {
     }
 }
 
-/// A forearm from `wrist` running toward `elbow` (pivot space): glove cuff, team band, then a
+/// `m` with MikkTSpace tangents (kept as is if they can't be built).
+fn tangents(m: Mesh) -> Mesh {
+    m.clone().with_generated_tangents().unwrap_or(m)
+}
+
+/// A forearm from `wrist` running toward `elbow` (pivot space): glove gauntlet, shirt cuff, then a
 /// sleeve that widens toward the elbow. `watch`: a field watch on top of the wrist, facing
 /// `outward`.
 fn arm(commands: &mut Commands, k: &HandKit, gun: Entity, wrist: Vec3, elbow: Vec3, watch: Option<Vec3>) {
@@ -480,7 +482,7 @@ pub const MH_HANDS: &str = "models/metahuman/hands_mh.glb";
 struct MhHands {
     right: Handle<Mesh>,
     left: Handle<Mesh>,
-    skin: Handle<StandardMaterial>,
+    glove: Handle<StandardMaterial>,
 }
 
 /// Grip frame → gun space: the hand points from `wrist` to `palm`, palm facing `palm_normal`.
@@ -496,34 +498,48 @@ fn spawn_mh_hands(commands: &mut Commands, k: &HandKit, mh: &MhHands, f: &Fit, g
         commands.spawn((
             Name::new("arm"),
             Mesh3d(mesh.clone()),
-            MeshMaterial3d(mh.skin.clone()),
-            Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::splat(scale)),
+            MeshMaterial3d(mh.glove.clone()),
+            // A touch larger than the bare hand: the glove's thickness.
+            Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::splat(scale * 1.03)),
+            crate::meshprep::MeshPrep::Tangents,
             ChildOf(gun),
         ));
     };
-    // Bare wrists: the forearm's glove cuff becomes skin.
-    let bare = HandKit { glove: mh.skin.clone(), ..k.clone() };
     // Firing hand: palm on the right of the grip facing it, the hand rising from the wrist.
     let (palm, wrist) = (Vec3::new(0.026, -0.03, 0.012) * sc, Vec3::new(0.022, -0.06, 0.05) * sc);
     put(commands, &mh.right, palm, grip_rot(-Vec3::X, wrist, palm), sc);
-    arm(commands, &bare, gun, wrist, Vec3::new(0.2, -0.36, 0.36), None);
+    arm(commands, k, gun, wrist, Vec3::new(0.2, -0.36, 0.36), None);
     let s = f.support;
     if f.pistol {
         // Cupping the firing hand from the left.
         let (palm, wrist) = (s + Vec3::new(-0.018, -0.004, 0.0), s + Vec3::new(-0.02, -0.04, 0.04));
         put(commands, &mh.left, palm, grip_rot(Vec3::X, wrist, palm), sc);
-        arm(commands, &bare, gun, wrist, s + Vec3::new(-0.24, -0.36, 0.3), Some(Vec3::new(-1.0, 0.6, 0.0)));
+        arm(commands, k, gun, wrist, s + Vec3::new(-0.24, -0.36, 0.3), Some(Vec3::new(-1.0, 0.6, 0.0)));
     } else {
         // Palm up under the handguard, reaching forward.
         let (palm, wrist) = (s + Vec3::new(0.0, -0.04, 0.006), s + Vec3::new(-0.01, -0.05, 0.05));
         put(commands, &mh.left, palm, grip_rot(Vec3::Y, wrist, palm), 1.0);
-        arm(commands, &bare, gun, wrist, s + Vec3::new(-0.22, -0.34, 0.36), Some(Vec3::new(-1.0, 0.5, 0.0)));
+        arm(commands, k, gun, wrist, s + Vec3::new(-0.22, -0.34, 0.36), Some(Vec3::new(-1.0, 0.5, 0.0)));
     }
 }
 
-/// The combat shirt sleeves in the ripstop fabric set (coyote), if it is there.
+/// Black tactical gloves: the photoscanned leather set (`textures/glove_leather`, CC0), a fine
+/// grain at the hand's size.
+pub fn glove_leather(server: &AssetServer, dir: &AssetsDir, pending: &mut crate::gfx::PendingMips) -> Option<StandardMaterial> {
+    // The set averages 0.009 linear; x2.2 gives a black synthetic glove (~0.02), not a void,
+    // without lifting its pale creases into a web. A fine grain (10 repeats over the hand).
+    crate::gfx::load_pbr(server, dir, pending, "glove_leather", Color::LinearRgba(LinearRgba::rgb(2.2, 2.2, 2.3))).map(|m| StandardMaterial {
+        uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(10.0)),
+        perceptual_roughness: 0.85,
+        reflectance: 0.4,
+        ..m
+    })
+}
+
+/// The combat shirt sleeves in the ripstop fabric set (charcoal, like a patrol uniform under a
+/// body camera), if it is there.
 pub fn sleeve_fabric(server: &AssetServer, dir: &AssetsDir, pending: &mut crate::gfx::PendingMips) -> Option<StandardMaterial> {
-    let tint = crate::enemy::skin::fabric_tint(Color::srgb(0.34, 0.29, 0.21));
+    let tint = crate::enemy::skin::fabric_tint(Color::srgb(0.085, 0.088, 0.095));
     crate::gfx::load_pbr(server, dir, pending, "ripstop", tint)
         .map(|m| StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(Vec2::new(2.0, 3.0)), perceptual_roughness: 1.0, ..m })
 }
@@ -540,6 +556,10 @@ pub struct ViewModel {
     kick_vel: f32,
     jitter: f32,
     sway: Vec2,
+    sway_vel: Vec2,
+    /// Body motion the gun lags behind (smoothed, -1..1): sideways and vertical.
+    strafe: f32,
+    rise: f32,
     last_look: Option<Vec2>,
     bob_phase: f32,
     bob_amp: f32,
@@ -598,6 +618,17 @@ impl Default for Spring3 {
     }
 }
 
+/// Look-sway spring stiffness per gun: light guns snap back, long heavy ones swing.
+fn sway_stiffness(kind: WeaponKind) -> f32 {
+    match kind {
+        WeaponKind::Pistol | WeaponKind::HeavyPistol => 150.0,
+        WeaponKind::Smg => 125.0,
+        WeaponKind::Rifle | WeaponKind::BattleRifle => 100.0,
+        WeaponKind::Shotgun => 90.0,
+        WeaponKind::Marksman | WeaponKind::Sniper => 70.0,
+    }
+}
+
 /// Spec §3.1: translation k 210 d 16, rotation k 180 d 14.
 fn rig_springs() -> (Spring3, Spring3) {
     (Spring3::new(210.0, 16.0), Spring3::new(180.0, 14.0))
@@ -644,13 +675,24 @@ fn spawn_viewmodel(
         ))
         .id();
     let mut hands = HandKit::new(&mut meshes, &mut materials);
-    if let Some(m) = pending.and_then(|mut p| sleeve_fabric(&asset_server, &assets_dir, &mut p)) {
-        hands.sleeve = materials.add(m);
+    let mut pending = pending;
+    if let Some(p) = pending.as_deref_mut() {
+        if let Some(m) = sleeve_fabric(&asset_server, &assets_dir, p) {
+            hands.sleeve = materials.add(m);
+            // The cuff is the same shirt, a shade darker where the glove gauntlet tucks in.
+            let mut cuff = materials.get(&hands.sleeve).cloned().unwrap_or_default();
+            cuff.base_color = cuff.base_color.darker(0.02);
+            hands.cuff = materials.add(cuff);
+        }
+        if let Some(m) = glove_leather(&asset_server, &assets_dir, p) {
+            hands.glove = materials.add(m);
+        }
     }
     let mh = assets_dir.has(MH_HANDS).then(|| MhHands {
         right: asset_server.load(bevy::gltf::GltfAssetLabel::Primitive { mesh: 0, primitive: 0 }.from_asset(MH_HANDS)),
         left: asset_server.load(bevy::gltf::GltfAssetLabel::Primitive { mesh: 1, primitive: 0 }.from_asset(MH_HANDS)),
-        skin: materials.add(StandardMaterial { base_color: Color::srgb(0.76, 0.58, 0.48), perceptual_roughness: 0.5, reflectance: 0.35, ..default() }),
+        // Gloved: black synthetic leather over the MetaHuman hand's shape.
+        glove: hands.glove.clone(),
     });
     // Primitive fallback, shared by every gun that has no model file.
     let mut prim: Option<(Handle<StandardMaterial>, Handle<StandardMaterial>)> = None;
@@ -817,12 +859,22 @@ fn animate_viewmodel(
         }
     }
 
-    // Look sway: the gun lags behind look rotation.
+    // Look sway: the gun lags behind look rotation on a spring, so a heavy gun swings past and
+    // settles (a little overshoot) where a pistol snaps back.
     let look_now = Vec2::new(look.yaw, look.pitch);
     let rate = vm.last_look.map_or(Vec2::ZERO, |l| (look_now - l) / dt);
     vm.last_look = Some(look_now);
     let target = (rate * 0.012).clamp(Vec2::splat(-0.06), Vec2::splat(0.06));
-    vm.sway = vm.sway.lerp(target, approach(10.0, dt));
+    let stiff = sway_stiffness(w.kind);
+    let damp = 2.0 * 0.72 * stiff.sqrt();
+    let acc = (target - vm.sway) * stiff - vm.sway_vel * damp;
+    vm.sway_vel += acc * dt;
+    let sway_vel = vm.sway_vel;
+    vm.sway += sway_vel * dt;
+    // Body inertia: moving sideways leaves the gun behind and tilts it; falling lifts it.
+    let local_v = Quat::from_rotation_y(-look.yaw) * motor.velocity;
+    vm.strafe += ((local_v.x / 6.0).clamp(-1.0, 1.0) - vm.strafe) * approach(6.0, dt);
+    vm.rise += ((motor.velocity.y / 6.0).clamp(-1.0, 1.0) - vm.rise) * approach(8.0, dt);
 
     // Bob: figure-eight while walking on the ground; bigger sprinting, tiny aimed.
     let speed = Vec2::new(motor.velocity.x, motor.velocity.z).length();
@@ -939,7 +991,8 @@ fn animate_viewmodel(
         + Vec3::new(-0.05 * sprint, -0.07 * sprint, 0.04 * sprint)
         + Vec3::new(-0.08 * insp, 0.03 * insp, 0.02 * insp)
         + Vec3::new(0.0, -0.28 * lowered, 0.06 * lowered)
-        + Vec3::new(0.0, -0.05 * w_push, w_push * 0.6);
+        + Vec3::new(0.0, -0.05 * w_push, w_push * 0.6)
+        + Vec3::new(-0.012 * vm.strafe, -0.014 * vm.rise, 0.0) * (1.0 - 0.6 * a);
     let rot = Quat::from_euler(
         EulerRot::YXZ,
         vm.sway.x * 1.2 * (1.0 - 0.7 * a) + vm.jitter * 0.012 + 0.55 * sprint + 0.9 * insp + insp_wiggle * insp,
@@ -947,7 +1000,8 @@ fn animate_viewmodel(
             + if bolt { 0.06 * cyc } else { 0.1 * cyc }
             - 0.04 * vm.land,
         vm.sway.x * 1.6 * (1.0 - 0.8 * a) + vm.jitter * 0.03 + 0.5 * rl + if bolt { 0.35 * cyc } else { 0.0 } - 0.35 * lowered + 0.25 * sprint
-            - 0.45 * insp,
+            - 0.45 * insp
+            - 0.07 * vm.strafe * (1.0 - 0.6 * a),
     );
     let (pos, rot) = if body {
         // Chest cam: the gun sits nearer the middle of the frame, held lower.

@@ -21,6 +21,7 @@ mod evolving;
 mod gfx;
 mod map;
 mod match_flow;
+mod meshprep;
 mod menu;
 mod player;
 mod save;
@@ -65,6 +66,6 @@ fn main() {
             ui::UiPlugin,
             bodycam::BodycamPlugin,
         ))
-        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
+        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin, meshprep::MeshPrepPlugin))
         .run();
 }

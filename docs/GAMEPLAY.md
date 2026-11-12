@@ -152,6 +152,31 @@ Hitscan with spread, recoil kick and range falloff; rifles, scopes and the Warde
 cover. Grenades: frag $300, flashbang $200 (carry 2), smoke $300. Enemy hits use the fixed
 fairness damage, scaled only by difficulty (see [AI.md](AI.md) §5).
 
+### Combat feel (visual and sound only; no stat above depends on it)
+- **People.** The enemy is the MetaHuman (`assets/models/metahuman/enemy_mh.glb`, local only)
+  whenever it exists, else the CC0 mannequin. Over its uniform: loose ripstop trouser legs and
+  sleeves on the limb bones, combat boots fitted to the feet, leather gloves, a nylon (cordura)
+  plate carrier and helmet cover per squad look (`enemy/skin.rs`). Animation: aim offsets
+  (Up/Neutral/Down blend + spine look-at), pelvis twist for strafing, hit reacts on chest and
+  head, deaths that fall away from the shot (`enemy/animation.rs`).
+- **First person.** MetaHuman hands in black leather gloves, a charcoal combat shirt
+  (`weapon/viewmodel.rs`). Guns are photoscanned black coated steel and scuffed polymer on
+  box-projected UVs (`weapon/finish.rs`, `meshprep.rs`). Recoil kick and recovery, look sway on a
+  per-gun spring (heavier guns swing further), lag when strafing or falling, sprint pose,
+  reloads that drop the spent magazine (it lies on the floor for 12 s).
+- **Bullets** (`weapon/fx.rs`): per-surface impacts (concrete/plaster dust and chips, metal
+  sparks, wood splinters) and persistent bullet holes (96 pooled decals, oldest reused; generated
+  textures in `weapon/fx/decals.rs`); a muzzle flash with a short real light (shadowed on High and
+  Ultra only while lit); brass that tumbles and bounces with its tinkle; a tracer on about one
+  round in three. Hits on people: a short blood mist and droplets, spatter on the surface behind
+  (≤ 2.6 m) and sometimes drops below. **Settings → Gameplay → Blood** (on by default) turns
+  that into a grey puff with no decals.
+- **Sound.** Enemy rounds passing close crack (supersonic N-wave + whiz); the player's shots
+  carry a room tail under a roof and an open-air rumble with slap-back outside
+  (`weapon/sound.rs`; the layers are made by `scripts/make-combat-sounds.py`).
+- Close-up checks: `scripts/combat-look.json`, `impacts-look.json`, `reload-look.json`;
+  cost: `scripts/combat-perf.json` ([PERF.md](PERF.md)).
+
 ## HUD
 Crosshair, hit marker, HP, armor, money (with +/- changes), ammo, enemies left, round score and
 round N/5, freeze countdown, a "B Buy menu" hint while buying is possible, and **Generation N** in
