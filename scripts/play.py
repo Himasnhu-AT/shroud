@@ -177,7 +177,7 @@ def main():
             else:
                 req = {"command": st["cmd"], "params": st.get("params", {})}
             f.write(json.dumps({"id": n, "key": key, "method": "engine.execute", "params": req}) + "\n"); f.flush()
-            print(f.readline().strip()[:2000], flush=True)
+            print(f.readline().strip()[:int(os.environ.get("PLAY_REPLY_MAX", "2000"))], flush=True)
         f.write(json.dumps({"id": 0, "key": key, "method": "engine.execute", "params": {"command": "game.quit"}}) + "\n"); f.flush()
         f.readline()
     finally:
