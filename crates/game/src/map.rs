@@ -325,6 +325,7 @@ fn map_info_command(world: &mut World, _: serde_json::Value) -> Result<serde_jso
     let a = &world.resource::<ArenaRes>().0;
     Ok(serde_json::json!({
         "map": a.id.label(),
+        "half": a.half(),
         "blocks": a.blocks.len(),
         "cover": a.cover.len(),
         "player_spawn": [a.player_spawn.x, a.player_spawn.y],

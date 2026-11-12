@@ -30,6 +30,7 @@ pub mod fx;
 pub mod light;
 pub mod pickups;
 pub mod throwing;
+mod warm;
 pub mod finish;
 mod sound;
 pub mod viewmodel;
@@ -69,6 +70,7 @@ impl Plugin for WeaponPlugin {
         finish::build(app);
         fx::build(app);
         light::build(app);
+        warm::build(app);
         pickups::build(app);
         throwing::build(app);
         sound::build(app);
