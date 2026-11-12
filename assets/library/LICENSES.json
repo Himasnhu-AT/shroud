@@ -1,4 +1,11 @@
 {
+  "characters/outfit-tactical-soldier": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7",
+    "author": "RMDavid",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
   "decals/acg-leaking001": {
     "author": "ambientCG (Lennart Demes)",
     "fetched": "2026-11-12",
@@ -59,6 +66,13 @@
     "source": "fab",
     "url": "https://www.fab.com/listings/c0761ef9-a19c-415b-a5c0-efe2ad238c4f",
     "author": "the 9th Earl",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "misc/gun-pistol9mm": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732",
+    "author": "DTry",
     "license": "fab-standard",
     "fetched": "2026-11-12"
   },
