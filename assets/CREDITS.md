@@ -77,7 +77,6 @@ to re-cook.
 | `library/props/ph-industrial-wall-lamp/` | glTF with 1k JPG textures, unmodified | Kuutti Siitonen | https://polyhaven.com/a/industrial_wall_lamp | CC0 1.0 |
 | `library/props/ph-metal-jerrycan/` | glTF with 1k JPG textures, unmodified | Sean Buckley | https://polyhaven.com/a/metal_jerrycan | CC0 1.0 |
 | `library/props/ph-old-tyre/` | glTF with 1k JPG textures, unmodified | MP | https://polyhaven.com/a/old_tyre | CC0 1.0 |
-| `library/props/ph-power-box-01/` | glTF with 1k JPG textures, unmodified | Rico Cilliers, Yann Kervran | https://polyhaven.com/a/power_box_01 | CC0 1.0 |
 | `library/props/ph-propane-tank/` | glTF with 1k JPG textures, unmodified | Slinc | https://polyhaven.com/a/propane_tank | CC0 1.0 |
 | `library/props/ph-utility-box-02/` | glTF with 1k JPG textures, unmodified | James Ray Cock | https://polyhaven.com/a/utility_box_02 | CC0 1.0 |
 | `library/textures/ph-asphalt-02/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/asphalt_02 | CC0 1.0 |
