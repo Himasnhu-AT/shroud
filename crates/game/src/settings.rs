@@ -126,6 +126,8 @@ impl ShroudSettings {
         for c in &mut self.crosshair_color {
             *c = c.clamp(0.0, 1.0);
         }
+        // A map the menu no longer lists (not realism-ready) falls back to one it does.
+        self.map = self.map.or_listed();
         // Migrations, once per file.
         if self.rev < 1 {
             self.camera_style = CameraStyle::Bodycam;
@@ -140,7 +142,11 @@ impl ShroudSettings {
 fn sanitize_loaded(world: &mut World) {
     let mut g = world.resource_mut::<ShroudSettings>();
     let old_rev = g.rev;
-    let clean = g.clone().sanitized();
+    let mut clean = g.clone().sanitized();
+    // `--map <name>`: play any map, hidden ones included, for testing (`MapId::realism_ready`).
+    if let Some(id) = map_override(engine::cli::arg_value("map").as_deref()) {
+        clean.map = id;
+    }
     g.set_if_neq(clean);
     let mut core = world.resource_mut::<engine::settings::CoreSettings>();
     let q = quality_after_migration(old_rev, core.quality);
@@ -152,6 +158,17 @@ fn sanitize_loaded(world: &mut World) {
     if core.sensitivity != sens {
         core.sensitivity = sens;
     }
+}
+
+/// The map named by `--map <name>` (any map, listed or not), if it names one.
+fn map_override(arg: Option<&str>) -> Option<MapId> {
+    let name = arg?;
+    let id = MapId::from_name(name);
+    match id {
+        Some(id) => info!("map: {} from --map", id.label()),
+        None => warn!("map: unknown --map `{name}`; using the saved map"),
+    }
+    id
 }
 
 pub const CROSSHAIR_COLORS: [[f32; 3]; 6] =
@@ -215,7 +232,8 @@ fn register_fields(app: &mut App) {
         f.hint = QUALITY_HINT;
     }
     let difficulties = Difficulty::ALL.iter().map(|d| (d.label(), d.blurb())).collect();
-    let maps = MapId::ALL.iter().map(|m| (m.label(), m.blurb())).collect();
+    // Only realism-ready maps are offered (`MapId::listed`); the rest stay in code.
+    let maps = MapId::listed().iter().map(|m| (m.label(), m.blurb())).collect();
     app.register_setting(FieldDef {
         key: "difficulty",
         tab: "Gameplay",
@@ -232,8 +250,8 @@ fn register_fields(app: &mut App) {
         label: "Map",
         hint: "",
         kind: FieldKind::Cards { options: maps },
-        get: |w| index_of(&MapId::ALL, &s(w).map),
-        set: |w, v| s_mut(w).map = pick(&MapId::ALL, v),
+        get: |w| index_of(&MapId::listed(), &s(w).map),
+        set: |w, v| s_mut(w).map = pick(&MapId::listed(), v),
     })
     .register_setting(FieldDef {
         key: "show_callouts",
@@ -347,10 +365,32 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_hidden_map_falls_back_to_foundry() {
+        // Saved before the map list was cut down to realism-ready maps.
+        let old: ShroudSettings = serde_json::from_str(r#"{"map":"Gantry","rev":1}"#).unwrap();
+        assert_eq!(old.map, MapId::Gantry);
+        assert_eq!(old.sanitized().map, MapId::Foundry);
+        let ready: ShroudSettings = serde_json::from_str(r#"{"map":"Foundry","rev":1}"#).unwrap();
+        assert_eq!(ready.sanitized().map, MapId::Foundry);
+        for m in MapId::ALL {
+            let s = ShroudSettings { map: m, ..Default::default() }.sanitized();
+            assert!(MapId::listed().contains(&s.map), "{m:?} sanitizes to a listed map");
+        }
+    }
+
+    #[test]
+    fn map_flag_reaches_hidden_maps() {
+        assert_eq!(map_override(Some("gantry")), Some(MapId::Gantry));
+        assert_eq!(map_override(Some("Ledger")), Some(MapId::Office));
+        assert_eq!(map_override(Some("nuke")), None);
+        assert_eq!(map_override(None), None);
+    }
+
+    #[test]
     fn plugin_clamps_a_hand_edited_settings_file() {
         let dir = std::env::temp_dir().join(format!("shroud-settings-clamp-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("settings.json"), r#"{"core":{"fov_deg":0.0,"sensitivity":9.0},"game":{"crosshair_size":50.0}}"#).unwrap();
+        std::fs::write(dir.join("settings.json"), r#"{"core":{"fov_deg":0.0,"sensitivity":9.0},"game":{"crosshair_size":50.0,"map":"Sirocco"}}"#).unwrap();
         let mut app = App::new();
         app.insert_resource(engine::paths::DataDir(dir.clone()));
         app.add_plugins(engine::settings::CoreSettingsPlugin);
@@ -359,6 +399,7 @@ mod tests {
         assert_eq!(core.fov_deg, 60.0);
         assert_eq!(core.sensitivity, SENSITIVITY_RANGE.1);
         assert_eq!(app.world().resource::<ShroudSettings>().crosshair_size, 2.0);
+        assert_eq!(app.world().resource::<ShroudSettings>().map, MapId::Foundry, "a hidden saved map falls back");
         let _ = std::fs::remove_dir_all(dir);
     }
 

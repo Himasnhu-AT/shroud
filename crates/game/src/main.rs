@@ -25,6 +25,7 @@ mod match_flow;
 mod meshprep;
 mod menu;
 mod player;
+mod practice;
 mod quality;
 mod save;
 mod settings;
@@ -70,6 +71,6 @@ fn main() {
             quality::QualityPlugin,
             loading::LoadingPlugin,
         ))
-        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin, meshprep::MeshPrepPlugin))
+        .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin, meshprep::MeshPrepPlugin, practice::PracticePlugin))
         .run();
 }

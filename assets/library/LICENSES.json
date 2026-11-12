@@ -1,4 +1,18 @@
 {
+  "characters/helmet-military": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/6c747a89-ceb4-4147-a154-801c6dbb1846",
+    "author": "CG Vertexium",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "characters/outfit-tactical-soldier": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7",
+    "author": "RMDavid",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
   "decals/acg-leaking001": {
     "author": "ambientCG (Lennart Demes)",
     "fetched": "2026-11-12",
@@ -33,6 +47,48 @@
     "license": "CC0-1.0",
     "source": "other",
     "url": "https://ambientcg.com/view?id=TireTracks001"
+  },
+  "misc/gun-10mm-smg": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973",
+    "author": "Kratos2025",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "misc/gun-aks": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/587e3f02-f8a1-4a3d-8b35-3394e793cfc5",
+    "author": "SpatialNeglect",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "misc/gun-ar15": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c",
+    "author": "SpatialNeglect",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "misc/gun-model12-shotgun": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/c0761ef9-a19c-415b-a5c0-efe2ad238c4f",
+    "author": "the 9th Earl",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "misc/gun-pistol9mm": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732",
+    "author": "DTry",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "misc/gun-sv98": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b",
+    "author": "SpatialNeglect",
+    "license": "CC-BY-4.0",
+    "fetched": "2026-11-12"
   },
   "props/ph-barrel-01": {
     "author": "Jorge Camacho",

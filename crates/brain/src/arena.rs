@@ -201,6 +201,40 @@ pub enum MapId {
 impl MapId {
     /// Menu order: the bomb-site maps first. Saves store the variant name, so order is free.
     pub const ALL: [MapId; 6] = [MapId::Sirocco, MapId::Gantry, MapId::Depot, MapId::Township, MapId::Office, MapId::Foundry];
+
+    /// The map has had the realism pass (photoscanned surfaces, props and grime, baked
+    /// lighting) and may be offered to players. Maps without it stay in code, tests and the AI
+    /// trainer, and are reachable in dev builds (`map.load`) or with `--map <name>`, but the
+    /// menu doesn't list them. Flip a map to `true` when its pass is done.
+    pub fn realism_ready(self) -> bool {
+        match self {
+            MapId::Foundry => true,
+            // Ledger has baked lighting but no photoscanned surfaces yet.
+            MapId::Office => false,
+            MapId::Depot | MapId::Township | MapId::Sirocco | MapId::Gantry => false,
+        }
+    }
+
+    /// The maps players can pick: [`MapId::ALL`] order, ready maps only.
+    pub fn listed() -> Vec<MapId> {
+        MapId::ALL.into_iter().filter(|m| m.realism_ready()).collect()
+    }
+
+    /// The map players get when a saved one isn't listed.
+    pub const FALLBACK: MapId = MapId::Foundry;
+
+    /// `self` if players may pick it, else [`MapId::FALLBACK`].
+    pub fn or_listed(self) -> MapId {
+        if self.realism_ready() { self } else { MapId::FALLBACK }
+    }
+
+    /// Parse a display label or the stable variant name, case-insensitively ("Ledger" and
+    /// "office" both give [`MapId::Office`]).
+    pub fn from_name(name: &str) -> Option<MapId> {
+        let n = name.trim();
+        MapId::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(n) || format!("{m:?}").eq_ignore_ascii_case(n))
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             MapId::Foundry => "Foundry",
@@ -1307,5 +1341,35 @@ impl Arena {
         }
         let lim = self.half - radius;
         V2::new(p.x.clamp(-lim, lim), p.y.clamp(-lim, lim))
+    }
+}
+
+#[cfg(test)]
+mod map_list_tests {
+    use super::MapId;
+
+    #[test]
+    fn only_ready_maps_are_listed_and_hidden_ones_fall_back() {
+        let listed = MapId::listed();
+        assert!(listed.contains(&MapId::Foundry), "Foundry has had the realism pass");
+        assert!(listed.iter().all(|m| m.realism_ready()));
+        assert!(MapId::FALLBACK.realism_ready(), "the fallback must be a listed map");
+        // Every map either is listed or falls back to a listed one.
+        for m in MapId::ALL {
+            assert_eq!(listed.contains(&m), m.realism_ready());
+            assert!(listed.contains(&m.or_listed()));
+            if !m.realism_ready() {
+                assert_eq!(m.or_listed(), MapId::FALLBACK);
+            }
+        }
+        assert_eq!(MapId::default(), MapId::FALLBACK, "new players start on a listed map");
+    }
+
+    #[test]
+    fn names_parse_by_label_or_variant() {
+        assert_eq!(MapId::from_name("ledger"), Some(MapId::Office));
+        assert_eq!(MapId::from_name(" Office "), Some(MapId::Office));
+        assert_eq!(MapId::from_name("GANTRY"), Some(MapId::Gantry));
+        assert_eq!(MapId::from_name("nuke"), None);
     }
 }

@@ -19,3 +19,11 @@ graft/.cache/
 /assets/library/textures/**/*.png
 /assets/library/decals/**/*.jpg
 /assets/library/decals/**/*.png
+
+# Gun packs under a no-redistribution licence (Fab / Sketchfab Standard): local only.
+/assets/models/weapons/hd/
+
+# Fab Standard (Personal) guns and outfits: not redistributable; local only, ledger committed.
+/assets/library/misc/
+/assets/library/characters/
+/assets/models/gear/

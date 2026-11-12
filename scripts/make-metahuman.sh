@@ -29,3 +29,5 @@ CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/codes/game/engine/target}" cargo run
   --clips "$CLIPS" --body "$BODY" --head "$HEAD" --body-lod 1 --head-lod 1 \
   --anim assets/models/enemy.glb --anim assets/models/ual2/UAL2_Standard.glb \
   ${TEX[@]+"${TEX[@]}"} --hands-out assets/models/metahuman/hands_mh.glb --name MetaHumanEnemy -o assets/models/metahuman/enemy_mh.glb
+# Clothing and gear skinned to this skeleton (headless Blender; skipped without Blender).
+if [ -x "${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}" ]; then scripts/make-gear-mh.sh; fi

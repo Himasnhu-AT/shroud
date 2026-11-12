@@ -49,9 +49,17 @@ fn props(p: &[(&'static str, Prop)]) -> Vec<(&'static str, engine::trace::Prop)>
 /// when tracing is off.
 pub fn trace(world: &World, name: &'static str, p: &[(&'static str, Prop)]) {
     #[cfg(feature = "telemetry")]
-    engine::trace::trace_event(world, name, &props(p));
+    if !practice_drops(world.get_resource::<crate::practice::Practice>().is_some_and(|pr| pr.on), name) {
+        engine::trace::trace_event(world, name, &props(p));
+    }
     #[cfg(not(feature = "telemetry"))]
     let _ = (world, name, p);
+}
+
+/// Practice records no match events: only `practice.*` trace events go out while it is on.
+#[cfg_attr(not(feature = "telemetry"), allow(dead_code))]
+pub fn practice_drops(practice: bool, name: &str) -> bool {
+    practice && !name.starts_with("practice.")
 }
 
 /// Session log + trace from systems. Every method is a no-op without `dev`.
@@ -61,6 +69,8 @@ pub struct Dev<'w> {
     log: Option<Res<'w, engine::devtools::SessionLog>>,
     #[cfg(feature = "telemetry")]
     tracer: Option<Res<'w, engine::trace::GameTracer>>,
+    #[cfg(feature = "telemetry")]
+    practice: Option<Res<'w, crate::practice::Practice>>,
     _p: PhantomData<&'w ()>,
 }
 
@@ -77,7 +87,9 @@ impl Dev<'_> {
 
     pub fn trace(&self, name: &'static str, p: &[(&'static str, Prop)]) {
         #[cfg(feature = "telemetry")]
-        if let Some(t) = &self.tracer {
+        if let Some(t) = &self.tracer
+            && !practice_drops(self.practice.as_ref().is_some_and(|pr| pr.on), name)
+        {
             engine::trace::trace_event(t, name, &props(p));
         }
         #[cfg(not(feature = "telemetry"))]
@@ -103,7 +115,7 @@ fn build_telemetry(app: &mut App) {
     use engine::settings::{FieldDef, FieldKind, RegisterSettings};
     use engine::trace::{GameTracer, TraceAppExt, reporting, set_reporting};
 
-    app.declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset", "bomb.planted", "bomb.defused", "bomb.exploded", "career.objectives", "career.objective", "career.credited", "career.promoted"])
+    app.declare_trace_events(&["match.start", "match.end", "round.end", "player.died", "ai.evolved", "ai.reset", "bomb.planted", "bomb.defused", "bomb.exploded", "career.objectives", "career.objective", "career.credited", "career.promoted", "practice.start"])
         .register_setting(FieldDef {
             key: "send_reports",
             tab: "Gameplay",

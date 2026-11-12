@@ -7,6 +7,21 @@
 difficulty) → "Start match". Rounds are bomb defusal (see Objective below). No respawns within a round. Full HP and refilled ammo each round. The squad only evolves *between
 matches*, and only in technique.
 
+**Practice** (`practice.rs`): main menu "Practice" → map cards → "Start practice". The chosen map
+with the squad as **statues** on every enemy spawn and each bomb site's centre, facing the player's
+spawn: real enemies (MetaHuman, their evolved guns, vest + helmet, hitboxes, impacts, blood, death
+fall) with the AI off: no movement, fire, perception or reaction. No round timer, no freeze time,
+no round end; money stays at $16,000 and buying works anywhere at any time; reserve ammo refills;
+the kit starts with the pistol and one of each grenade. **H** (or pause → "Reset targets") stands
+every target up again; fallen ones stay down until then. If the player dies (own frag, the bomb), they
+respawn at the spawn after 2.5 s with their kit. HUD: "PRACTICE · targets don't fight back" with the
+reset key, in place of the score and clock. **Nothing is recorded:** with `Practice` on, the match
+flow (no match/round start or end, so no report and no `Evolving`), the AI and squad doctrine
+(`EnemySet`, `finish_round`), the player-model telemetry, the career (objectives, XP) and the
+economy's round start don't run, and only `practice.*` trace events are sent (`practice.start`).
+`tests/control.rs` checks it. Control port (dev): `practice.start {map}`, `practice.reset`,
+`practice.state` (targets, plus the counters a match would have moved).
+
 ## Round economy (`economy.rs`, rules in `brain::economy`)
 - **Freeze time** (8 s) at round start: look and buy, no moving or firing; the squad holds too. The
   HUD timer shows the countdown. Headless/test-driven runs have none (`round.freeze` sets it).
@@ -27,7 +42,12 @@ matches*, and only in technique.
   {seconds}`. Visual check: `scripts/buy-round.json`.
 
 ## Maps (flat, 64–90 m; `brain::arena::Arena::build(MapId)`)
-Picked in the menu (`Settings.map`); the map switches when a new match starts. All maps are
+Picked in the menu (`Settings.map`); the map switches when a new match starts. **The menu lists
+only maps with the realism pass** (`MapId::realism_ready`, photoscanned surfaces, props and grime,
+baked lighting): **Foundry** today. Ledger has baked light but no photoscans; Sirocco, Gantry,
+Township and Depot have the old look. Hidden maps stay in code, tests and the trainer, and load
+with `map.load` (dev builds) or `--map <name>` (any build); a saved hidden map falls back to
+Foundry. Flip the flag in `brain::arena` when a map's pass is done. All maps are
 axis-aligned boxes so the 2D AI and trainer see the same layout as the 3D game. Low cover is 1.1 m:
 crouch behind it to hide, stand to shoot over it. Every map is a **bomb-defusal** layout: the player
 (attacker) spawns south inside an orange border; the squad (6+ spawns) defends north inside a blue
@@ -155,13 +175,20 @@ fairness damage, scaled only by difficulty (see [AI.md](AI.md) §5).
 
 ### Combat feel (visual and sound only; no stat above depends on it)
 - **People.** The enemy is the MetaHuman (`assets/models/metahuman/enemy_mh.glb`, local only)
-  whenever it exists, else the CC0 mannequin. Over its uniform: loose ripstop trouser legs and
-  sleeves on the limb bones, combat boots fitted to the feet, leather gloves, a nylon (cordura)
-  plate carrier and helmet cover per squad look (`enemy/skin.rs`). Animation: aim offsets
+  whenever it exists, else the CC0 mannequin. With `gear_mh.glb` (`scripts/make-gear-mh.sh`,
+  local only) it wears skinned clothing bound to its own bones: a combat shirt and cargo trousers
+  made from the body's surface (relaxed, folds at knees, elbows and boot tops, cargo pockets),
+  boots, gloves, a black balaclava with an eye slot and neck gaiter, a plate carrier with
+  MOLLE, magazine and admin pouches, a belt, knee pads, a high-cut helmet (rails, NVG shroud,
+  chin strap) and the squad's pack; tinted per squad look (`enemy/skin.rs`). Without it: loose
+  ripstop tubes, primitive boots, gloves, carrier and helmet. Enemy guns are the low-detail
+  model (the high one within 4 m). Animation: aim offsets
   (Up/Neutral/Down blend + spine look-at), pelvis twist for strafing, hit reacts on chest and
   head, deaths that fall away from the shot (`enemy/animation.rs`).
 - **First person.** MetaHuman hands in black leather gloves, a charcoal combat shirt
-  (`weapon/viewmodel.rs`). Guns are photoscanned black coated steel and scuffed polymer on
+  (`weapon/viewmodel.rs`). Guns have two detail tiers by data (`viewmodel::fit`, built-in CC0
+  table plus `assets/models/weapons/guns.json` for downloaded packs): the hands always hold the
+  high model; pickups show it within 6 m and cross-fade to the low one beyond. Guns are photoscanned black coated steel and scuffed polymer on
   box-projected UVs (`weapon/finish.rs`, `meshprep.rs`). Recoil kick and recovery, look sway on a
   per-gun spring (heavier guns swing further), lag when strafing or falling, sprint pose,
   reloads that drop the spent magazine (it lies on the floor for 12 s).

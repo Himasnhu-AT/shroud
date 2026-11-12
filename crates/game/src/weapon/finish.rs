@@ -25,8 +25,6 @@ use crate::meshprep::MeshPrep;
 
 /// Real-world size of one texture tile on a gun (m).
 const TILE_M: f32 = 0.22;
-/// Gun model units to metres (the set's rigs carry a 100x scale).
-const UNIT_M: f32 = 100.0;
 /// Linear albedo averages of the sets' colour maps (`color.avg`), divided out of the tints.
 const METAL_AVG: f32 = 0.015;
 const POLYMER_AVG: f32 = 0.018;
@@ -48,8 +46,13 @@ fn load_sets(mut commands: Commands, server: Option<Res<AssetServer>>, dir: Opti
 }
 
 /// On a gun scene root (or an optic mounted on it): its meshes get `kind`'s finish.
+/// `mesh_m`: metres per mesh unit (Pichuliru's rigs carry a 100x scale; generated LODs are in
+/// metres), so the photoscan tiles at [`TILE_M`] on every tier.
 #[derive(Component, Clone, Copy)]
-pub struct GunFinish(pub WeaponKind);
+pub struct GunFinish {
+    pub kind: WeaponKind,
+    pub mesh_m: f32,
+}
 
 pub(super) fn build(app: &mut App) {
     app.add_systems(Startup, load_sets.run_if(crate::state::has_visuals))
@@ -79,7 +82,7 @@ enum Set {
 /// The finish for a source material name (None: keep the source but darken it), and the set it
 /// is textured with when present.
 fn finish(kind: WeaponKind, name: &str) -> Option<(StandardMaterial, Set)> {
-    let m = |c: Color, metallic: f32, rough: f32| StandardMaterial { base_color: c, metallic, perceptual_roughness: rough, reflectance: 0.45, ..default() };
+    let m = |c: Color, metallic: f32, rough: f32| StandardMaterial { base_color: c, metallic, perceptual_roughness: rough, reflectance: 0.5, ..default() };
     let n = name.trim_start_matches("M_PCL_Flat_");
     let set = match n {
         "Black" | "Grey_Darker" | "Grey_Dark" => Set::Metal,
@@ -87,14 +90,15 @@ fn finish(kind: WeaponKind, name: &str) -> Option<(StandardMaterial, Set)> {
         _ => Set::Flat,
     };
     Some((match n {
-        // Receiver, barrel, slide: black coated steel / anodised aluminium.
-        // Albedos are measured-dark, not pure black (anodised / Cerakote ~0.03-0.05 linear),
-        // so a black gun still shows its shape in shade.
-        "Black" => m(Color::srgb(0.17, 0.17, 0.18), 0.0, 0.9),
-        // Polymer furniture.
-        "Black_Lighter" => m(furniture(kind), 0.0, 1.0),
-        "Grey_Darker" => m(Color::srgb(0.2, 0.2, 0.21), 0.0, 0.85),
-        "Grey_Dark" => m(Color::srgb(0.25, 0.25, 0.26), 0.0, 0.8),
+        // Receiver, barrel, slide: black coated steel / anodised aluminium, a dark body with a
+        // satin sheen (Cerakote / anodising are dielectric, roughness ~0.5): under a strong lamp
+        // the energy goes into a highlight instead of a grey matte wash. Albedos 0.025-0.035
+        // linear (tells-perf's lamp measurements, `light.viewmodel`).
+        "Black" => m(Color::LinearRgba(LinearRgba::rgb(0.026, 0.026, 0.028)), 0.0, 0.5),
+        // Polymer furniture: stays rough.
+        "Black_Lighter" => m(furniture(kind), 0.0, 0.75),
+        "Grey_Darker" => m(Color::LinearRgba(LinearRgba::rgb(0.03, 0.03, 0.032)), 0.0, 0.5),
+        "Grey_Dark" => m(Color::LinearRgba(LinearRgba::rgb(0.035, 0.035, 0.037)), 0.0, 0.55),
         // Worn edges, bolt, small parts.
         "Grey_Light" | "Grey_Lighter" => m(Color::srgb(0.32, 0.32, 0.33), 0.9, 0.32),
         "White" => m(Color::srgb(0.55, 0.55, 0.52), 0.0, 0.6),
@@ -138,7 +142,8 @@ fn apply_finish(
         if ours.contains(&mat.id()) {
             continue;
         }
-        let Some(kind) = parents.iter_ancestors(e).find_map(|a| roots.get(a).ok()).map(|f| f.0) else { continue };
+        let Some(root) = parents.iter_ancestors(e).find_map(|a| roots.get(a).ok()).copied() else { continue };
+        let kind = root.kind;
         let key = (kind, name.map_or_else(|| format!("#{:?}", mat.id()), |n| n.0.clone()));
         let (handle, tex) = match cache.get(&key) {
             Some(h) => h.clone(),
@@ -177,7 +182,7 @@ fn apply_finish(
         let mut ec = commands.entity(e);
         ec.insert(MeshMaterial3d(handle));
         if tex {
-            ec.insert(MeshPrep::BoxUv { per_unit: UNIT_M / TILE_M });
+            ec.insert(MeshPrep::BoxUv { per_unit: root.mesh_m / TILE_M });
         }
     }
 }
