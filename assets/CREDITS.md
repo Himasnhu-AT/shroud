@@ -220,11 +220,11 @@ where it is priced.
 | battlerifle | AKS Tactical Upgrade (suppressed, 1.21 m; PBR set re-applied after FBX conversion) | SpatialNeglect | https://www.fab.com/listings/587e3f02-f8a1-4a3d-8b35-3394e793cfc5 | Fab Standard, Personal tier (Professional ₹748.66) |
 | sniper, marksman | **SV-98 Sniper Rifle by SpatialNeglect, CC-BY 4.0** (offset bolt mesh dropped, 1.2 m) | SpatialNeglect | https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b | CC-BY 4.0 (credit required here and in-game) |
 | pistol | Pistol 9mm Custom (the pistol body only; attachments and display copies dropped; PBR set re-applied after FBX conversion) | DTry | https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732 | Fab Standard, Personal tier (Professional ₹1,498.26) |
-| (rifle, pending) | AR-15 style rifle | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
-| (smg, pending) | 10mm AUTO SMG | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
+| rifle | AR-15 style rifle (ACOG kept; GPS, loose rounds and sling dropped; 0.89 m; all five PBR sets kept by the importer's FBX conversion, matched to the FBX materials by name) | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
+| smg | 10mm AUTO SMG (loose FBX with its textures packed inside; red-dot and suppressor kept; scaled to 0.55 m, the FBX units read as 1.4 cm) | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
 
 ## Downloaded gear (local only, not in this repo)
 | Use | Model | Author | URL | Licence |
 |---|---|---|---|---|
 | enemy helmet (`models/gear/helmet.glb`: textures 1K, decimated to 35 %; replaces the modelled helmet when present) | Military Helmet | CG Vertexium | https://www.fab.com/listings/6c747a89-ceb4-4147-a154-801c6dbb1846 | Fab Standard (Personal and Professional both free) |
-| (pending: the engine's FBX conversion drops its skin and materials) | Tactical Soldier Outfit for MetaHuman (UE 5.6+) | RMDavid | https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7 | Fab Standard (Personal and Professional both free) |
+| imported, not used (`library/characters/tactical-soldier-outfit/`): the download ships no textures, and it is built on a taller MetaHuman than the enemy's (head joint 1.62 m against 1.43 m, shoulders 15 cm apart), so it cannot be rebound to the enemy skeleton without a retarget; the generated gear (`gear_mh.glb`) stays | Tactical Soldier Outfit for MetaHuman (UE 5.6+) | RMDavid | https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7 | Fab Standard (Personal and Professional both free) |

@@ -133,5 +133,59 @@
       0.03,
       -0.38
     ]
+  },
+  {
+    "kind": "rifle",
+    "high": "models/weapons/hd/rifle.glb",
+    "low": "models/weapons/hd/rifle.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      -0.115,
+      0.08
+    ],
+    "muzzle": [
+      0.0,
+      -0.0033,
+      -0.5002
+    ],
+    "sight": 0.081,
+    "center": [
+      0.0,
+      -0.0698,
+      -0.0552
+    ],
+    "support": [
+      0.0,
+      -0.038,
+      -0.265
+    ]
+  },
+  {
+    "kind": "smg",
+    "high": "models/weapons/hd/smg.glb",
+    "low": "models/weapons/hd/smg.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      0.193,
+      0.221
+    ],
+    "muzzle": [
+      0.0,
+      0.2636,
+      -0.275
+    ],
+    "sight": 0.3371,
+    "center": [
+      0.0,
+      0.1785,
+      0.0
+    ],
+    "support": [
+      0.0,
+      0.19,
+      -0.029
+    ]
   }
 ]
