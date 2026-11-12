@@ -1,0 +1,15 @@
+[
+ {"cmd":"buy","params":{"item":"kevlar","anywhere":true}},
+ {"sleep":1.0},
+ {"shot":"hud_bomb_armor"},
+ {"cmd":"game.menu"},
+ {"sleep":2.0},
+ {"cmd":"practice.start"},
+ {"sleep":0.3},
+ {"shot":"practice_loading"},
+ {"cmd":"loading.status"},
+ {"wait":"loading.status","until":{"result.active":[false]},"timeout":300},
+ {"cmd":"render.governor"},
+ {"shot":"practice_live"},
+ {"cmd":"practice.state"}
+]
