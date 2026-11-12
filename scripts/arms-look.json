@@ -1,0 +1,664 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Foundry"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 3,
+   "z": 22.5
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 0,
+   "x": 3.3,
+   "z": 19.6,
+   "face": [
+    3,
+    22.5
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 1,
+   "x": 0.5,
+   "z": 12.5,
+   "face": [
+    3,
+    22.5
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.place",
+  "params": {
+   "id": 2,
+   "x": 5.6,
+   "z": 16.5,
+   "face": [
+    3,
+    22.5
+   ]
+  }
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "shot": "a01_enemy_3m"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.62,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "a02_face_3m"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "a03_face_3m_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    0.5,
+    1.2,
+    12.5
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "a04_enemy_10m"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    5.6,
+    1.2,
+    16.5
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "a04b_enemy_6m_look3"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "shot": "a05_rifle_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "a06_rifle_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "weapon.drop_pickup",
+  "params": {
+   "kind": "smg",
+   "x": 3.0,
+   "z": 20.9
+  }
+ },
+ {
+  "cmd": "weapon.drop_pickup",
+  "params": {
+   "kind": "shotgun",
+   "x": 4.2,
+   "z": 14.5
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.0,
+    0.3,
+    20.9
+   ]
+  }
+ },
+ {
+  "sleep": 1
+ },
+ {
+  "shot": "a07_pickup_floor"
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    4.2,
+    0.3,
+    14.5
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "a07b_pickup_far_low"
+ },
+ {
+  "cmd": "weapon.interact",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "cmd": "weapon.interact",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "a08_after_pickup_smg"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "pistol"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b0_enemy_pistol"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "heavypistol"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b1_enemy_heavypistol"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "smg"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b2_enemy_smg"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "rifle"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b3_enemy_rifle"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "battlerifle"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b4_enemy_battlerifle"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "shotgun"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b5_enemy_shotgun"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "marksman"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b6_enemy_marksman"
+ },
+ {
+  "cmd": "enemy.loadout",
+  "params": {
+   "id": 0,
+   "kind": "sniper"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    3.3,
+    1.2,
+    19.6
+   ]
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "b7_enemy_sniper"
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "pistol"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_pistol_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_pistol_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "shotgun"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_shotgun_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_shotgun_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "marksman"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_marksman_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_marksman_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "battlerifle"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_battlerifle_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_battlerifle_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "sniper"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_sniper_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_sniper_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ }
+]

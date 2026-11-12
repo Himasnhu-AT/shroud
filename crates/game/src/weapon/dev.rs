@@ -95,9 +95,15 @@ fn drop_pickup(world: &mut World, p: Value) -> Result<Value, String> {
     let x = p.get("x").and_then(Value::as_f64).ok_or("`x` is required")? as f32;
     let z = p.get("z").and_then(Value::as_f64).ok_or("`z` is required")? as f32;
     let assets = world.remove_resource::<PickupAssets>();
+    let server = world.get_resource::<AssetServer>().cloned();
+    let dir = world.get_resource::<crate::assets::AssetsDir>().cloned();
     let e = {
         let mut commands = world.commands();
-        spawn_pickup(&mut commands, assets.as_ref(), GunState::full(kind), Vec3::new(x, 0.0, z))
+        let ctx = match (assets.as_ref(), server.as_ref(), dir.as_ref()) {
+            (Some(a), Some(s), Some(d)) => Some((a, s, d)),
+            _ => None,
+        };
+        spawn_pickup(&mut commands, ctx, GunState::full(kind), Vec3::new(x, 0.0, z))
     };
     world.flush();
     if let Some(a) = assets {

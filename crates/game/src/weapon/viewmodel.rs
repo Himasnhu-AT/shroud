@@ -41,6 +41,12 @@ const BARREL_LEN: f32 = 0.65;
 pub(super) fn build(app: &mut App) {
     app.init_resource::<MuzzleCam>()
         .init_resource::<MuzzleShadows>()
+        .add_systems(PreStartup, |dir: Option<Res<AssetsDir>>| {
+            if let Some(dir) = dir {
+                resolve_gun_models(&dir);
+            }
+        })
+        .add_systems(PostUpdate, apply_gun_lods.run_if(has_visuals))
         .add_systems(PostStartup, spawn_viewmodel.run_if(has_visuals))
         .add_systems(
             Update,
@@ -110,7 +116,11 @@ impl Default for MuzzleCam {
 /// How a gun's model sits in the hands. All in metres, camera space (x right, y up, -z ahead).
 #[derive(Clone, Copy, Debug)]
 pub struct Fit {
+    /// The high-detail model (first person, pickups near the player).
     pub path: &'static str,
+    /// The low-detail model (enemy hands, pickups further away): a separate file in the same
+    /// frame, else `path`.
+    pub low: &'static str,
     pub scale: f32,
     /// Model origin relative to the pivot (after `yaw`).
     pub offset: Vec3,
@@ -136,23 +146,68 @@ pub struct Fit {
     pub support: Vec3,
     /// Pistols: both hands on the grip.
     pub pistol: bool,
+    /// Metres per mesh unit of the high model (photoscan tile size on box-projected UVs).
+    pub mesh_m: f32,
+    /// Metres per mesh unit of the low model.
+    pub low_mesh_m: f32,
+    /// The model brings its own textured materials (a downloaded pack): no flat finish swap.
+    pub own_materials: bool,
 }
 
-/// Per-gun numbers, model space (metres, barrel toward -Z) unless noted.
-struct Raw {
-    path: &'static str,
-    scale: f32,
+/// Detail tier of a gun model. First person is always [`Detail::High`]; enemies carry
+/// [`Detail::Low`]; pickups and enemies within arm's reach cross-fade between the two by distance
+/// ([`GunLod`]), so taking a gun off the floor never pops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Detail {
+    High,
+    Low,
+}
+
+/// One gun model and where its parts are, in its own model space (units after `scale` are
+/// metres, barrel toward -Z after `yaw_deg`). The built-in table ([`builtin_models`]) is the CC0
+/// set; `assets/models/weapons/guns.json` (a list of these) adds models, e.g. a downloaded
+/// high-detail pack, and wins for its kind when its `high` file exists.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GunAsset {
+    /// Gun kind (`parse_kind`: "rifle", "Kestrel", "smg" ...).
+    pub kind: String,
+    pub high: String,
+    /// Separate low-detail file in the same frame (a pack's own LOD, or `make-gun-lods.sh`).
+    #[serde(default)]
+    pub low: Option<String>,
+    #[serde(default = "one")]
+    pub scale: f32,
+    /// Turn about +Y (degrees, right-handed) that brings the barrel onto -Z: a barrel along -X
+    /// takes -90, along +X 90, along +Z 180.
+    #[serde(default)]
+    pub yaw_deg: f32,
+    /// Metres per mesh unit of the high file (1 for metre meshes; Pichuliru's rigs: 100).
+    #[serde(default = "one")]
+    pub mesh_m: f32,
+    /// Keep the file's own materials (textured packs) instead of the flat-colour finishes.
+    #[serde(default)]
+    pub own_materials: bool,
     /// Firing hand on the grip (becomes the pivot).
-    hand: Vec3,
+    pub hand: [f32; 3],
     /// Front of the barrel.
-    muzzle: Vec3,
+    pub muzzle: [f32; 3],
     /// Height of the sight line (iron sights or the optic's axis).
-    sight: f32,
-    center: Vec3,
+    pub sight: f32,
+    pub center: [f32; 3],
     /// Support hand (handguard / pump / under the firing hand on pistols).
-    support: Vec3,
-    optic: Option<(&'static str, Vec3)>,
-    /// Camera space: hip pivot, ADS depth.
+    pub support: [f32; 3],
+    /// Mounted optic: its file and model-space position.
+    #[serde(default)]
+    pub optic: Option<(String, [f32; 3])>,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+/// Per-kind handling (not the model): hip pose, ADS depth, kick, flash, fallback size.
+struct Handling {
     hip: Vec3,
     ads_z: f32,
     kick: f32,
@@ -160,172 +215,214 @@ struct Raw {
     body: Vec3,
 }
 
-/// Per-gun placement, from each GLB's measured rest-pose bounds and attachment nodes
-/// (Pichuliru's CC0 gun set: real-world metres, barrel toward -Z, stock toward +Z, so no turn
-/// and scale ~1). The pivot sits at the firing hand on the grip.
-pub fn fit(kind: WeaponKind) -> Fit {
+fn handling(kind: WeaponKind) -> Handling {
     const PISTOL_HIP: Vec3 = Vec3::new(0.13, -0.15, -0.4);
     const RIFLE_HIP: Vec3 = Vec3::new(0.17, -0.2, -0.34);
-    let r = match kind {
-        WeaponKind::Pistol => Raw {
-            path: "models/weapons/pistol.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.03, 0.05),
-            muzzle: Vec3::new(0.0, 0.025, -0.117),
-            sight: 0.042,
-            center: Vec3::new(0.0, -0.025, -0.02),
-            support: Vec3::new(-0.022, -0.045, 0.035),
-            optic: None,
-            hip: PISTOL_HIP,
-            ads_z: -0.34,
-            kick: 22.0,
-            flash: 0.7,
-            body: Vec3::new(0.03, 0.13, 0.19),
-        },
-        WeaponKind::HeavyPistol => Raw {
-            path: "models/weapons/heavy_pistol.glb",
-            scale: 1.05,
-            hand: Vec3::new(0.0, -0.035, 0.05),
-            muzzle: Vec3::new(0.0, 0.024, -0.127),
-            sight: 0.04,
-            center: Vec3::new(0.0, -0.036, -0.024),
-            support: Vec3::new(-0.024, -0.05, 0.035),
-            optic: None,
-            hip: PISTOL_HIP,
-            ads_z: -0.34,
-            kick: 40.0,
-            flash: 1.0,
-            body: Vec3::new(0.03, 0.15, 0.21),
-        },
-        WeaponKind::Smg => Raw {
-            path: "models/weapons/smg.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.045, 0.085),
-            muzzle: Vec3::new(0.0, 0.017, -0.222),
-            sight: 0.064,
-            center: Vec3::new(0.0, -0.057, 0.06),
-            support: Vec3::new(0.0, -0.005, -0.13),
-            optic: None,
-            hip: Vec3::new(0.16, -0.19, -0.34),
-            ads_z: -0.26,
-            kick: 14.0,
-            flash: 0.6,
-            body: Vec3::new(0.046, 0.12, 0.45),
-        },
-        WeaponKind::Rifle => Raw {
-            path: "models/weapons/rifle.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.05, 0.11),
-            muzzle: Vec3::new(0.0, 0.016, -0.339),
-            sight: 0.083,
-            center: Vec3::new(0.0, -0.05, 0.01),
-            support: Vec3::new(0.0, -0.012, -0.17),
-            optic: Some(("models/weapons/optic_magnified.glb", Vec3::new(0.0, 0.041, 0.011))),
-            hip: RIFLE_HIP,
-            ads_z: -0.3,
-            kick: 30.0,
-            flash: 1.0,
-            body: Vec3::new(0.05, 0.12, 0.65),
-        },
-        WeaponKind::BattleRifle => Raw {
-            path: "models/weapons/battle_rifle.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.06, 0.125),
-            muzzle: Vec3::new(0.0, 0.006, -0.34),
-            sight: 0.074,
-            center: Vec3::new(0.0, -0.06, 0.02),
-            support: Vec3::new(0.0, -0.01, -0.16),
-            optic: None,
-            hip: RIFLE_HIP,
-            ads_z: -0.3,
-            kick: 38.0,
-            flash: 1.1,
-            body: Vec3::new(0.06, 0.13, 0.7),
-        },
-        WeaponKind::Shotgun => Raw {
-            path: "models/weapons/shotgun.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.03, 0.175),
-            muzzle: Vec3::new(0.0, 0.03, -0.277),
-            sight: 0.052,
-            center: Vec3::new(0.0, -0.01, 0.02),
-            support: Vec3::new(0.0, -0.01, -0.087),
-            optic: None,
-            hip: RIFLE_HIP,
-            ads_z: -0.28,
-            kick: 55.0,
-            flash: 1.5,
-            body: Vec3::new(0.046, 0.1, 0.58),
-        },
-        WeaponKind::Marksman => Raw {
-            path: "models/weapons/marksman.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.06, 0.125),
-            muzzle: Vec3::new(0.0, 0.012, -0.452),
-            sight: 0.096,
-            center: Vec3::new(0.0, -0.03, -0.03),
-            support: Vec3::new(0.0, -0.01, -0.2),
-            optic: Some(("models/weapons/scope_short.glb", Vec3::new(0.0, 0.052, 0.011))),
-            hip: RIFLE_HIP,
-            ads_z: -0.24,
-            kick: 60.0,
-            flash: 1.3,
-            body: Vec3::new(0.054, 0.13, 0.84),
-        },
-        WeaponKind::Sniper => Raw {
-            path: "models/weapons/sniper.glb",
-            scale: 1.0,
-            hand: Vec3::new(0.0, -0.06, 0.2),
-            muzzle: Vec3::new(0.0, 0.015, -0.545),
-            sight: 0.083,
-            center: Vec3::new(0.0, -0.02, -0.065),
-            support: Vec3::new(0.0, -0.01, -0.26),
-            optic: Some(("models/weapons/scope_long.glb", Vec3::new(0.0, 0.044, 0.011))),
-            hip: Vec3::new(0.18, -0.21, -0.31),
-            ads_z: -0.24,
-            kick: 75.0,
-            flash: 1.5,
-            body: Vec3::new(0.06, 0.13, 0.96),
-        },
-    };
-    Fit {
-        path: r.path,
-        scale: r.scale,
-        offset: -r.hand * r.scale,
-        yaw: 0.0,
-        muzzle: (r.muzzle - r.hand) * r.scale,
-        hip: r.hip,
-        ads: Vec3::new(0.0, -(r.sight - r.hand.y) * r.scale, r.ads_z),
-        kick: r.kick,
-        flash: r.flash,
-        body: r.body,
-        center: r.center,
-        optic: r.optic,
-        support: (r.support - r.hand) * r.scale,
-        pistol: kind.spec().slot == brain::weapons::Slot::Secondary,
+    let h = |hip, ads_z, kick, flash, body| Handling { hip, ads_z, kick, flash, body };
+    match kind {
+        WeaponKind::Pistol => h(PISTOL_HIP, -0.34, 22.0, 0.7, Vec3::new(0.03, 0.13, 0.19)),
+        WeaponKind::HeavyPistol => h(PISTOL_HIP, -0.34, 40.0, 1.0, Vec3::new(0.03, 0.15, 0.21)),
+        WeaponKind::Smg => h(Vec3::new(0.16, -0.19, -0.34), -0.26, 14.0, 0.6, Vec3::new(0.046, 0.12, 0.45)),
+        WeaponKind::Rifle => h(RIFLE_HIP, -0.3, 30.0, 1.0, Vec3::new(0.05, 0.12, 0.65)),
+        WeaponKind::BattleRifle => h(RIFLE_HIP, -0.3, 38.0, 1.1, Vec3::new(0.06, 0.13, 0.7)),
+        WeaponKind::Shotgun => h(RIFLE_HIP, -0.28, 55.0, 1.5, Vec3::new(0.046, 0.1, 0.58)),
+        WeaponKind::Marksman => h(RIFLE_HIP, -0.24, 60.0, 1.3, Vec3::new(0.054, 0.13, 0.84)),
+        WeaponKind::Sniper => h(Vec3::new(0.18, -0.21, -0.31), -0.24, 75.0, 1.5, Vec3::new(0.06, 0.13, 0.96)),
     }
 }
 
-/// Spawn gun `kind`'s model (and its optic) under `parent` with transform `tf`; its materials
-/// get the gun's finish (`finish.rs`). The caller checks that the model file exists.
-pub fn spawn_gun_model(commands: &mut Commands, server: &AssetServer, dir: &AssetsDir, kind: WeaponKind, tf: Transform, parent: Entity) -> Entity {
+/// The CC0 set (Pichuliru, poly.pizza): real-world metres, barrel toward -Z, stock toward +Z,
+/// measured from each GLB's rest-pose bounds and `Attach_*` nodes. Low tiers are made from these
+/// by `scripts/make-gun-lods.sh` (the engine's asset-pipe) into `models/weapons/lod/`.
+pub fn builtin_models() -> Vec<GunAsset> {
+    let g = |kind: &str, file: &str, scale: f32, hand: [f32; 3], muzzle: [f32; 3], sight: f32, center: [f32; 3], support: [f32; 3], optic: Option<(&str, [f32; 3])>| GunAsset {
+        kind: kind.into(),
+        high: format!("models/weapons/{file}.glb"),
+        low: Some(format!("models/weapons/lod/{file}.lod1.glb")),
+        scale,
+        yaw_deg: 0.0,
+        mesh_m: 100.0,
+        own_materials: false,
+        hand,
+        muzzle,
+        sight,
+        center,
+        support,
+        optic: optic.map(|(p, at)| (format!("models/weapons/{p}.glb"), at)),
+    };
+    vec![
+        g("pistol", "pistol", 1.0, [0.0, -0.03, 0.05], [0.0, 0.025, -0.117], 0.042, [0.0, -0.025, -0.02], [-0.022, -0.045, 0.035], None),
+        g("heavypistol", "heavy_pistol", 1.05, [0.0, -0.035, 0.05], [0.0, 0.024, -0.127], 0.04, [0.0, -0.036, -0.024], [-0.024, -0.05, 0.035], None),
+        g("smg", "smg", 1.0, [0.0, -0.045, 0.085], [0.0, 0.017, -0.222], 0.064, [0.0, -0.057, 0.06], [0.0, -0.005, -0.13], None),
+        g("rifle", "rifle", 1.0, [0.0, -0.05, 0.11], [0.0, 0.016, -0.339], 0.083, [0.0, -0.05, 0.01], [0.0, -0.012, -0.17], Some(("optic_magnified", [0.0, 0.041, 0.011]))),
+        g("battlerifle", "battle_rifle", 1.0, [0.0, -0.06, 0.125], [0.0, 0.006, -0.34], 0.074, [0.0, -0.06, 0.02], [0.0, -0.01, -0.16], None),
+        g("shotgun", "shotgun", 1.0, [0.0, -0.03, 0.175], [0.0, 0.03, -0.277], 0.052, [0.0, -0.01, 0.02], [0.0, -0.01, -0.087], None),
+        g("marksman", "marksman", 1.0, [0.0, -0.06, 0.125], [0.0, 0.012, -0.452], 0.096, [0.0, -0.03, -0.03], [0.0, -0.01, -0.2], Some(("scope_short", [0.0, 0.052, 0.011]))),
+        g("sniper", "sniper", 1.0, [0.0, -0.06, 0.2], [0.0, 0.015, -0.545], 0.083, [0.0, -0.02, -0.065], [0.0, -0.01, -0.26], Some(("scope_long", [0.0, 0.044, 0.011]))),
+    ]
+}
+
+/// Extra gun models (local packs), relative to the assets folder.
+pub const GUNS_JSON: &str = "models/weapons/guns.json";
+
+/// The model each kind uses, chosen once at startup ([`resolve_gun_models`]); before that (tests,
+/// headless tools) the built-in table.
+static CHOSEN: std::sync::OnceLock<Vec<Fit>> = std::sync::OnceLock::new();
+
+fn leak(s: &str) -> &'static str {
+    Box::leak(s.to_owned().into_boxed_str())
+}
+
+/// Turn a model entry into the hands' fit for `kind`. `has` says which files exist.
+pub fn fit_of(kind: WeaponKind, m: &GunAsset, has: &dyn Fn(&str) -> bool) -> Fit {
+    let h = handling(kind);
+    let rot = Quat::from_rotation_y(m.yaw_deg.to_radians());
+    let v = |a: [f32; 3]| rot * Vec3::from(a);
+    let hand = v(m.hand);
+    let low = m.low.as_deref().filter(|l| has(l));
+    Fit {
+        path: leak(&m.high),
+        low: leak(low.unwrap_or(&m.high)),
+        scale: m.scale,
+        offset: -hand * m.scale,
+        yaw: m.yaw_deg.to_radians(),
+        muzzle: (v(m.muzzle) - hand) * m.scale,
+        hip: h.hip,
+        ads: Vec3::new(0.0, -(m.sight - hand.y) * m.scale, h.ads_z),
+        kick: h.kick,
+        flash: h.flash,
+        body: h.body,
+        center: v(m.center),
+        optic: m.optic.as_ref().map(|(p, at)| (leak(p), v(*at))),
+        support: (v(m.support) - hand) * m.scale,
+        pistol: kind.spec().slot == brain::weapons::Slot::Secondary,
+        mesh_m: m.mesh_m,
+        // Generated LODs (asset-pipe) are written in metres.
+        low_mesh_m: if low.is_some() && m.mesh_m != 1.0 && m.low.as_deref().is_some_and(|l| l.contains("/lod/")) { 1.0 } else { m.mesh_m },
+        own_materials: m.own_materials,
+    }
+}
+
+/// Pick each kind's model: the first `guns.json` entry for the kind whose high file exists, else
+/// the built-in one. Logs what it chose. Call once at startup (later calls are ignored).
+pub fn resolve_gun_models(dir: &AssetsDir) {
+    let extra: Vec<GunAsset> = if dir.has(GUNS_JSON) {
+        match std::fs::read_to_string(dir.0.join(GUNS_JSON)).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string())) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("guns: {GUNS_JSON}: {e}");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    let has = |p: &str| dir.has(p);
+    let _ = CHOSEN.set(choose(&extra, &has));
+    for k in WeaponKind::ALL {
+        let f = fit(k);
+        info!("guns: {k:?} high {} low {}", f.path, f.low);
+    }
+}
+
+fn choose(extra: &[GunAsset], has: &dyn Fn(&str) -> bool) -> Vec<Fit> {
+    let builtin = builtin_models();
+    WeaponKind::ALL
+        .iter()
+        .map(|&k| {
+            let mine = |m: &&GunAsset| super::parse_kind(&m.kind) == Some(k);
+            let m = extra.iter().filter(mine).find(|m| has(&m.high)).or_else(|| builtin.iter().find(mine)).expect("every kind has a built-in model");
+            fit_of(k, m, has)
+        })
+        .collect()
+}
+
+/// The fit of gun `kind`'s chosen model.
+pub fn fit(kind: WeaponKind) -> Fit {
+    let i = WeaponKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+    match CHOSEN.get() {
+        Some(v) => v[i],
+        None => {
+            static BUILTIN: std::sync::OnceLock<Vec<Fit>> = std::sync::OnceLock::new();
+            BUILTIN.get_or_init(|| choose(&[], &|p: &str| !p.contains("/lod/")))[i]
+        }
+    }
+}
+
+/// On a gun model root: every mesh under it gets this `VisibilityRange` (Bevy doesn't propagate
+/// it), so the high and low tiers cross-fade by distance with a dither instead of popping.
+#[derive(Component, Clone)]
+pub struct GunLod(pub bevy::camera::visibility::VisibilityRange);
+
+/// Where the tiers hand over: pickups show the high model within reach (a swap is 2.4 m), enemy
+/// guns only right up close; both fade over a metre and a half.
+pub const PICKUP_HIGH_M: f32 = 6.0;
+pub const ENEMY_HIGH_M: f32 = 4.0;
+const LOD_FADE_M: f32 = 1.5;
+
+/// The pair of ranges for a high model shown within `near` metres and its low model beyond.
+pub fn tier_ranges(near: f32) -> (GunLod, GunLod) {
+    use bevy::camera::visibility::VisibilityRange;
+    let fade = near..near + LOD_FADE_M;
+    (
+        GunLod(VisibilityRange { start_margin: 0.0..0.0, end_margin: fade.clone(), use_aabb: false }),
+        GunLod(VisibilityRange { start_margin: fade, end_margin: 1.0e5..1.0e5, use_aabb: false }),
+    )
+}
+
+/// Spawn gun `kind`'s model at `detail` (and its optic) under `parent` with transform `tf`;
+/// unless the model brings its own materials they get the gun's finish (`finish.rs`). The
+/// caller checks that `fit(kind).path` exists (the low tier falls back to it).
+pub fn spawn_gun_model(commands: &mut Commands, server: &AssetServer, dir: &AssetsDir, kind: WeaponKind, detail: Detail, tf: Transform, parent: Entity) -> Entity {
     let f = fit(kind);
+    let (path, mesh_m) = match detail {
+        Detail::High => (f.path, f.mesh_m),
+        Detail::Low => (f.low, f.low_mesh_m),
+    };
     let scene = |p: &'static str| server.load::<bevy::world_serialization::WorldAsset>(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(p));
-    let model = commands
-        .spawn((bevy::world_serialization::WorldAssetRoot(scene(f.path)), super::finish::GunFinish(kind), tf, Visibility::default(), ChildOf(parent)))
-        .id();
+    let model = commands.spawn((bevy::world_serialization::WorldAssetRoot(scene(path)), tf, Visibility::default(), ChildOf(parent))).id();
+    if !f.own_materials {
+        commands.entity(model).insert(super::finish::GunFinish { kind, mesh_m });
+    }
     if let Some((path, at)) = f.optic
         && dir.has(path)
     {
-        commands.spawn((
-            bevy::world_serialization::WorldAssetRoot(scene(path)),
-            super::finish::GunFinish(kind),
-            Transform::from_translation(at),
-            Visibility::default(),
-            ChildOf(model),
-        ));
+        let optic = commands.spawn((bevy::world_serialization::WorldAssetRoot(scene(path)), Transform::from_translation(at), Visibility::default(), ChildOf(model))).id();
+        if !f.own_materials {
+            // The optics are separate Pichuliru meshes in the rig's units.
+            commands.entity(optic).insert(super::finish::GunFinish { kind, mesh_m: 100.0 });
+        }
     }
     model
+}
+
+/// Both tiers of gun `kind` under `parent`, cross-fading at `near` metres: the high model within,
+/// the low beyond. A model without a separate low file is spawned once, without ranges.
+pub fn spawn_gun_tiers(commands: &mut Commands, server: &AssetServer, dir: &AssetsDir, kind: WeaponKind, near: f32, tf: Transform, parent: Entity) -> [Option<Entity>; 2] {
+    let f = fit(kind);
+    let high = spawn_gun_model(commands, server, dir, kind, Detail::High, tf, parent);
+    if f.low == f.path {
+        return [Some(high), None];
+    }
+    let low = spawn_gun_model(commands, server, dir, kind, Detail::Low, tf, parent);
+    let (h, l) = tier_ranges(near);
+    commands.entity(high).insert(h);
+    commands.entity(low).insert(l);
+    [Some(high), Some(low)]
+}
+
+/// Copy each [`GunLod`] root's range onto the meshes under it as they appear.
+fn apply_gun_lods(
+    mut commands: Commands,
+    added: Query<Entity, (Added<Mesh3d>, Without<bevy::camera::visibility::VisibilityRange>)>,
+    parents: Query<&ChildOf>,
+    lods: Query<&GunLod>,
+) {
+    for e in &added {
+        if let Some(l) = parents.iter_ancestors(e).find_map(|a| lods.get(a).ok()) {
+            commands.entity(e).insert(l.0.clone());
+        }
+    }
 }
 
 /// First-person arms: gloves and sleeves in the player's (attacker) colours, built from a few
@@ -707,7 +804,7 @@ fn spawn_viewmodel(
         }
         if assets_dir.has(f.path) {
             let tf = Transform::from_translation(f.offset).with_rotation(Quat::from_rotation_y(f.yaw)).with_scale(Vec3::splat(f.scale));
-            spawn_gun_model(&mut commands, &asset_server, &assets_dir, kind, tf, gun);
+            spawn_gun_model(&mut commands, &asset_server, &assets_dir, kind, Detail::High, tf, gun);
             continue;
         }
         let (dark, accent) = prim
@@ -1094,6 +1191,48 @@ fn viewmodel_no_shadows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builtin_fit_keeps_the_measured_anchors() {
+        let f = choose(&[], &|_: &str| true)[WeaponKind::ALL.iter().position(|k| *k == WeaponKind::Rifle).unwrap()];
+        assert_eq!(f.path, "models/weapons/rifle.glb");
+        assert_eq!(f.low, "models/weapons/lod/rifle.lod1.glb");
+        // Muzzle and ADS relative to the grip (the pivot), as before the table moved to data.
+        assert!((f.muzzle - Vec3::new(0.0, 0.066, -0.449)).length() < 1e-5);
+        assert!((f.ads - Vec3::new(0.0, -0.133, -0.3)).length() < 1e-5);
+        // The generated LOD is in metres; the rig in hectometre units.
+        assert_eq!((f.mesh_m, f.low_mesh_m), (100.0, 1.0));
+    }
+
+    #[test]
+    fn a_pack_model_wins_only_when_its_file_exists() {
+        let pack: Vec<GunAsset> = serde_json::from_str(
+            r#"[{"kind": "Kestrel", "high": "library/misc/pack/ar.glb", "yaw_deg": -90, "own_materials": true,
+                 "hand": [0.1, -0.05, 0], "muzzle": [-0.4, 0.02, 0], "sight": 0.08, "center": [0, 0, 0], "support": [-0.2, 0, 0]}]"#,
+        )
+        .unwrap();
+        let rifle = WeaponKind::ALL.iter().position(|k| *k == WeaponKind::Rifle).unwrap();
+        let without = choose(&pack, &|p: &str| !p.starts_with("library/"));
+        assert_eq!(without[rifle].path, "models/weapons/rifle.glb");
+        let with = choose(&pack, &|_: &str| true);
+        let f = with[rifle];
+        assert_eq!(f.path, "library/misc/pack/ar.glb");
+        // No separate low file: the low tier is the same model.
+        assert_eq!(f.low, f.path);
+        assert!(f.own_materials);
+        // Barrel along -X turned -90 degrees (about +Y) onto -Z: the muzzle ends up ahead of the grip.
+        assert!(f.muzzle.z < -0.45 && f.muzzle.x.abs() < 1e-5, "{:?}", f.muzzle);
+        // Other kinds keep the built-in set.
+        assert_eq!(with[0].path, without[0].path);
+    }
+
+    #[test]
+    fn tiers_hand_over_without_a_gap() {
+        let (h, l) = tier_ranges(PICKUP_HIGH_M);
+        assert_eq!(h.0.start_margin, 0.0..0.0);
+        assert_eq!(h.0.end_margin, l.0.start_margin);
+        assert!(PICKUP_HIGH_M > super::super::pickups::SWAP_RANGE, "a gun in reach must already be the high model");
+    }
 
     #[test]
     fn muzzle_shadows_only_high_up_and_unthrottled() {

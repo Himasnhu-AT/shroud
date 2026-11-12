@@ -1,0 +1,83 @@
+[
+  {
+    "kind": "battlerifle",
+    "high": "models/weapons/hd/battlerifle.glb",
+    "low": "models/weapons/hd/battlerifle.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      -0.03,
+      0.05
+    ],
+    "muzzle": [
+      0.0,
+      0.0369,
+      -0.8615
+    ],
+    "sight": 0.112,
+    "center": [
+      0.0,
+      -0.0462,
+      -0.2557
+    ],
+    "support": [
+      0.0,
+      -0.005,
+      -0.29
+    ]
+  },
+  {
+    "kind": "shotgun",
+    "high": "models/weapons/hd/shotgun.glb",
+    "low": "models/weapons/hd/shotgun.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      0.025,
+      0.08
+    ],
+    "muzzle": [
+      0.0,
+      0.072,
+      -0.7488
+    ],
+    "sight": 0.112,
+    "center": [
+      0.0,
+      -0.0097,
+      -0.1488
+    ],
+    "support": [
+      0.0,
+      0.03,
+      -0.43
+    ]
+  },
+  {
+    "kind": "sniper",
+    "high": "models/weapons/hd/sniper.glb",
+    "low": "models/weapons/hd/sniper.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      0.0,
+      0.1078
+    ],
+    "muzzle": [
+      0.0,
+      0.0532,
+      -0.8322
+    ],
+    "sight": 0.095,
+    "center": [
+      0.0,
+      0.0091,
+      -0.2322
+    ],
+    "support": [
+      0.0,
+      0.03,
+      -0.38
+    ]
+  }
+]
