@@ -7,8 +7,8 @@
 //!   still writes the CS-style camera each frame; this overrides its rotation afterwards.
 //! - Handling: the viewmodel's 6-DOF spring rig, wall compression and true-barrel shots live in
 //!   `weapon::viewmodel` / `weapon::fire` and read [`BodycamAim`].
-//! - Optics (`lens`): wide FOV, one WGSL pass (barrel distortion, radial chromatic aberration,
-//!   unsharp mask, shadow grain, vignette) after tonemapping, auto exposure and bloom tuning.
+//! - Optics (`lens`): the engine's body camera (`engine::look::BodycamLook`) in the map's look at
+//!   the wide FOV: fisheye, metering exposure, sensor curve, noise, smear, rolling shutter.
 //! - HUD (`hud`): [REC] stamp, no crosshair and no health/ammo numbers (R on a full mag shows a
 //!   short ammo readout: the "press check").
 
@@ -24,9 +24,10 @@ use crate::weapon::{GunEvent, Weapon, WeaponSet, ease};
 pub mod hud;
 pub mod lens;
 
-/// Vertical FOV (Bevy's `PerspectiveProjection::fov`, like the FOV setting). 100° vertical at
-/// 16:9 is a ~130° horizontal action-cam lens before the barrel distortion pulls the centre in.
-pub const BODYCAM_FOV_DEG: f32 = 100.0;
+/// Vertical FOV (Bevy's `PerspectiveProjection::fov`, like the FOV setting): the engine's
+/// recommended render FOV for its body camera. 100° vertical at 16:9 is a ~130° horizontal
+/// action-cam lens; the fisheye keeps the corners and magnifies the centre.
+pub const BODYCAM_FOV_DEG: f32 = engine::look::BodycamLook::RECOMMENDED_FOV_DEG;
 /// Free-aim box half extents (yaw, pitch).
 pub const DEADZONE: Vec2 = Vec2::new(18.0f32.to_radians(), 12.0f32.to_radians());
 /// Camera follow stiffness (1/s): hip, aimed.
@@ -105,7 +106,6 @@ impl Plugin for BodycamPlugin {
             Update,
             free_aim.after(PlayerSet::Move).before(WeaponSet).run_if(in_state(GameState::Playing).and_then(not_paused).and_then(has_visuals)),
         );
-        lens::build(app);
         hud::build(app);
         #[cfg(feature = "dev")]
         dev(app);
