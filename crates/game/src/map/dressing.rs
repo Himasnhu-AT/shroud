@@ -354,13 +354,13 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
             // Industrial high-bay under a tall roof.
             LampStyle::HighBay if scanned && super::industry::spawn_model(commands, g, &super::industry::HIGH_BAY, Transform::from_translation(at(top)).with_scale(Vec3::splat(0.75)), false).is_some() => {
                 glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.97)).with_scale(Vec3::new(0.3, 0.02, 0.3)));
-                point(commands, rank, at(top - 1.15), Color::srgb(1.0, 0.88, 0.7), 3_000_000.0, 18.0);
+                point(commands, rank, at(top - 1.15), Color::srgb(1.0, 0.88, 0.7), high_bay_lumens(top - 1.15), 18.0);
             }
             LampStyle::HighBay => {
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.3)).with_scale(Vec3::new(0.02, 0.6, 0.02)));
                 fx.add_shape("lamp_cage", Cylinder::new(0.38, 0.22), Transform::from_translation(at(top - 0.7)));
                 glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.82)).with_scale(Vec3::new(0.5, 0.03, 0.5)));
-                point(commands, rank, at(top - 1.1), Color::srgb(1.0, 0.88, 0.7), 3_000_000.0, 18.0);
+                point(commands, rank, at(top - 1.1), Color::srgb(1.0, 0.88, 0.7), high_bay_lumens(top - 1.1), 18.0);
             }
             // Street lamp on a wall bracket.
             LampStyle::Wall { facing_x, facing_z } => {
@@ -380,6 +380,22 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
         }
     }
     fx.spawn(commands, g, p, "Lamp fixtures", false);
+}
+
+/// A high-bay's output for its mounting height (light centre above the floor, m).
+///
+/// High-bays are sized for tall halls: [`HIGH_BAY_LUMENS`] at [`HIGH_BAY_MOUNT_M`] (Foundry's
+/// casting hall). Under a lower roof the same output put the light ~2 m above the player's eye:
+/// 71 000 lx on the first-person gun (more than the 55 000 lx sun) while the room around it,
+/// lit from further away, metered dark, so the gun clipped to a flat white silhouette. Real
+/// lighting is chosen per mounting height (same illuminance on the floor), so lower fixtures
+/// get the output that gives the floor below them what a tall one gives its floor: lumens
+/// scale with height squared, and a lamp is never made brighter than the reference.
+pub const HIGH_BAY_LUMENS: f32 = 3_000_000.0;
+pub const HIGH_BAY_MOUNT_M: f32 = 6.8;
+
+pub fn high_bay_lumens(mount_m: f32) -> f32 {
+    HIGH_BAY_LUMENS * (mount_m / HIGH_BAY_MOUNT_M).clamp(0.0, 1.0).powi(2)
 }
 
 fn point(commands: &mut Commands, rank: usize, pos: Vec3, color: Color, intensity: f32, range: f32) {
@@ -632,4 +648,23 @@ fn building_trims(commands: &mut Commands, arena: &Arena, bi: usize, b: &Buildin
         probe,
         Transform::from_xyz((imin.x + imax.x) * 0.5, b.height * 0.5, (imin.y + imax.y) * 0.5).with_scale(size),
     ));
+}
+
+#[cfg(test)]
+mod lamp_tests {
+    use super::*;
+
+    #[test]
+    fn low_high_bays_light_their_floor_like_tall_ones() {
+        // The tall hall keeps its output; a never-brighter rule.
+        assert_eq!(high_bay_lumens(HIGH_BAY_MOUNT_M), HIGH_BAY_LUMENS);
+        assert_eq!(high_bay_lumens(12.0), HIGH_BAY_LUMENS);
+        // Same illuminance straight below (lm / h²), whatever the height.
+        let e = |h: f32| high_bay_lumens(h) / (h * h);
+        assert!((e(3.35) - e(HIGH_BAY_MOUNT_M)).abs() / e(HIGH_BAY_MOUNT_M) < 1e-4);
+        // Foundry's low high-bays (light ~1.8 m from a standing player's gun) no longer put
+        // sun-level light on it.
+        let lux_at_gun = high_bay_lumens(3.35) / (4.0 * std::f32::consts::PI) / (1.83 * 1.83);
+        assert!(lux_at_gun < 20_000.0, "{lux_at_gun}");
+    }
 }

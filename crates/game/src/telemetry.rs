@@ -10,6 +10,7 @@ use crate::enemy::{Enemy, EnemyCombat, EnemySet};
 use crate::map::{ArenaRes, to_ground};
 use crate::player::{Player, PlayerIntent};
 use engine::fps::{FpsLook, FpsMotor};
+use crate::practice::in_match;
 use crate::state::GameState;
 use crate::weapon::{Damage, Health, Rifle, ShotFired, WeaponSet};
 
@@ -46,9 +47,10 @@ impl Plugin for TelemetryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Telemetry>()
             .init_resource::<Sampler>()
-            .add_systems(OnEnter(GameState::Playing), new_round.after(crate::match_flow::begin_round))
-            .add_systems(OnExit(GameState::Playing), close_open_duel)
-            .add_systems(Update, record.after(EnemySet).after(WeaponSet).run_if(in_state(GameState::Playing)));
+            // Practice teaches the player model nothing: no samples, duels or shots recorded.
+            .add_systems(OnEnter(GameState::Playing), new_round.after(crate::match_flow::begin_round).run_if(in_match))
+            .add_systems(OnExit(GameState::Playing), close_open_duel.run_if(in_match))
+            .add_systems(Update, record.after(EnemySet).after(WeaponSet).run_if(in_state(GameState::Playing).and_then(in_match)));
     }
 }
 

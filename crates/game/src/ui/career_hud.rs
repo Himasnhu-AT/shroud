@@ -26,8 +26,9 @@ pub struct CareerHudPlugin;
 
 impl Plugin for CareerHudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), spawn_tracker.run_if(has_visuals).after(crate::career::start_round))
-            .add_systems(Update, (redraw_tracker, toast).run_if(has_visuals.and_then(in_state(GameState::Playing))));
+        // Practice has no objectives.
+        app.add_systems(OnEnter(GameState::Playing), spawn_tracker.run_if(has_visuals.and_then(crate::practice::in_match)).after(crate::career::start_round))
+            .add_systems(Update, (redraw_tracker, toast).run_if(has_visuals.and_then(in_state(GameState::Playing)).and_then(crate::practice::in_match)));
     }
 }
 

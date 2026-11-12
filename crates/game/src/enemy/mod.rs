@@ -66,8 +66,9 @@ impl Plugin for EnemyPlugin {
             // slides no longer scale with frame rate, and hitboxes move before the physics
             // step, so the collider tree bullets test is never a tick stale. Rendering eases
             // between ticks (`TransformInterpolation` on the enemy and its model).
-            // Paused (Esc menu): the AI doesn't advance.
-            .configure_sets(FixedUpdate, EnemySet.run_if(in_state(GameState::Playing).and_then(not_paused)))
+            // Paused (Esc menu): the AI doesn't advance. Practice: statues, no AI at all (no
+            // perception, no squad doctrine, nothing learned).
+            .configure_sets(FixedUpdate, EnemySet.run_if(in_state(GameState::Playing).and_then(not_paused).and_then(crate::practice::in_match)))
             .init_resource::<Inbox>()
             .init_resource::<AiTimings>()
             .add_systems(
@@ -211,6 +212,8 @@ struct Visuals {
 }
 
 /// Despawn any old enemies and spawn the brain's current squad. Called on each round start.
+/// Practice: the squad as statues on every spawn and site (`practice::target_spots`), facing
+/// the player's spawn, with their evolved guns and vest + helmet; no squad coordinator.
 pub fn spawn_squad(
     mut commands: Commands,
     old: Query<Entity, With<Enemy>>,
@@ -225,7 +228,9 @@ pub fn spawn_squad(
     flow: Res<crate::match_flow::MatchFlow>,
     settings: Option<Res<ShroudSettings>>,
     telemetry: Option<Res<crate::telemetry::Telemetry>>,
+    practice: Option<Res<crate::practice::Practice>>,
 ) {
+    let practice = practice.is_some_and(|p| p.on);
     for e in &old {
         commands.entity(e).despawn();
     }
@@ -254,10 +259,17 @@ pub fn spawn_squad(
     let difficulty = settings.map_or(Difficulty::Regular, |s| s.difficulty);
     let params = difficulty.params();
     let limits = difficulty.limits(brain.state.generation);
-    let n = params.squad_size.min(arena.0.enemy_spawns.len());
+    // (ground spot, facing) per member.
+    let spots: Vec<(V2, V2)> = if practice {
+        crate::practice::target_spots(&arena.0)
+    } else {
+        arena.0.enemy_spawns.iter().map(|s| (*s, V2::new(0.0, 1.0))).collect()
+    };
+    let n = if practice { spots.len() } else { params.squad_size.min(spots.len()) };
     // More enemies than evolved squad slots: slots are reused with their own seeds.
     // Guns from the evolved weapon genes, within this difficulty's caps (`brain::loadout`).
-    let minds = brain.state.squad_minds_on(seed, n, &limits, difficulty);
+    // Practice dresses the statues as the hardest squad would (every gun the squad can field).
+    let minds = brain.state.squad_minds_on(seed, n, &limits, if practice { Difficulty::Elite } else { difficulty });
     squad.size = minds.len();
     squad.difficulty = difficulty;
     squad.params = Some(params);
@@ -277,9 +289,13 @@ pub fn spawn_squad(
         let spots: Vec<(V2, u32)> = t.0.duels.iter().filter(|d| d.repeek).map(|d| (V2::new(d.pos[0], d.pos[1]), 1)).collect();
         coord.seed_peeks(&spots);
     }
-    info!("squad: {} x{} ({} coordination, {:?} utility)", difficulty.label(), squad.size, if params.coordination { "with" } else { "no" }, coord.utility);
-    squad.coord = Some(coord);
-    for (slot, (mind, spawn)) in minds.into_iter().zip(arena.0.enemy_spawns.iter()).enumerate() {
+    if practice {
+        info!("practice: {} statue targets", squad.size);
+    } else {
+        info!("squad: {} x{} ({} coordination, {:?} utility)", difficulty.label(), squad.size, if params.coordination { "with" } else { "no" }, coord.utility);
+        squad.coord = Some(coord);
+    }
+    for (slot, (mind, (spawn, facing))) in minds.into_iter().zip(spots).enumerate() {
         let report = EnemyReport { trait_id: mind.trait_id, neat_id: mind.neat_id, ..default() };
         let kind = mind.weapon();
         info!("  {} (slot {slot}): {} with the {}", callsign(slot), mind.role().label(), kind.label());
@@ -316,10 +332,14 @@ pub fn spawn_squad(
                 Mind(mind),
                 Health::new(ENEMY_HP),
                 RigidBody::Kinematic,
-                Transform::from_translation(to_world(*spawn, 0.0)).looking_to(Vec3::Z, Vec3::Y),
+                Transform::from_translation(to_world(spawn, 0.0)).looking_to(v2_dir3(facing), Vec3::Y),
                 Visibility::default(),
             ))
             .id();
+        if practice {
+            // Full gear to inspect (and to test armor and helmet hits on).
+            commands.entity(root).insert(crate::armor::Armor::vest(true));
+        }
         let mut body = commands.spawn((
             BodyPart { head: false },
             Hitbox { owner: root, head: false },
@@ -902,8 +922,10 @@ fn finish_round(
     mut brain: ResMut<Brain>,
     flow: Res<crate::match_flow::MatchFlow>,
     mut telemetry: ResMut<crate::telemetry::Telemetry>,
+    practice: Option<Res<crate::practice::Practice>>,
 ) {
-    if !flow.round_decided() {
+    // Practice never decides a round; checked anyway, since this writes the saved brain.
+    if !flow.round_decided() || practice.is_some_and(|p| p.on) {
         return;
     }
     // The round's result, not "the player is dead": after a plant he can die and still win.
@@ -980,14 +1002,18 @@ fn enemy_deaths(
     players: Query<&Transform, With<Player>>,
     mut squad: ResMut<Squad>,
     mut telemetry: ResMut<crate::telemetry::Telemetry>,
+    practice: Option<Res<crate::practice::Practice>>,
 ) {
+    let practice = practice.is_some_and(|p| p.on);
     let p = players.single().map(|t| to_ground(t.translation)).ok();
     for (e, tf, hp, mut c, children) in &mut enemies {
         if hp.is_dead() && !c.dead {
             c.dead = true;
             c.vel = V2::ZERO;
             squad.dead_reports.push(c.report.clone());
-            if let Some(p) = p {
+            if let Some(p) = p
+                && !practice
+            {
                 telemetry.0.kill(p, p.dist(to_ground(tf.translation)));
             }
             if headless.0 {
@@ -997,7 +1023,8 @@ fn enemy_deaths(
                 for child in children.iter().filter(|c| parts.contains(*c)) {
                     commands.entity(child).despawn();
                 }
-                commands.entity(e).insert(Corpse(3.0));
+                // Practice: a fallen target stays down until the targets are reset.
+                commands.entity(e).insert(Corpse(if practice { 3600.0 } else { 3.0 }));
             }
         }
     }

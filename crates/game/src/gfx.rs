@@ -30,12 +30,8 @@ impl Plugin for GfxPlugin {
             // fades, loses its shadow or goes flat; scenery stops at the fog.
             .insert_resource(SceneryRanges { shadow: 160.0, small_props: 160.0, far: 160.0, view: FOG_END, ..default() })
             .add_systems(Startup, (sky_and_sun, init_fx_assets).run_if(has_visuals))
-            .add_systems(Update, mip_gltf_images.run_if(has_visuals))
-            .init_resource::<WarmupDue>()
-            .add_systems(OnEnter(crate::state::GameState::Playing), schedule_warmup.run_if(has_visuals))
-            .add_systems(Update, send_warmup.run_if(has_visuals))
-            .add_systems(OnEnter(crate::state::GameState::Playing), power_on.run_if(has_visuals))
-            .add_systems(Update, fade_power_on.run_if(any_with_component::<PowerOn>));
+            .add_systems(Update, mip_gltf_images.run_if(has_visuals));
+        // Pipeline warm-up and the camera power-on cover are the loading screen's (`loading`).
     }
 }
 
@@ -164,77 +160,6 @@ fn mip_gltf_images(mut events: MessageReader<AssetEvent<Image>>, server: Res<Ass
             && let Some(mut img) = images.get_mut(*id)
         {
             engine::gfx::build_mips(&mut img);
-        }
-    }
-}
-
-/// When to ask the engine to pre-compile pipelines (real seconds).
-#[derive(Resource, Default)]
-struct WarmupDue(Option<f32>);
-
-/// A round (and possibly a new map) just started: have the engine draw every material once so
-/// no pipeline compiles in the middle of a fight (Bevy compiles them synchronously on macOS:
-/// 100s of ms each). Pipeline keys come from the material, not its loaded pixels, so this can
-/// run right away and its one-off stall (~2 s for a fresh Township) lands inside the map-build
-/// stall instead of a second after the player spawns.
-fn schedule_warmup(mut due: ResMut<WarmupDue>, time: Res<Time<Real>>) {
-    due.0 = Some(time.elapsed_secs() + 0.05);
-}
-
-fn send_warmup(mut due: ResMut<WarmupDue>, time: Res<Time<Real>>, mut warm: MessageWriter<engine::render_budget::WarmPipelines>) {
-    if due.0.is_some_and(|t| time.elapsed_secs() >= t) {
-        due.0 = None;
-        warm.write(engine::render_budget::WarmPipelines);
-    }
-}
-
-// ---------------------------------------------------------------- camera power-on
-
-/// Black cover over the first frames of a round: the pipeline warm-up (and, on a cold macOS
-/// shader cache, compiling them) stalls those frames for 0.2-0.8 s (seconds on a first launch).
-/// Seen, that is a frozen picture that jumps; covered, it's a camera powering on: black for
-/// [`POWER_ON_FRAMES`] frames after the warm-up is sent, then a [`POWER_ON_FADE_S`] fade. Freeze
-/// time is running anyway (nothing to do in those frames).
-#[derive(Component)]
-struct PowerOn {
-    frames: u32,
-    fade: f32,
-}
-
-const POWER_ON_FRAMES: u32 = 8;
-const POWER_ON_FADE_S: f32 = 0.35;
-
-fn power_on(mut commands: Commands, old: Query<Entity, With<PowerOn>>) {
-    for e in &old {
-        commands.entity(e).despawn();
-    }
-    commands.spawn((
-        Name::new("Camera power-on"),
-        PowerOn { frames: 0, fade: 0.0 },
-        Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
-        BackgroundColor(Color::BLACK),
-        GlobalZIndex(30),
-        Pickable::IGNORE,
-        DespawnOnExit(crate::state::GameState::Playing),
-    ));
-}
-
-fn fade_power_on(mut commands: Commands, time: Res<Time<Real>>, due: Res<WarmupDue>, mut q: Query<(Entity, &mut PowerOn, &mut BackgroundColor)>) {
-    for (e, mut p, mut bg) in &mut q {
-        // Count frames only once the warm-up has been sent (its stall comes after).
-        if due.0.is_some() {
-            continue;
-        }
-        if p.frames < POWER_ON_FRAMES {
-            p.frames += 1;
-            continue;
-        }
-        p.fade += time.delta_secs().min(0.05);
-        let a = 1.0 - (p.fade / POWER_ON_FADE_S).clamp(0.0, 1.0);
-        if a <= 0.0 {
-            commands.entity(e).despawn();
-        } else {
-            bg.0 = Color::BLACK.with_alpha(a);
         }
     }
 }

@@ -1,5 +1,6 @@
 //! Shroud's menus on the engine UI kit: main menu items + "Enemy brain" card, the match setup
-//! screen (difficulty + map cards), the pause menu's match line and score, the crosshair
+//! screen (difficulty + map cards), the practice screen (map cards), the pause menu's match
+//! line and score (practice: its own buttons and line), the crosshair
 //! preview on the Gameplay settings tab, and what the game-specific buttons do. Drawn over the
 //! live 3D scene, which slowly pans behind the main menu.
 
@@ -11,6 +12,7 @@ use engine::ui::screens::ScreenRequest;
 
 use crate::match_flow::{MAX_ROUNDS, MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
+use crate::practice::Practice;
 use crate::save::Brain;
 use crate::settings::ShroudSettings;
 use crate::state::{AppState, GameState, Paused, has_visuals};
@@ -40,6 +42,7 @@ impl Plugin for MenuPlugin {
                 ("Throw: over / under", "Left / right mouse"),
                 ("Buy menu", "B (freeze time)"),
                 ("Scoreboard", "Tab (hold)"),
+                ("Reset targets (practice)", crate::practice::RESET_KEY_LABEL),
                 DEBUG_KEYS,
             ] {
                 b.set(action, keys);
@@ -47,25 +50,61 @@ impl Plugin for MenuPlugin {
         }
         app.insert_resource(MenuConfig {
             eyebrow: "Adaptive squad shooter",
-            main_items: vec![("Play", MenuAction::Open("setup")), ("Settings", MenuAction::Settings), ("Quit", MenuAction::Quit)],
-            pause_items: vec![
-                ("Resume", MenuAction::Resume),
+            main_items: vec![
+                ("Play", MenuAction::Open("setup")),
+                ("Practice", MenuAction::Open("practice")),
                 ("Settings", MenuAction::Settings),
-                ("Restart match", MenuAction::Custom("restart")),
-                ("Main menu", MenuAction::MainMenu),
-                ("Quit game", MenuAction::Quit),
+                ("Quit", MenuAction::Quit),
             ],
-            pause_note: "Restarting or leaving abandons this match; the squad does not train on it and you earn no XP.",
+            pause_items: match_pause_items(),
+            pause_note: MATCH_PAUSE_NOTE,
             main_panel: Some(brain_card),
             pause_header: Some(pause_score),
             pause_eyebrow: Some(pause_eyebrow),
         })
         .register_screen("setup", build_setup)
+        .register_screen("practice", build_practice)
         .settings_panel("Gameplay", crosshair_preview)
         .add_systems(OnEnter(GameState::Playing), close_screens)
-        .add_systems(Update, menu_events)
+        .add_systems(Update, (menu_events, pause_items_for_mode))
         .add_systems(Update, pan_camera.run_if(in_state(AppState::MainMenu).and_then(has_visuals)))
         .add_systems(Update, viewmodel_only_in_rounds.run_if(has_visuals));
+    }
+}
+
+const MATCH_PAUSE_NOTE: &str = "Restarting or leaving abandons this match; the squad does not train on it and you earn no XP.";
+const PRACTICE_PAUSE_NOTE: &str = "Practice is never recorded: the squad doesn't learn from it, and it earns no XP.";
+
+fn match_pause_items() -> Vec<(&'static str, MenuAction)> {
+    vec![
+        ("Resume", MenuAction::Resume),
+        ("Settings", MenuAction::Settings),
+        ("Restart match", MenuAction::Custom("restart")),
+        ("Main menu", MenuAction::MainMenu),
+        ("Quit game", MenuAction::Quit),
+    ]
+}
+
+fn practice_pause_items() -> Vec<(&'static str, MenuAction)> {
+    vec![
+        ("Resume", MenuAction::Resume),
+        ("Reset targets", MenuAction::Custom("practice_reset")),
+        ("Settings", MenuAction::Settings),
+        ("Restart practice", MenuAction::Custom("restart")),
+        ("Main menu", MenuAction::MainMenu),
+        ("Quit game", MenuAction::Quit),
+    ]
+}
+
+/// The pause menu's buttons and note follow the mode (match or practice).
+fn pause_items_for_mode(practice: Res<Practice>, mut config: ResMut<MenuConfig>) {
+    if !practice.is_changed() {
+        return;
+    }
+    let (items, note) = if practice.on { (practice_pause_items(), PRACTICE_PAUSE_NOTE) } else { (match_pause_items(), MATCH_PAUSE_NOTE) };
+    if config.pause_note != note {
+        config.pause_items = items;
+        config.pause_note = note;
     }
 }
 
@@ -82,16 +121,26 @@ fn menu_events(
     mut app_state: ResMut<NextState<AppState>>,
     game_state: Option<ResMut<NextState<GameState>>>,
     mut save: MessageWriter<SaveSettings>,
+    mut practice: ResMut<Practice>,
 ) {
     let mut game_state = game_state;
     for MenuEvent(id) in events.read() {
         match *id {
-            "start_match" => {
+            "start_match" | "start_practice" => {
+                if *id == "start_practice" {
+                    practice.begin();
+                } else {
+                    practice.end();
+                }
                 save.write(SaveSettings);
                 flow.abandon();
                 app_state.set(AppState::InGame);
             }
             "restart" => {
+                // Practice restarts as a fresh session (its kit; targets up again).
+                if practice.on {
+                    practice.begin();
+                }
                 flow.abandon();
                 if let Some(n) = game_state.as_mut() {
                     n.set(GameState::Playing);
@@ -178,6 +227,36 @@ fn build_setup(world: &mut World, root: Entity) {
     });
 }
 
+/// "practice": the map cards, then into practice (statue targets, nothing recorded).
+fn build_practice(world: &mut World, root: Entity) {
+    let t = world.resource::<Theme>().clone();
+    let reg = world.resource::<SettingsRegistry>();
+    let Some(map) = reg.field("map").cloned() else { return };
+    world.commands().entity(root).with_children(|p| {
+        menu_backdrop(p, &t, 0.0, 1.0);
+        p.spawn(menu_column(GAP_M)).with_children(|col| {
+            col.spawn(eyebrow("Practice", t.accent));
+            col.spawn(title("Free play", SIZE_H1, t.text));
+            col.spawn(text("The squad stands still as targets: walk up to them, inspect them, shoot them.", body(SIZE_BODY), t.text_muted));
+            col.spawn(text(
+                format!("No timer, buy anything any time, ammo refills. {} stands the targets up again.", crate::practice::RESET_KEY_LABEL),
+                body(SIZE_BODY),
+                t.text_muted,
+            ));
+            col.spawn(text("Nothing here is recorded: the squad doesn't learn from it, and it earns no XP.", body(SIZE_SMALL), t.text_dim));
+            col.spawn(spacer(GAP_L - GAP_M));
+            col.spawn(eyebrow("Map", t.text_muted));
+            card_row(col, &t, &map, 1, MAP_CARD_W);
+            col.spawn(spacer(GAP_L - GAP_M));
+            col.spawn((Node { column_gap: px(GAP_M), align_items: AlignItems::Center, ..default() }, Pickable::IGNORE)).with_children(|r| {
+                action_button(r, &t, "Start practice", MenuAction::Custom("start_practice"), Some(2), true, 320.0);
+                action_button(r, &t, "Back", UiAction::Back, Some(3), false, 160.0);
+            });
+        });
+        spawn_footer(p, &t, &[("W / S", "Row"), ("A / D", "Choose"), ("Enter", "Start"), ("Esc", "Back")]);
+    });
+}
+
 /// Map cards per row on the setup screen: the map row wraps so six or more maps fit.
 const MAP_CARDS_PER_ROW: f32 = 3.0;
 const MAP_CARD_W: f32 = 400.0;
@@ -258,8 +337,11 @@ fn career_card(world: &mut World, slot: Entity) {
     });
 }
 
-/// "Match 2 · Round 3" above "PAUSED".
+/// "Match 2 · Round 3" above "PAUSED" ("Practice · Foundry" in practice).
 fn pause_eyebrow(world: &World) -> String {
+    if world.resource::<Practice>().on {
+        return format!("Practice \u{b7} {}", world.resource::<ShroudSettings>().map.label());
+    }
     let f = world.resource::<MatchFlow>();
     format!("Match {} \u{b7} Round {}", f.match_no.max(1), f.round.max(1))
 }
@@ -267,6 +349,13 @@ fn pause_eyebrow(world: &World) -> String {
 /// Score line under "PAUSED".
 fn pause_score(world: &mut World, slot: Entity) {
     let t = world.resource::<Theme>().clone();
+    if world.resource::<Practice>().on {
+        let line = format!("Targets don't fight back \u{b7} {} resets them", crate::practice::RESET_KEY_LABEL);
+        world.commands().entity(slot).with_children(|s| {
+            s.spawn(text(line, body(SIZE_SMALL), t.text_muted));
+        });
+        return;
+    }
     let f = world.resource::<MatchFlow>();
     let (you, squad) = (f.player_rounds, f.enemy_rounds);
     let line = format!(

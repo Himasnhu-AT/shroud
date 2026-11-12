@@ -13,7 +13,7 @@ Shroud specifics on top of the guide:
 - Pooled/moving FX are tagged `Actor`.
 - Lamp shadows follow the nearest-K rule and the governor `Game(n)` (`map/look.rs`).
 - Plain level blocks merge per material (`map.rs`, `dressing::Batch`).
-- Pipelines warm at round start (`gfx.rs`).
+- Pipelines warm behind the loading screen (`loading.rs`: launch, match start, map change; later rounds get the short black cover). Runs wait for it via `loading.status` (play.py does).
 
 ## Layout
 - `crates/brain` — pure Rust AI (no Bevy): arena/nav, trait genome GA, NEAT, player model, utility AI, 2D trainer sim.

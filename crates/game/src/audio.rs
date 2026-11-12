@@ -82,7 +82,15 @@ impl Plugin for AudioPlugin {
             return;
         }
         app.add_systems(Startup, load_sfx)
-            .add_systems(OnEnter(GameState::Playing), (start_ambient, play_round_start))
+            .add_systems(OnEnter(GameState::Playing), (start_ambient, play_round_start).run_if(not(crate::state::has_visuals)))
+            // With visuals the round's sound waits for the loading cover to lift (`loading`).
+            .add_systems(
+                Update,
+                (start_ambient, play_round_start)
+                    .run_if(on_message::<crate::loading::Loaded>)
+                    .run_if(in_state(GameState::Playing))
+                    .run_if(crate::state::has_visuals),
+            )
             .add_systems(OnExit(GameState::Playing), stop_ambient)
             .add_systems(
                 Update,

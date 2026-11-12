@@ -8,6 +8,7 @@
 //!   damage taken, death, holding a primary, round results.
 //! - A finished match is credited on entering `Evolving` and saved; the [`Award`] waits for the
 //!   debrief. Abandoned matches (restart / main menu) pay nothing: a new match rerolls.
+//! - Practice (`crate::practice`) is not a match: nothing here runs during it.
 //! - [`ObjectiveDone`] fires when an objective completes mid-match (HUD toast, trace).
 //!
 //! HUD tracker and toast: `ui::career_hud`. Debrief: `ui::debrief`. Menu card: `menu`.
@@ -26,6 +27,7 @@ use crate::enemy::Squad;
 use crate::map::ArenaRes;
 use crate::match_flow::{MatchFlow, ROUNDS_TO_WIN};
 use crate::player::Player;
+use crate::practice::in_match;
 use crate::state::GameState;
 use crate::ui::hud::RoundClock;
 use crate::ui::killfeed::{KillEvent, detect_kills};
@@ -104,16 +106,16 @@ impl Plugin for CareerPlugin {
             .add_message::<ObjectiveDone>()
             .add_systems(
                 OnEnter(GameState::Playing),
-                start_round.after(crate::match_flow::begin_round).after(crate::enemy::spawn_squad),
+                start_round.after(crate::match_flow::begin_round).after(crate::enemy::spawn_squad).run_if(in_match),
             )
-            .add_systems(OnEnter(GameState::Evolving), credit_match)
+            .add_systems(OnEnter(GameState::Evolving), credit_match.run_if(in_match))
             .add_systems(
                 Update,
                 track
                     .after(WeaponSet)
                     .after(detect_kills)
                     .after(crate::match_flow::check_round_end)
-                    .run_if(in_state(GameState::Playing)),
+                    .run_if(in_state(GameState::Playing).and_then(in_match)),
             );
         #[cfg(feature = "dev")]
         commands::register(app);
