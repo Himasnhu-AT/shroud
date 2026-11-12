@@ -4,6 +4,7 @@
 #   scripts/import-gun.sh <model in assets/library/...> <kind> [gun_prepare options]
 #     kind: pistol | heavypistol | smg | rifle | battlerifle | shotgun | marksman | sniper
 #     options: --length M  --muzzle +x|-x|+y|-y  --keep a,b  --drop a,b  --max-texture PX
+#              --roll 180 (upside-down models)  --texture-set assets/library/.../prefix_   (maps for an FBX that lost its materials)
 #
 # Writes assets/models/weapons/hd/<kind>.glb (game frame, textures capped) and its
 # <kind>.lod1.glb, then prints the guns.json entry with estimated anchors. Packs under a

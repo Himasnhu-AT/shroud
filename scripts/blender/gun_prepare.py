@@ -38,6 +38,11 @@ MUZZLE = opt("--muzzle")
 KEEP = [s for s in (opt("--keep", "") or "").split(",") if s]
 DROP = [s for s in (opt("--drop", "") or "").split(",") if s]
 MAX_TEX = int(opt("--max-texture", "2048"))
+# Path prefix of a PBR set (e.g. assets/library/misc/gun-aks/ak_) for meshes that lost their
+# material in an FBX conversion: <prefix>Base_color / Normal(_OpenGL) / Roughness / Metallic.
+TEXSET = opt("--texture-set")
+# Turn about the barrel (degrees) for models that come upside down or on their side.
+ROLL = float(opt("--roll", "0") or 0)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 if SRC.lower().endswith(".fbx"):
@@ -117,7 +122,8 @@ elif not 0.12 <= L0 <= 1.5:
             scale = k
             break
     print(f"gun_prepare: length {L0:.3f} looks wrong; scaling by {scale}")
-xf = Matrix.Scale(scale, 4) @ rot
+# Roll about the barrel (Blender +Y after the turn).
+xf = Matrix.Rotation(math.radians(ROLL), 4, "Y") @ Matrix.Scale(scale, 4) @ rot
 for o in meshes:
     o.data.transform(xf)
 pts = all_verts()
@@ -128,6 +134,44 @@ shift = Matrix.Translation((-(lo.x + hi.x) * 0.5, 0, 0))
 for o in meshes:
     o.data.transform(shift)
     o.data.update()
+
+def texture_set_material(prefix):
+    import glob
+    import os
+    files = glob.glob(prefix + "*")
+    pick = lambda *keys: next((f for f in files if any(k in os.path.basename(f).lower() for k in keys)), None)
+    base, nrm = pick("base_color", "basecolor", "albedo", "diffuse"), pick("normal")
+    rough, metal = pick("rough"), pick("metal")
+    m = bpy.data.materials.new(os.path.basename(prefix).rstrip("_") or "gun")
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    def tex(path, colour):
+        n = nt.nodes.new("ShaderNodeTexImage")
+        n.image = bpy.data.images.load(path)
+        if not colour:
+            n.image.colorspace_settings.name = "Non-Color"
+        return n
+    if base:
+        nt.links.new(tex(base, True).outputs["Color"], bsdf.inputs["Base Color"])
+    if rough:
+        nt.links.new(tex(rough, False).outputs["Color"], bsdf.inputs["Roughness"])
+    if metal:
+        nt.links.new(tex(metal, False).outputs["Color"], bsdf.inputs["Metallic"])
+    if nrm:
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tex(nrm, False).outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    print(f"gun_prepare: texture set {prefix}: base {bool(base)} normal {bool(nrm)} rough {bool(rough)} metal {bool(metal)}")
+    return m
+
+
+if TEXSET:
+    mat = texture_set_material(TEXSET)
+    for o in meshes:
+        if not o.data.materials or all(s is None for s in o.data.materials):
+            o.data.materials.clear()
+            o.data.materials.append(mat)
 
 # Textures: cap the size.
 for img in bpy.data.images:

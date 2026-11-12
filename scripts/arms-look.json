@@ -580,5 +580,85 @@
   "params": {
    "on": false
   }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "battlerifle"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_battlerifle_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_battlerifle_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
+ },
+ {
+  "cmd": "weapon.give",
+  "params": {
+   "kind": "sniper"
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -2,
+    1.2,
+    12
+   ]
+  }
+ },
+ {
+  "sleep": 1.2
+ },
+ {
+  "shot": "c_sniper_idle"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "sleep": 0.8
+ },
+ {
+  "shot": "c_sniper_ads"
+ },
+ {
+  "cmd": "weapon.ads",
+  "params": {
+   "on": false
+  }
  }
 ]

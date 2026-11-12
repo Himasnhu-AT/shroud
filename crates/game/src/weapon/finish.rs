@@ -82,7 +82,7 @@ enum Set {
 /// The finish for a source material name (None: keep the source but darken it), and the set it
 /// is textured with when present.
 fn finish(kind: WeaponKind, name: &str) -> Option<(StandardMaterial, Set)> {
-    let m = |c: Color, metallic: f32, rough: f32| StandardMaterial { base_color: c, metallic, perceptual_roughness: rough, reflectance: 0.45, ..default() };
+    let m = |c: Color, metallic: f32, rough: f32| StandardMaterial { base_color: c, metallic, perceptual_roughness: rough, reflectance: 0.5, ..default() };
     let n = name.trim_start_matches("M_PCL_Flat_");
     let set = match n {
         "Black" | "Grey_Darker" | "Grey_Dark" => Set::Metal,
@@ -90,14 +90,15 @@ fn finish(kind: WeaponKind, name: &str) -> Option<(StandardMaterial, Set)> {
         _ => Set::Flat,
     };
     Some((match n {
-        // Receiver, barrel, slide: black coated steel / anodised aluminium.
-        // Albedos are measured-dark, not pure black (anodised / Cerakote ~0.03-0.05 linear),
-        // so a black gun still shows its shape in shade.
-        "Black" => m(Color::srgb(0.17, 0.17, 0.18), 0.0, 0.9),
-        // Polymer furniture.
-        "Black_Lighter" => m(furniture(kind), 0.0, 1.0),
-        "Grey_Darker" => m(Color::srgb(0.2, 0.2, 0.21), 0.0, 0.85),
-        "Grey_Dark" => m(Color::srgb(0.25, 0.25, 0.26), 0.0, 0.8),
+        // Receiver, barrel, slide: black coated steel / anodised aluminium, a dark body with a
+        // satin sheen (Cerakote / anodising are dielectric, roughness ~0.5): under a strong lamp
+        // the energy goes into a highlight instead of a grey matte wash. Albedos 0.025-0.035
+        // linear (tells-perf's lamp measurements, `light.viewmodel`).
+        "Black" => m(Color::LinearRgba(LinearRgba::rgb(0.026, 0.026, 0.028)), 0.0, 0.5),
+        // Polymer furniture: stays rough.
+        "Black_Lighter" => m(furniture(kind), 0.0, 0.75),
+        "Grey_Darker" => m(Color::LinearRgba(LinearRgba::rgb(0.03, 0.03, 0.032)), 0.0, 0.5),
+        "Grey_Dark" => m(Color::LinearRgba(LinearRgba::rgb(0.035, 0.035, 0.037)), 0.0, 0.55),
         // Worn edges, bolt, small parts.
         "Grey_Light" | "Grey_Lighter" => m(Color::srgb(0.32, 0.32, 0.33), 0.9, 0.32),
         "White" => m(Color::srgb(0.55, 0.55, 0.52), 0.0, 0.6),

@@ -13,6 +13,8 @@ import bpy
 argv = sys.argv[sys.argv.index("--") + 1:]
 SRC, OUT = argv[0], argv[1]
 RATIO = float(argv[2]) if len(argv) > 2 else 0.35
+# Textured packs: the low tier is seen from 4-6 m and beyond, so its maps shrink to this.
+MAX_TEX = int(argv[3]) if len(argv) > 3 else 512
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
@@ -41,6 +43,11 @@ for o in meshes:
 for o in list(bpy.data.objects):
     if o.type != "MESH":
         bpy.data.objects.remove(o, do_unlink=True)
+for img in bpy.data.images:
+    if img.size[0] > MAX_TEX or img.size[1] > MAX_TEX:
+        k = MAX_TEX / max(img.size)
+        img.scale(max(1, int(img.size[0] * k)), max(1, int(img.size[1] * k)))
+        img.pack()
 for o in meshes:
     o.select_set(True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True, export_animations=False, export_skins=False, export_materials="EXPORT", export_normals=True, export_texcoords=True)

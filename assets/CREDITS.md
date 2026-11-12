@@ -173,3 +173,19 @@ Unmodified. The licence text is in `fonts/Barlow-OFL.txt`. The game falls back t
 | `fonts/BarlowCondensed-SemiBold.ttf`, `fonts/BarlowCondensed-Bold.ttf` | Barlow Condensed | Jeremy Tribby (The Barlow Project Authors) | https://fonts.google.com/specimen/Barlow+Condensed | OFL 1.1 |
 
 Not CC0, not committed: `models/metahuman/` is generated locally by `scripts/make-metahuman.sh` from Epic's MetaHuman DNA files (UE 5.8 install or MetaHuman Creator export) under the MetaHuman license. The game falls back to `models/enemy.glb` when it is missing.
+
+## Downloaded gun packs (local only, not in this repo)
+Imported with the engine's `assets.py` into `assets/library/misc/gun-*` (ledger
+`library/LICENSES.json`), prepared by `scripts/import-gun.sh` into `models/weapons/hd/` and listed
+in `models/weapons/guns.json`. Fab Standard content is not redistributable: the files stay
+local (gitignored) and the game falls back to the CC0 set without them. Personal tier: free for
+individuals and companies under about $100k revenue; above that, the Professional tier is needed
+where it is priced.
+
+| Kind | Model | Author | URL | Licence |
+|---|---|---|---|---|
+| shotgun | Model 12 Pump Action Shotgun Free Standard (shells dropped, rolled upright, 1.2 m, textures 8K -> 2K) | the 9th Earl | https://www.fab.com/listings/c0761ef9-a19c-415b-a5c0-efe2ad238c4f | Fab Standard (Personal and Professional both free) |
+| battlerifle | AKS Tactical Upgrade (suppressed, 1.21 m; PBR set re-applied after FBX conversion) | SpatialNeglect | https://www.fab.com/listings/587e3f02-f8a1-4a3d-8b35-3394e793cfc5 | Fab Standard, Personal tier (Professional ₹748.66) |
+| sniper | **SV-98 Sniper Rifle by SpatialNeglect, CC-BY 4.0** (offset bolt mesh dropped, 1.2 m) | SpatialNeglect | https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b | CC-BY 4.0 (credit required here and in-game) |
+| (rifle, pending) | AR-15 style rifle | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
+| (smg, pending) | 10mm AUTO SMG | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
