@@ -43,8 +43,13 @@ All assets are CC0 1.0 Universal (public domain dedication). Attribution is not 
 | `textures/asphalt_wet/*` | Asphalt025C (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Asphalt025C | CC0 1.0 |
 | `textures/peeling_paint/*` | PaintedPlaster018 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=PaintedPlaster018 | CC0 1.0 |
 | `textures/ripstop/*` | Fabric061 (4K JPG: Color, NormalGL, Roughness, AmbientOcclusion; cooked KTX2 only) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Fabric061 | CC0 1.0 |
+| `textures/gun_metal/*` | Metal029 (1K JPG: Color, NormalGL, Roughness): black powder-coated steel with scratches; gun receivers, barrels, slides | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Metal029 | CC0 1.0 |
+| `textures/gun_polymer/*` | Plastic012B (1K JPG: Color, NormalGL, Roughness): scuffed black plastic; gun furniture | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Plastic012B | CC0 1.0 |
+| `textures/glove_leather/*` | Leather032 (1K JPG: Color, NormalGL, Roughness): scratched black leather; first-person gloves, enemy gloves and boots | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Leather032 | CC0 1.0 |
+| `textures/cordura/*` | Fabric062 (1K JPG: Color, NormalGL, Roughness, AmbientOcclusion): tight woven nylon; enemy plate carriers and helmet covers (tinted per squad look) | ambientCG (Lennart Demes) | https://ambientcg.com/view?id=Fabric062 | CC0 1.0 |
 
 Notes:
+- `gun_metal`, `gun_polymer`, `glove_leather` and `cordura` were fetched with the engine importer's ambientCG fetcher (`fetch_ambientcg` in `~/codes/game/engine/scripts/assets.py`: safe unzip, licence ledger entry `ambientcg`, CC0-1.0, fetched 2026-11-12) and cooked with the engine's cook.
 - ambientCG maps are renamed to `color.jpg`, `normal.jpg` (OpenGL convention), `rough.jpg` and `ao.jpg` and are otherwise unmodified. Mipmaps are built at load time (`gfx.rs`).
 - The Blaster Kit GLBs referenced their colour map as an external file (`Textures/colormap.png`). The texture was embedded into each GLB so the file is self-contained. Geometry and materials are otherwise unchanged.
 - The Kenney "Animated Characters" packs were checked and rejected: they only ship FBX and contain idle, run and jump clips, with no shoot or death.
