@@ -59,7 +59,7 @@ impl Plugin for MapPlugin {
             use engine::devtools::{AddControlCommand, params};
             app.add_control_command(
                 "map.load",
-                "Switch map now (restarts the round)",
+                "Switch map now (restarts the round). Also loads maps the menu hides (not realism-ready yet)",
                 params(&[("name", "string", "Sirocco | Gantry | Depot | Township | Office | Foundry")]),
                 map_load_command,
             )
@@ -306,8 +306,7 @@ fn wall_beside(arena: &Arena, min: V2, max: V2) -> Option<usize> {
 #[cfg(any(feature = "dev", test))]
 fn parse_map(name: &str) -> Option<MapId> {
     // Match the display label or the stable variant name ("office" still works after a rename).
-    let n = name.trim();
-    MapId::ALL.into_iter().find(|m| m.label().eq_ignore_ascii_case(n) || format!("{m:?}").eq_ignore_ascii_case(n))
+    MapId::from_name(name)
 }
 
 #[cfg(feature = "dev")]
