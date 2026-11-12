@@ -19,6 +19,7 @@ mod economy;
 mod enemy;
 mod evolving;
 mod gfx;
+mod loading;
 mod map;
 mod match_flow;
 mod meshprep;
@@ -67,6 +68,7 @@ fn main() {
             ui::UiPlugin,
             bodycam::BodycamPlugin,
             quality::QualityPlugin,
+            loading::LoadingPlugin,
         ))
         .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin, meshprep::MeshPrepPlugin))
         .run();

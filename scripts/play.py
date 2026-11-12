@@ -2,12 +2,18 @@
 """Launch Shroud (windowed by default) with the control port, run a script of
 commands, save screenshots, quit. For tests and visual checks; never grabs the mouse.
 
-  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N] [--no-build] [--exe BIN] [--extra ARG ...] [--menu]
+  python3 -I scripts/play.py steps.json [--headless | --onscreen] [--out DIR] [--seed N] [--no-build] [--exe BIN] [--extra ARG ...] [--menu] [--cold-cache]
 
 --exe BIN runs that binary instead of target/debug/shroud (implies --no-build): build, copy
 and check your binary first when sibling worktrees share the target dir and may overwrite it.
 
 Builds this checkout first and runs a private copy of the binary.
+
+--cold-cache runs the copy inside DIR/Tells.app with a bundle id of its own, so macOS keeps its
+compiled Metal shaders in a fresh folder (a cold shader cache, like a first launch); the folder
+is deleted when the game quits. Without it, every run shares the warm cache of unbundled binaries.
+
+After the round starts, the script waits for the loading screen to lift (`loading.status`).
 
 Default is --offscreen: hidden window, camera renders to an image, so screenshots work even
 when another app is fullscreen. --onscreen shows the window instead.
@@ -54,8 +60,26 @@ def main():
         src = os.path.join(target, "debug", "shroud")
     if "--no-build" not in args and "--exe" not in args:
         subprocess.run(["cargo", "build", "-q", "-p", "game"], cwd=root, check=True)
-    exe = os.path.join(out, "shroud")
     import shutil
+    cold = None
+    if "--cold-cache" in args:
+        # A private bundle id = a private Metal shader cache (in DARWIN_USER_CACHE_DIR/<id>).
+        cold = f"com.himanshuat.shroud.coldcache.{os.getpid()}"
+        macos = os.path.join(out, "Tells.app", "Contents", "MacOS")
+        os.makedirs(macos, exist_ok=True)
+        with open(os.path.join(out, "Tells.app", "Contents", "Info.plist"), "w") as pl:
+            pl.write(f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>{cold}</string>
+<key>CFBundleExecutable</key><string>shroud</string>
+<key>CFBundleName</key><string>Tells</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>
+''')
+        exe = os.path.join(macos, "shroud")
+    else:
+        exe = os.path.join(out, "shroud")
     shutil.copy2(src, exe)
     log = open(os.path.join(out, "game.log"), "w")
     cmd = [exe, "--control", "0", "--seed", seed, "--headless" if headless else "--play"]
@@ -99,6 +123,15 @@ def main():
             n += 1
             f.write(json.dumps({"id": n, "key": key, "method": "engine.execute", "params": {"command": command, "params": params or {}}}) + "\n"); f.flush()
             return json.loads(f.readline())
+        # Wait for the loading screen (shader warm-up) to lift; older builds have no such command.
+        if not headless:
+            t0 = time.time()
+            while time.time() - t0 < 300:
+                r = (call("loading.status").get("result") or {})
+                if not r.get("holds"):
+                    break
+                time.sleep(0.25)
+            print(json.dumps({"loading_wait_s": round(time.time() - t0, 2)}), flush=True)
         cap = None
         for st in steps:
             if "sleep" in st:
@@ -150,6 +183,10 @@ def main():
     finally:
         try: proc.wait(timeout=15)
         except subprocess.TimeoutExpired: proc.kill()
+        if cold:
+            cache = subprocess.run(["getconf", "DARWIN_USER_CACHE_DIR"], capture_output=True, text=True).stdout.strip()
+            if cache and cold.startswith("com.himanshuat.shroud.coldcache."):
+                shutil.rmtree(os.path.join(cache, cold), ignore_errors=True)
     print(f"output: {out}")
 
 main()

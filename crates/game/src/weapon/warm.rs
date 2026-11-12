@@ -1,4 +1,5 @@
-//! Shot-effect warm-up at round start.
+//! Shot-effect warm-up at round start (the loading screen's `WarmShots`, or the engine's
+//! `WarmPipelines`).
 //!
 //! The engine's `WarmPipelines` draws every `StandardMaterial` once, but the first bullet impact
 //! still froze the frame for ~1 s on this M5 Pro (fresh launch, dev build; 0.3-0.45 s in the
@@ -16,7 +17,10 @@ use engine::render_budget::WarmPipelines;
 use super::{Impact, Surface, Tracer};
 
 pub(super) fn build(app: &mut App) {
-    app.add_systems(Update, warm_shot_fx.run_if(on_message::<WarmPipelines>).run_if(crate::state::has_visuals));
+    app.add_systems(
+        Update,
+        warm_shot_fx.run_if(on_message::<WarmPipelines>.or_else(on_message::<crate::loading::WarmShots>)).run_if(crate::state::has_visuals),
+    );
 }
 
 /// Where the warm-up effects go: 2.5 m ahead of the camera on the ground plane, 0.4 m into the
