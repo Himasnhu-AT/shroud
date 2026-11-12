@@ -26,6 +26,8 @@ pub(crate) struct Model {
     pub min: Vec3,
     pub max: Vec3,
     pub back: Option<Vec3>,
+    /// Draw distance (small clutter is culled past it), `None`: always.
+    pub range: Option<std::ops::Range<f32>>,
 }
 
 impl Model {
@@ -39,23 +41,25 @@ impl Model {
 }
 
 // Bounding boxes measured from the glTFs (accessor min/max through the node transforms).
-pub(crate) const BARREL_RED: Model = Model { path: "library/props/ph-barrel-01/Barrel_01_1k.gltf", min: Vec3::new(-0.282, -0.007, -0.282), max: Vec3::new(0.282, 0.873, 0.282), back: None };
-pub(crate) const BARREL_BLUE: Model = Model { path: "library/props/ph-barrel-03/barrel_03_1k.gltf", min: Vec3::new(-0.317, 0.0, -0.319), max: Vec3::new(0.317, 0.93, 0.319), back: None };
+pub(crate) const BARREL_RED: Model = Model { path: "library/props/ph-barrel-01/Barrel_01_1k.gltf", min: Vec3::new(-0.282, -0.007, -0.282), max: Vec3::new(0.282, 0.873, 0.282), back: None, range: None };
+pub(crate) const BARREL_BLUE: Model = Model { path: "library/props/ph-barrel-03/barrel_03_1k.gltf", min: Vec3::new(-0.317, 0.0, -0.319), max: Vec3::new(0.317, 0.93, 0.319), back: None, range: None };
 /// Lies flat.
-pub(crate) const CEMENT: Model = Model { path: "library/props/ph-cement-bag/cement_bag_1k.gltf", min: Vec3::new(-0.229, 0.001, -0.348), max: Vec3::new(0.234, 0.181, 0.351), back: None };
-pub(crate) const BOX: Model = Model { path: "library/props/ph-cardboard-box-01/cardboard_box_01_1k.gltf", min: Vec3::new(-0.193, -0.007, -0.225), max: Vec3::new(0.195, 0.335, 0.291), back: None };
-pub(crate) const JERRYCAN: Model = Model { path: "library/props/ph-metal-jerrycan/metal_jerrycan_1k.gltf", min: Vec3::new(-0.17, 0.0, -0.089), max: Vec3::new(0.18, 0.455, 0.083), back: None };
+pub(crate) const CEMENT: Model = Model { path: "library/props/ph-cement-bag/cement_bag_1k.gltf", min: Vec3::new(-0.229, 0.001, -0.348), max: Vec3::new(0.234, 0.181, 0.351), back: None, range: Some(0.0..35.0) };
+pub(crate) const BOX: Model = Model { path: "library/props/ph-cardboard-box-01/cardboard_box_01_1k.gltf", min: Vec3::new(-0.193, -0.007, -0.225), max: Vec3::new(0.195, 0.335, 0.291), back: None, range: Some(0.0..35.0) };
+pub(crate) const JERRYCAN: Model = Model { path: "library/props/ph-metal-jerrycan/metal_jerrycan_1k.gltf", min: Vec3::new(-0.17, 0.0, -0.089), max: Vec3::new(0.18, 0.455, 0.083), back: None, range: Some(0.0..35.0) };
 /// Stands on its tread (axle along z): leaned against the wall.
-pub(crate) const TYRE: Model = Model { path: "library/props/ph-old-tyre/old_tyre_1k.gltf", min: Vec3::new(-0.3, -0.3, -0.083), max: Vec3::new(0.3, 0.3, 0.082), back: Some(Vec3::Z) };
-pub(crate) const PROPANE: Model = Model { path: "library/props/ph-propane-tank/propane_tank_1k.gltf", min: Vec3::new(-0.169, 0.0, -0.169), max: Vec3::new(0.169, 0.554, 0.169), back: None };
+pub(crate) const TYRE: Model = Model { path: "library/props/ph-old-tyre/old_tyre_1k.gltf", min: Vec3::new(-0.3, -0.3, -0.083), max: Vec3::new(0.3, 0.3, 0.082), back: Some(Vec3::Z), range: Some(0.0..35.0) };
+pub(crate) const PROPANE: Model = Model { path: "library/props/ph-propane-tank/propane_tank_1k.gltf", min: Vec3::new(-0.169, 0.0, -0.169), max: Vec3::new(0.169, 0.554, 0.169), back: None, range: Some(0.0..35.0) };
 /// Street cabinet, doors on +z.
-pub(crate) const UTILITY_BOX: Model = Model { path: "library/props/ph-utility-box-02/utility_box_02_1k.gltf", min: Vec3::new(-0.46, 0.0, -0.21), max: Vec3::new(0.46, 1.12, 0.222), back: Some(Vec3::NEG_Z) };
+pub(crate) const UTILITY_BOX: Model = Model { path: "library/props/ph-utility-box-02/utility_box_02_1k.gltf", min: Vec3::new(-0.46, 0.0, -0.21), max: Vec3::new(0.46, 1.12, 0.222), back: Some(Vec3::NEG_Z), range: Some(0.0..35.0) };
 /// Caged bulkhead lamp: back plate on z = 0, glass towards +z.
-pub(crate) const WALL_LAMP: Model = Model { path: "library/props/ph-industrial-wall-lamp/industrial_wall_lamp_1k.gltf", min: Vec3::new(-0.137, -0.215, 0.0), max: Vec3::new(0.137, 0.215, 0.14), back: Some(Vec3::NEG_Z) };
+pub(crate) const WALL_LAMP: Model = Model { path: "library/props/ph-industrial-wall-lamp/industrial_wall_lamp_1k.gltf", min: Vec3::new(-0.137, -0.215, 0.0), max: Vec3::new(0.137, 0.215, 0.14), back: Some(Vec3::NEG_Z), range: None };
 /// Enamel high-bay shade on a chain; its top (the hook) at y = 0.
-pub(crate) const HIGH_BAY: Model = Model { path: "library/props/ph-hanging-industrial-lamp/hanging_industrial_lamp_1k.gltf", min: Vec3::new(-0.275, -1.34, -0.275), max: Vec3::new(0.275, 0.015, 0.275), back: None };
+pub(crate) const HIGH_BAY: Model = Model { path: "library/props/ph-hanging-industrial-lamp/hanging_industrial_lamp_1k.gltf", min: Vec3::new(-0.275, -1.34, -0.275), max: Vec3::new(0.275, 0.015, 0.275), back: None, range: None };
 /// Precast concrete barrier, 1.57 long (x) x 1.11 high x 0.44 deep: the same height as low cover.
-pub(crate) const BARRIER: Model = Model { path: "library/props/ph-concrete-road-barrier-02/concrete_road_barrier_02_1k.gltf", min: Vec3::new(-0.776, -0.003, -0.254), max: Vec3::new(0.789, 1.109, 0.188), back: None };
+/// The barrier's second LOD (asset-pipe clustering, 2.9 k triangles), past 12.5 m.
+pub(crate) const BARRIER_LOD1: &str = "library/props/ph-concrete-road-barrier-02/barrier.lod1.glb";
+pub(crate) const BARRIER: Model = Model { path: "library/props/ph-concrete-road-barrier-02/concrete_road_barrier_02_1k.gltf", min: Vec3::new(-0.776, -0.003, -0.254), max: Vec3::new(0.789, 1.109, 0.188), back: None, range: None };
 
 /// Deterministic 0..1 hash of a few integers.
 fn hash(a: i32, b: i32, salt: u32) -> f32 {
@@ -115,7 +119,51 @@ fn busy(arena: &Arena, p: Vec3) -> bool {
         || arena.decor.headers.iter().any(|h| p.x > h.min.x - 0.6 && p.x < h.max.x + 0.6 && p.z > h.min.y - 0.6 && p.z < h.max.y + 0.6 && p.y > h.bottom - 0.6)
 }
 
+/// Rubble, paper and cable offcuts along wall feet, densest in corners, all under 0.25 m and
+/// within 0.6 m of the wall, never in a doorway. Merged into `batch` (no shadows).
+fn debris(arena: &Arena, batch: &mut Batch) {
+    let doorway = |p: Vec3| arena.decor.headers.iter().any(|h| p.x > h.min.x - 1.0 && p.x < h.max.x + 1.0 && p.z > h.min.y - 1.0 && p.z < h.max.y + 1.0);
+    for (fi, f) in faces(arena).iter().enumerate() {
+        let n = (f.len / 0.35) as i32;
+        for k in 0..n {
+            let a = -f.len * 0.5 + (k as f32 + 0.5) * f.len / n as f32;
+            let corner = 1.0 - ((f.len * 0.5 - a.abs()) / 2.0).clamp(0.0, 1.0); // 1 at the face ends
+            let r = hash(fi as i32, k, 61);
+            if r > 0.18 + 0.5 * corner {
+                continue;
+            }
+            let out = 0.08 + hash(fi as i32, k, 63) * (0.25 + 0.3 * corner);
+            let at = f.mid + f.t * a + f.n * out;
+            if in_other_block(arena, at + Vec3::Y * 0.05, 0.12, f.block) || doorway(at) {
+                continue;
+            }
+            let yaw = Quat::from_rotation_y(hash(k, fi as i32, 67) * 6.283);
+            let kind = hash(fi as i32, k, 69);
+            if kind < 0.62 {
+                // A cluster of broken concrete: one chunk and a few crumbs.
+                for c in 0..4 {
+                    let sz = if c == 0 { 0.08 + 0.12 * hash(k, c, 71) } else { 0.025 + 0.04 * hash(k, c, 73) };
+                    let off = if c == 0 { Vec3::ZERO } else { Vec3::new(hash(c, k, 75) - 0.5, 0.0, hash(k, c, 77) - 0.5) * 0.4 };
+                    let tilt = Quat::from_euler(EulerRot::XYZ, hash(c, k, 79) * 0.8, hash(k, c, 81) * 3.1, hash(c, c + k, 83) * 0.8);
+                    let dims = Vec3::new(sz, sz * (0.45 + 0.4 * hash(c, k, 85)), sz * (0.6 + 0.6 * hash(k, c, 87)));
+                    batch.add_shape("foundry_rubble", Cuboid::from_size(dims), Transform::from_translation(at + yaw * off + Vec3::Y * dims.y * 0.35).with_rotation(yaw * tilt));
+                }
+            } else if kind < 0.85 {
+                // A sheet of paper, lying flat.
+                batch.add_shape("debris_paper", Cuboid::new(0.21, 0.002, 0.297), Transform::from_translation(at + Vec3::Y * 0.016).with_rotation(yaw * Quat::from_rotation_x(0.04)));
+            } else {
+                // A cable offcut: two kinked lengths.
+                let l = 0.25 + 0.35 * hash(k, fi as i32, 89);
+                let kink = Quat::from_rotation_y(0.5 + hash(fi as i32, k, 91));
+                batch.add_shape("cable", Cylinder::new(0.009, l).mesh().resolution(6), Transform::from_translation(at + Vec3::Y * 0.01).with_rotation(yaw * Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)));
+                batch.add_shape("cable", Cylinder::new(0.009, l * 0.7).mesh().resolution(6), Transform::from_translation(at + yaw * Vec3::new(l * 0.5, 0.01, l * 0.25)).with_rotation(yaw * kink * Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)));
+            }
+        }
+    }
+}
+
 fn register(g: &mut Gfx, p: &mut Palette) {
+    p.flat(g, "debris_paper", || StandardMaterial { base_color: Color::srgb(0.62, 0.60, 0.55), perceptual_roughness: 0.9, ..default() });
     p.flat(g, "cable", || StandardMaterial { base_color: Color::srgb(0.025, 0.025, 0.028), perceptual_roughness: 0.55, ..default() });
     p.flat(g, "pipe_clamp", || StandardMaterial { base_color: Color::srgb(0.18, 0.17, 0.16), perceptual_roughness: 0.6, metallic: 0.8, ..default() });
 }
@@ -185,8 +233,9 @@ pub(crate) fn spawn(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut
             }
         }
     }
-    pipes.spawn(commands, g, p, "Pipes", false);
-    thin.spawn(commands, g, p, "Pipe clamps and cables", false);
+    debris(arena, &mut thin);
+    pipes.spawn_scattered(commands, g, p, "Pipes", false);
+    thin.spawn_scattered(commands, g, p, "Pipe clamps, cables and debris", false);
 }
 
 /// Spawns `m` standing on the ground at `at`, its back against a wall whose outward normal is
@@ -211,29 +260,50 @@ pub(crate) fn place(commands: &mut Commands, g: &Gfx, m: &Model, at: Vec3, n: Ve
     spawn_model(commands, g, m, tf, shadows);
 }
 
-/// Spawns model `m` at `tf` (visual only, map scenery). `shadows: false` marks it so its meshes
-/// get [`NotShadowCaster`] once the scene has spawned them ([`no_shadows_in_scenes`]).
+/// Spawns model `m` at `tf` (visual only, map scenery). `shadows: false`: its meshes cast none.
 pub(crate) fn spawn_model(commands: &mut Commands, g: &Gfx, m: &Model, tf: Transform, shadows: bool) -> Option<Entity> {
-    if !g.dir.has(m.path) {
-        return None;
-    }
-    let scene = g.server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(m.path));
-    let mut e = commands.spawn((Name::new(format!("Prop {}", m.path)), ArenaPiece, Scenery, bevy::world_serialization::WorldAssetRoot(scene), tf));
-    if !shadows {
-        e.insert(NoShadows);
-    }
-    Some(e.id())
+    spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: m.range.clone() })
 }
 
-/// On a model root: none of its meshes cast shadows (small props, per the perf rules).
-#[derive(Component)]
-pub(crate) struct NoShadows;
+/// Spawns `m` with its LOD chain: `m` (LOD0) up to `near` metres, `lod1` (a sibling GLB made by the
+/// engine's asset-pipe) beyond, cross-faded over 2 m. Falls back to LOD0 alone without `lod1`.
+pub(crate) fn spawn_lod(commands: &mut Commands, g: &Gfx, m: &Model, lod1: &str, near: f32, tf: Transform, shadows: bool) -> bool {
+    if !g.dir.has(lod1) {
+        return spawn_model(commands, g, m, tf, shadows).is_some();
+    }
+    spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: Some(0.0..near) }).is_some()
+        && spawn_scene(commands, g, lod1, tf, ModelMeshes { shadows, range: Some(near..f32::INFINITY) }).is_some()
+}
 
-/// Meshes a scene just spawned under a [`NoShadows`] root stop casting shadows.
-pub(crate) fn no_shadows_in_scenes(mut commands: Commands, added: Query<Entity, (Added<Mesh3d>, Without<NotShadowCaster>)>, parents: Query<&ChildOf>, marked: Query<(), With<NoShadows>>) {
+fn spawn_scene(commands: &mut Commands, g: &Gfx, path: &str, tf: Transform, meshes: ModelMeshes) -> Option<Entity> {
+    if !g.dir.has(path) {
+        return None;
+    }
+    let scene = g.server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(path.to_string()));
+    Some(commands.spawn((Name::new(format!("Prop {path}")), ArenaPiece, Scenery, meshes, bevy::world_serialization::WorldAssetRoot(scene), tf)).id())
+}
+
+/// On a model root: what its meshes get once the scene has spawned them ([`tag_model_meshes`]).
+#[derive(Component, Clone)]
+pub(crate) struct ModelMeshes {
+    pub shadows: bool,
+    /// Drawn only this far from the camera (metres), cross-faded over 2 m at each end.
+    pub range: Option<std::ops::Range<f32>>,
+}
+
+/// Meshes a model scene just spawned are static map scenery (`Scenery`, for the render budget
+/// and the light bake), lose shadows on small props, and get their LOD / draw range.
+pub(crate) fn tag_model_meshes(mut commands: Commands, added: Query<Entity, Added<Mesh3d>>, parents: Query<&ChildOf>, roots: Query<&ModelMeshes>) {
     for e in &added {
-        if parents.iter_ancestors(e).any(|a| marked.contains(a)) {
-            commands.entity(e).insert(NotShadowCaster);
+        let Some(m) = parents.iter_ancestors(e).find_map(|a| roots.get(a).ok()) else { continue };
+        let mut c = commands.entity(e);
+        c.insert(Scenery);
+        if !m.shadows {
+            c.insert(NotShadowCaster);
+        }
+        if let Some(r) = &m.range {
+            let start = if r.start > 0.0 { r.start - 1.0..r.start + 1.0 } else { 0.0..0.0 };
+            c.insert(bevy::camera::visibility::VisibilityRange { start_margin: start, end_margin: r.end - 1.0..r.end + 1.0, use_aabb: false });
         }
     }
 }

@@ -82,6 +82,17 @@ impl Batch {
 
     /// One entity per material. `shadows`: whether the merged pieces cast shadows.
     pub fn spawn(self, commands: &mut Commands, g: &mut Gfx, p: &mut Palette, name: &str, shadows: bool) {
+        self.spawn_with(commands, g, p, name, shadows, false);
+    }
+
+    /// [`Batch::spawn`] for small pieces scattered over the whole map (pipes, debris): the merged
+    /// mesh's centre is far from most views, so it keeps full detail (`KeepDetail`) instead of
+    /// the render budget's flat far version.
+    pub fn spawn_scattered(self, commands: &mut Commands, g: &mut Gfx, p: &mut Palette, name: &str, shadows: bool) {
+        self.spawn_with(commands, g, p, name, shadows, true);
+    }
+
+    fn spawn_with(self, commands: &mut Commands, g: &mut Gfx, p: &mut Palette, name: &str, shadows: bool, keep: bool) {
         let Batch { mut kits, order } = self;
         for key in order {
             let Some(kit) = kits.remove(&key) else { continue };
@@ -91,6 +102,9 @@ impl Batch {
             let mut e = commands.spawn((Name::new(format!("{name} ({key})")), ArenaPiece, Mesh3d(g.meshes.add(mesh)), MeshMaterial3d(mat), Transform::default()));
             if !shadows {
                 e.insert(NotShadowCaster);
+            }
+            if keep {
+                e.insert(engine::render_budget::KeepDetail);
             }
         }
     }

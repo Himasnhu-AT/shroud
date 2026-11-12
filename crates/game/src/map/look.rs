@@ -45,7 +45,7 @@ const PH_YARD: &str = "library/textures/ph-damaged-concrete-floor";
 const PH_ASPHALT: &str = "library/textures/ph-asphalt-02";
 const PH_GRAVEL: &str = "library/textures/ph-gravel-floor-03";
 const PH_CAST_CONCRETE: &str = "library/textures/ph-concrete-wall-006";
-const PH_FORMWORK: &str = "library/textures/ph-concrete-wall-008";
+const PH_PLANKS: &str = "library/textures/ph-brown-planks-09";
 const PH_BRICK: &str = "library/textures/ph-factory-brick";
 const PH_RUSTY_CORRUGATED: &str = "library/textures/ph-rusty-corrugated-iron";
 const PH_CORRUGATED: &str = "library/textures/ph-corrugated-iron-02";
@@ -151,8 +151,13 @@ fn recipe(key: &str) -> Spec {
         "foundry_container1" => spec(PH_PAINTED_RUST, [0.92, 0.88, 0.86], [0.55, 0.20, 0.14], 0.6, 0.0),
         "foundry_container2" => spec(PH_RUST_SHEET, [0.70, 0.66, 0.62], [0.40, 0.30, 0.24], 0.6, 0.0),
         // Low concrete cover (the jersey barriers between lanes) and steel drums.
-        "foundry_barrier" => spec(PH_FORMWORK, [0.95, 0.94, 0.92], [0.55, 0.54, 0.52], 0.9, 1.6),
+        "foundry_barrier" => spec(PH_CAST_CONCRETE, [1.0, 1.0, 1.0], [0.55, 0.54, 0.52], 0.9, 1.6),
         "foundry_drum" => spec(PH_RUST_SHEET, [0.42, 0.50, 0.62], [0.20, 0.30, 0.45], 0.5, 1.2),
+        // Packing crates: raw pine boards, darker battens.
+        "foundry_crate" => spec(PH_PLANKS, [0.92, 0.86, 0.78], [0.52, 0.40, 0.28], 1.0, 0.0),
+        "foundry_batten" => spec(PH_PLANKS, [0.62, 0.55, 0.48], [0.36, 0.28, 0.20], 1.0, 0.0),
+        // Rubble: broken cast concrete.
+        "foundry_rubble" => spec(PH_CAST_CONCRETE, [0.95, 0.93, 0.90], [0.40, 0.39, 0.38], 0.95, 0.3),
         // Pipe runs on the walls: rusted bare steel, and old green paint.
         "foundry_pipe" => spec(PH_RUST, [0.55, 0.50, 0.46], [0.22, 0.17, 0.13], 0.6, 1.0),
         "foundry_pipe_b" => spec(PH_CONTAINER, [0.70, 0.76, 0.70], [0.20, 0.28, 0.20], 0.6, 1.0),
@@ -389,6 +394,7 @@ impl Palette {
             Skin::Stucco => if i.is_multiple_of(2) { "stucco" } else { "stucco_b" }.into(),
             Skin::Container if self.id == MapId::Foundry => format!("foundry_container{}", i % 3),
             Skin::Container => format!("container{}", i % 4),
+            Skin::Crate if self.id == MapId::Foundry => "foundry_crate".into(),
             Skin::Crate => "crate".into(),
             Skin::Barrel if self.id == MapId::Office => "planter".into(),
             // Foundry: tall drums are ladles and the boiler (dark, heat-stained steel).
@@ -483,8 +489,20 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         commands.entity(e).insert(Visibility::default());
         return;
     }
+    // Foundry: low drums are four scanned 200 l drums filling the footprint.
+    if b.skin == Skin::Barrel && b.kind == BlockKind::Low && p.id == MapId::Foundry && detail && drums(commands, i, size, center, g) {
+        commands.entity(e).insert(Visibility::default());
+        return;
+    }
     let key = p.block_key(i, b);
     let (mat, _) = p.mat(g, &key);
+    // Foundry packing crates: battens on every edge and round the middle (merged with the box).
+    if b.skin == Skin::Crate && p.id == MapId::Foundry && detail {
+        crate_battens(size, center, g, p, if b.kind == BlockKind::Low && size.x.max(size.z) < 1.6 { &mut *small } else { &mut *walls });
+    }
+    if is_ladle_car(p.id, b) && detail {
+        ladle_car(size, center, g, p, walls);
+    }
     // Small props don't cast shadows (perf rule); walls and big cover do.
     let small_prop = b.kind == BlockKind::Low && size.x.max(size.z) < 1.6;
     if b.skin == Skin::Barrel {
@@ -573,11 +591,73 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
     }
 }
 
+/// Foundry's ladle car: the 2.6 x 6 m container on the ladle track.
+fn is_ladle_car(id: MapId, b: &Block) -> bool {
+    id == MapId::Foundry && b.skin == Skin::Container && b.kind == BlockKind::Tall && (b.height - 3.0).abs() < 0.01 && (b.half.x - 1.3).abs() < 0.01 && (b.half.y - 3.0).abs() < 0.01
+}
+
+/// Four drums (2 x 2) standing in a low drum block's footprint, stretched to its height.
+fn drums(commands: &mut Commands, i: usize, size: Vec3, center: Vec3, g: &mut Gfx) -> bool {
+    use super::industry::{BARREL_BLUE, BARREL_RED, spawn_model};
+    if !g.dir.has(BARREL_RED.path) || !g.dir.has(BARREL_BLUE.path) {
+        return false;
+    }
+    for (k, (dx, dz)) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)].into_iter().enumerate() {
+        let m = if (i + k) % 3 == 0 { &BARREL_RED } else { &BARREL_BLUE };
+        let ms = m.size();
+        let cell = Vec2::new(size.x * 0.5, size.z * 0.5);
+        let s = (cell.x.min(cell.y) * 0.97 / ms.x).min(1.0);
+        let scale = Vec3::new(s, size.y / ms.y, s);
+        let yaw = (i * 7 + k * 3) as f32 * 1.3;
+        let at = Vec3::new(center.x + dx * cell.x * 0.5, -m.min.y * scale.y, center.z + dz * cell.y * 0.5);
+        spawn_model(commands, g, m, Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)).with_scale(scale), size.x.max(size.z) >= 1.6);
+    }
+    true
+}
+
+/// Battens on a packing crate of `size` at `center`: every edge, plus a band round the middle.
+fn crate_battens(size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette, batch: &mut super::dressing::Batch) {
+    let (t, o) = (0.09, 0.02); // batten width, how far it stands proud
+    let h = size * 0.5;
+    for (sx, sz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        // Vertical corner posts.
+        batch.add(g, p, "foundry_batten", Vec3::new(t, size.y, t), center + Vec3::new(sx * (h.x - t * 0.5 + o), 0.0, sz * (h.z - t * 0.5 + o)));
+    }
+    for y in [-h.y + t * 0.5, h.y - t * 0.5, 0.0] {
+        for s in [-1.0f32, 1.0] {
+            batch.add(g, p, "foundry_batten", Vec3::new(size.x + 2.0 * o, t, t), center + Vec3::new(0.0, y, s * (h.z - t * 0.5 + o)));
+            batch.add(g, p, "foundry_batten", Vec3::new(t, t, size.z + 2.0 * o), center + Vec3::new(s * (h.x - t * 0.5 + o), y, 0.0));
+        }
+    }
+}
+
+/// The ladle car's chassis: wheel sets and stiffening ribs on its long sides, a rim round the top,
+/// and the ladle itself (a rusted drum) riding above it. All above or flush with the block.
+fn ladle_car(size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette, batch: &mut super::dressing::Batch) {
+    let h = size * 0.5;
+    p.flat(g, "ladle_wheel", || StandardMaterial { base_color: Color::srgb(0.07, 0.065, 0.06), perceptual_roughness: 0.5, metallic: 0.9, ..default() });
+    for z in [-h.z + 0.7, -h.z + 1.6, h.z - 1.6, h.z - 0.7] {
+        for s in [-1.0f32, 1.0] {
+            let at = center + Vec3::new(s * (h.x + 0.04), -h.y + 0.42, z);
+            batch.add_shape("ladle_wheel", Cylinder::new(0.42, 0.08).mesh().resolution(20), Transform::from_translation(at).with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)));
+        }
+    }
+    for k in 0..7 {
+        let z = -h.z + 0.3 + k as f32 * (size.z - 0.6) / 6.0;
+        for s in [-1.0f32, 1.0] {
+            batch.add(g, p, "foundry_steel", Vec3::new(0.06, size.y - 1.0, 0.14), center + Vec3::new(s * (h.x + 0.03), 0.4, z));
+        }
+    }
+    batch.add(g, p, "foundry_steel", Vec3::new(size.x + 0.1, 0.18, size.z + 0.1), center + Vec3::Y * (h.y + 0.09));
+    batch.add_shape("foundry_ladle", Cylinder::new(1.15, 1.2).mesh().resolution(28), Transform::from_translation(center + Vec3::Y * (h.y + 0.78)));
+    batch.add_shape("foundry_ladle", Cylinder::new(1.25, 0.12).mesh().resolution(28), Transform::from_translation(center + Vec3::Y * (h.y + 1.42)));
+}
+
 /// Precast barriers (`industry::BARRIER`, 1.57 m long, as high as low cover) end to end along a
 /// block of `size` at `center`, stretched a little to fill it exactly (the collider is the block).
 /// False when the model is missing.
 fn barriers(commands: &mut Commands, size: Vec3, center: Vec3, g: &mut Gfx) -> bool {
-    use super::industry::{BARRIER, spawn_model};
+    use super::industry::{BARRIER, BARRIER_LOD1, spawn_lod};
     if !g.dir.has(BARRIER.path) {
         return false;
     }
@@ -594,7 +674,7 @@ fn barriers(commands: &mut Commands, size: Vec3, center: Vec3, g: &mut Gfx) -> b
         // Model centre (x, z) and bottom (y) onto the slot's centre on the ground.
         let local = Vec3::new(mid.x, BARRIER.min.y, mid.z) * scale;
         let at = Vec3::new(center.x, 0.0, center.z) + along * a - rot * local;
-        spawn_model(commands, g, &BARRIER, Transform::from_translation(at).with_rotation(rot).with_scale(scale), true);
+        spawn_lod(commands, g, &BARRIER, BARRIER_LOD1, 12.5, Transform::from_translation(at).with_rotation(rot).with_scale(scale), true);
     }
     true
 }

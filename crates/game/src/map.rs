@@ -51,7 +51,7 @@ impl Plugin for MapPlugin {
                     .before(crate::match_flow::begin_round)
                     .before(crate::enemy::spawn_squad),
             )
-            .add_systems(Update, (look::sync_look.run_if(look::look_inputs_changed), look::apply_light_budget, grime::spawn_grime, industry::no_shadows_in_scenes).run_if(has_visuals));
+            .add_systems(Update, (look::sync_look.run_if(look::look_inputs_changed), look::apply_light_budget, grime::spawn_grime, industry::tag_model_meshes).run_if(has_visuals));
         #[cfg(feature = "dev")]
         {
             use engine::devtools::{AddControlCommand, params};
