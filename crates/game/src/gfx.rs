@@ -22,8 +22,10 @@ pub struct GfxPlugin;
 
 impl Plugin for GfxPlugin {
     fn build(&self, app: &mut App) {
-        // Medium keeps TAA but no bloom (the engine's default Medium has bloom).
-        app.insert_resource(QualityPreset { bloom: [false, false, true, true], ..default() })
+        // Medium keeps TAA but no bloom (the engine's default Medium has bloom). Volumetric fog
+        // (Foundry's sun shafts) only on Ultra: on High it cost 5-6 ms GPU at 1080p (Foundry A
+        // site, 14.0 → 8.2-8.9 ms p50 without it), more than the rest of the look together.
+        app.insert_resource(QualityPreset { bloom: [false, false, true, true], volumetric_fog: [false, false, false, true], ..default() })
             // Arenas are at most ~91 m corner to corner: even on Low (x0.6) nothing inside one
             // fades, loses its shadow or goes flat; scenery stops at the fog.
             .insert_resource(SceneryRanges { shadow: 160.0, small_props: 160.0, far: 160.0, view: FOG_END, ..default() })
