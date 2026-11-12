@@ -1,9 +1,10 @@
 //! Bodycam camera style (Video → "Camera style: Bodycam"; `video.camera_style` on the control
 //! port). Classic, the default, is untouched by everything here.
 //!
-//! - Free aim ([`free_aim`]): the mouse moves the gun; the camera follows only when the gun leaves
-//!   an 18°×12° box (exponential stiffness 14 hip, 35 aimed; the box collapses to 0 on ADS), with
-//!   a dutch roll from yaw speed and strafing (±7°) and a small vest shock per shot. The engine
+//! - Free aim ([`free_aim`]): the mouse moves the gun; the camera follows rigidly (no smoothing,
+//!   the same frame) once the gun leaves a 6°×4° box (it collapses to 0 on ADS), with a dutch
+//!   roll from yaw speed and strafing (±7°) and a small vest shock per shot. The chest mount is
+//!   pulled back towards the eyes by a sphere cast so it never ends up in or past a wall. The engine
 //!   still writes the CS-style camera each frame; this overrides its rotation afterwards.
 //! - Handling: the viewmodel's 6-DOF spring rig, wall compression and true-barrel shots live in
 //!   `weapon::viewmodel` / `weapon::fire` and read [`BodycamAim`].
@@ -12,6 +13,7 @@
 //! - HUD (`hud`): [REC] stamp, no crosshair and no health/ammo numbers (R on a full mag shows a
 //!   short ammo readout: the "press check").
 
+use avian3d::prelude::*;
 use bevy::prelude::*;
 use engine::fps::{FpsLook, FpsMotor, FpsViewKick};
 use engine::gfx::MainCamera;
@@ -28,11 +30,9 @@ pub mod lens;
 /// recommended render FOV for its body camera. 100° vertical at 16:9 is a ~130° horizontal
 /// action-cam lens; the fisheye keeps the corners and magnifies the centre.
 pub const BODYCAM_FOV_DEG: f32 = engine::look::BodycamLook::RECOMMENDED_FOV_DEG;
-/// Free-aim box half extents (yaw, pitch).
-pub const DEADZONE: Vec2 = Vec2::new(18.0f32.to_radians(), 12.0f32.to_radians());
-/// Camera follow stiffness (1/s): hip, aimed.
-pub const FOLLOW_HIP: f32 = 14.0;
-pub const FOLLOW_ADS: f32 = 35.0;
+/// Free-aim box half extents (yaw, pitch): the gun moves this far on screen before the camera
+/// turns. Small, so turning reads as immediate (the owner's playtest: 18° × 12° felt late).
+pub const DEADZONE: Vec2 = Vec2::new(6.0f32.to_radians(), 4.0f32.to_radians());
 pub const MAX_ROLL: f32 = 7.0f32.to_radians();
 /// Chest mount (spec §2.1 `spine_02`): the camera this far below and right of the eyes.
 pub const CHEST_DROP: f32 = 0.22;
@@ -205,6 +205,29 @@ fn drive(
     }
 }
 
+/// Radius kept between the camera and any level surface: covers the near plane (0.03 m at a
+/// 100° × 130° FOV is ±0.04 × ±0.06 m) with margin for the fisheye overscan.
+pub const CAMERA_CLEARANCE: f32 = 0.12;
+
+/// The mount offset shortened so the camera stays [`CAMERA_CLEARANCE`] clear of level
+/// colliders: a sphere cast from the eyes (inside the body capsule, always clear) to where the
+/// mount wants the camera. Turning into a corner, the chest camera slides back towards the head
+/// instead of poking into (or through) the wall and showing the outside of the map.
+fn clear_of_walls(spatial: &SpatialQuery, player: Entity, body: &Transform, eye: Vec3, offset: Vec3) -> Vec3 {
+    if offset == Vec3::ZERO {
+        return offset;
+    }
+    let from = body.transform_point(eye);
+    let to = body.transform_point(eye + offset);
+    let Ok((dir, len)) = Dir3::new_and_length(to - from) else { return offset };
+    let filter = SpatialQueryFilter::from_excluded_entities([player]);
+    let config = ShapeCastConfig::from_max_distance(len);
+    match spatial.cast_shape(&Collider::sphere(CAMERA_CLEARANCE), from, Quat::IDENTITY, dir, &config, &filter) {
+        Some(hit) => offset * (hit.distance / len).clamp(0.0, 1.0),
+        None => offset,
+    }
+}
+
 /// Where the camera wants to be: the gun's aim pulled back inside the (ADS-scaled) box.
 pub fn follow_target(weapon: Vec2, camera: Vec2, ads: f32) -> Vec2 {
     let dz = DEADZONE * (1.0 - ads.clamp(0.0, 1.0));
@@ -220,7 +243,8 @@ fn free_aim(
     time: Res<Time>,
     settings: Res<ShroudSettings>,
     mut aim: ResMut<BodycamAim>,
-    players: Query<(&FpsLook, Option<&FpsViewKick>, &FpsMotor, &Transform, Option<&Weapon>), With<Player>>,
+    players: Query<(Entity, &FpsLook, Option<&FpsViewKick>, &FpsMotor, &Transform, Option<&Weapon>), With<Player>>,
+    spatial: SpatialQuery,
     mut cams: Query<&mut Transform, (With<MainCamera>, Without<Player>)>,
     mut events: MessageReader<GunEvent>,
 ) {
@@ -231,7 +255,7 @@ fn free_aim(
         }
         return;
     }
-    let Ok((look, kick, motor, body, weapon)) = players.single() else { return };
+    let Ok((player, look, kick, motor, body, weapon)) = players.single() else { return };
     let Ok(mut cam) = cams.single_mut() else { return };
     let aim = &mut *aim;
     let dt = time.delta_secs().clamp(1e-4, 0.05);
@@ -247,10 +271,10 @@ fn free_aim(
     aim.active = true;
     aim.weapon = target_weapon;
 
+    // Rigid follow: past the box edge the camera turns with the mouse in the same frame (any
+    // smoothing here is input latency).
     let ads = weapon.map_or(0.0, |w| ease(w.ads));
-    let goal = follow_target(aim.weapon, aim.camera, ads);
-    let k = FOLLOW_HIP + (FOLLOW_ADS - FOLLOW_HIP) * ads;
-    let camera = aim.camera + (goal - aim.camera) * (1.0 - (-k * dt).exp());
+    let camera = follow_target(aim.weapon, aim.camera, ads);
     aim.camera = camera;
 
     // Dutch roll from the gun's yaw speed (smoothed) and strafing.
@@ -286,6 +310,7 @@ fn free_aim(
     aim.gait = (aim.gait + dt * std::f32::consts::TAU * 0.95 * pace).rem_euclid(std::f32::consts::TAU * 2.0);
     let offset = mount_offset(settings.bodycam_mount, aim.gait, pace, time.elapsed_secs());
     let eye = Vec3::new(0.0, motor.eye_offset, 0.0);
+    let offset = clear_of_walls(&spatial, player, body, eye, offset);
     if offset != Vec3::ZERO || aim.mount_offset != Vec3::ZERO {
         let want = eye + offset;
         if cam.translation != want {
@@ -301,12 +326,12 @@ mod tests {
 
     #[test]
     fn small_moves_stay_inside_the_box() {
-        // 10° of yaw inside the 18° box: the camera does not move.
-        let w = Vec2::new(10f32.to_radians(), 0.0);
+        // 4° of yaw inside the 6° box: the camera does not move.
+        let w = Vec2::new(4f32.to_radians(), 0.0);
         assert_eq!(follow_target(w, Vec2::ZERO, 0.0), Vec2::ZERO);
-        // 30°: the camera is pulled to 12° (the box edge).
+        // 30°: the camera is pulled to 24° (the box edge), at once.
         let t = follow_target(Vec2::new(30f32.to_radians(), 0.0), Vec2::ZERO, 0.0);
-        assert!((t.x - 12f32.to_radians()).abs() < 1e-5);
+        assert!((t.x - 24f32.to_radians()).abs() < 1e-5);
     }
 
     #[test]
