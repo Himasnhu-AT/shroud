@@ -9,6 +9,7 @@ use crate::enemy::{self, Enemy, EnemyCombat, Squad};
 use crate::dev::{Dev, Prop};
 use crate::map::to_ground;
 use crate::player::Player;
+use crate::practice::in_match;
 use crate::save::Brain;
 use crate::state::GameState;
 use crate::telemetry::Telemetry;
@@ -155,10 +156,16 @@ impl Plugin for MatchFlowPlugin {
             .init_resource::<PendingReport>()
             .add_plugins((crate::armor::ArmorPlugin, crate::economy::EconomyPlugin))
 
-            .add_systems(OnEnter(GameState::Playing), (begin_round, enemy::spawn_squad).chain())
+            // Practice (`crate::practice`) is not a match: no match/round start or end, so no
+            // report, no `Evolving`, no match trace events. The statues still spawn.
+            .add_systems(OnEnter(GameState::Playing), (begin_round.run_if(in_match), enemy::spawn_squad).chain())
             .add_systems(
                 Update,
-                (check_round_end.after(WeaponSet), tick_round_over, update_hud).chain().run_if(in_state(GameState::Playing)),
+                (
+                    (check_round_end.after(WeaponSet), tick_round_over).chain().run_if(in_match),
+                    update_hud.after(tick_round_over),
+                )
+                    .run_if(in_state(GameState::Playing)),
             );
     }
 }

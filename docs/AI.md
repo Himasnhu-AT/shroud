@@ -9,6 +9,11 @@ the shared **player model**. Three layers run every tick:
 | Utility AI | goal + destination | ~4 Hz (or on events) | uses traits + player model |
 | NEAT micro | strafe, peek, fire gate, aim lead | every tick while engaged | NEAT |
 
+**Practice is invisible to all of this.** In practice (`crate::practice`) the squad stands as
+statues: `EnemySet` doesn't run (no perception, minds, doctrine or coordinator), no telemetry is
+sampled, no round or match ends, and `finish_round` returns early, so the player model, the
+tactics and evolution never see a practice session.
+
 ## 1. Trait genome
 Each gene is stored in [0, 1] and mapped to a real range. Ranges marked * are clamped by fairness limits.
 

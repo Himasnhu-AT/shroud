@@ -292,3 +292,91 @@ fn career_logs_plants_and_credits_a_finished_match_with_promotion() {
     assert_eq!(s["matches"].as_u64(), Some(1), "{s}");
     exec(&mut c, "game.quit", json!({}));
 }
+
+#[test]
+fn practice_statues_take_hits_reset_and_nothing_is_recorded() {
+    // Arrange: a fresh data dir; note what the squad knows and what the career holds.
+    let (_game, port, key_file) = launch();
+    let mut c = Client::connect(port, key_file.parent().expect("key dir")).expect("connect");
+    c.set_timeout(Duration::from_secs(30));
+    // Headless boots into a match round: let it start (and log its round) first.
+    wait_for(&mut c, "game.state", 10, |s| s["state"] == json!("Playing"));
+    wait_for(&mut c, "career.state", 10, |s| s["rounds_logged"] == json!(1));
+    let brain_before = exec(&mut c, "ai.brain", json!({}));
+    let career_before = exec(&mut c, "career.state", json!({}));
+
+    // Act: practice on Foundry.
+    exec(&mut c, "practice.start", json!({"map": "foundry"}));
+    let p = wait_for(&mut c, "practice.state", 10, |p| p["on"] == json!(true) && p["targets"].as_array().is_some_and(|t| !t.is_empty()));
+    let n = p["targets"].as_array().map_or(0, Vec::len);
+    assert!(n >= 6, "every spawn gets a statue: {p}");
+    let recorded = p["recorded"].clone();
+    std::thread::sleep(Duration::from_millis(300));
+
+    // Statues don't move: same spots a second later.
+    std::thread::sleep(Duration::from_millis(1000));
+    let later = exec(&mut c, "practice.state", json!({}));
+    let (a, b) = (p["targets"].as_array().expect("targets"), later["targets"].as_array().expect("targets"));
+    assert_eq!(a.len(), b.len());
+    for (a, b) in a.iter().zip(b) {
+        let d = |i: usize| (a["pos"][i].as_f64().unwrap_or(0.0) - b["pos"][i].as_f64().unwrap_or(9.0)).abs();
+        assert!(d(0) < 0.01 && d(1) < 0.01, "a statue moved: {a} -> {b}");
+        assert_eq!(b["hp"], json!(100.0), "a statue took damage on its own: {b}");
+    }
+
+    // Buying works anywhere, any time, and the money comes back.
+    exec(&mut c, "player.teleport", json!({"x": 0, "z": 0}));
+    let bought = exec(&mut c, "buy", json!({"item": "rifle"}));
+    assert!(bought["money"].is_u64(), "{bought}");
+    let e = wait_for(&mut c, "econ.state", 3, |e| e["money"] == json!(16000));
+    assert_eq!(e["freeze_left"], json!(0.0), "{e}");
+
+    // Shoot the first statue from 5 m.
+    let t = &p["targets"][0]["pos"];
+    let (x, z) = (t[0].as_f64().expect("x"), t[1].as_f64().expect("z"));
+    exec(&mut c, "player.teleport", json!({"x": x + 5.0, "z": z}));
+    exec(&mut c, "player.look", json!({"at": [x, 1.3, z]}));
+    std::thread::sleep(Duration::from_millis(900));
+    let fired = exec(&mut c, "player.fire", json!({"shots": 6}));
+    assert!(fired["hits"].as_u64().unwrap_or(0) > 0, "no hits on a statue at 5 m: {fired}");
+    // A reload takes nothing from the reserve: it refills.
+    let w0 = exec(&mut c, "weapon.state", json!({}));
+    exec(&mut c, "player.reload", json!({}));
+    let w1 = wait_for(&mut c, "weapon.state", 6, |w| w["ammo"].as_u64() > w0["ammo"].as_u64() && w["reloading"] != json!(true));
+    assert_eq!(w1["reserve"], w0["reserve"], "reserve after a reload: {w0} -> {w1}");
+
+    // Kill them all: no round end, no match, no evolution.
+    exec(&mut c, "enemy.kill", json!({}));
+    std::thread::sleep(Duration::from_millis(1500));
+    let s = exec(&mut c, "game.state", json!({}));
+    assert_eq!(s["state"], json!("Playing"), "{s}");
+    let m = exec(&mut c, "match.state", json!({}));
+    assert!(m["round_over"].is_null() && m["last_result"].is_null(), "{m}");
+    assert_eq!((m["player_rounds"].as_u64(), m["enemy_rounds"].as_u64()), (Some(0), Some(0)), "{m}");
+
+    // Shots, kills and the "round" left no trace in the match records.
+    let p1 = exec(&mut c, "practice.state", json!({}));
+    assert_eq!(p1["recorded"], recorded, "practice was recorded");
+
+    // Reset stands every target up again.
+    exec(&mut c, "practice.reset", json!({}));
+    let p2 = wait_for(&mut c, "practice.state", 5, |p| {
+        p["targets"].as_array().is_some_and(|t| t.len() == n && t.iter().all(|t| t["dead"] == json!(false) && t["hp"] == json!(100.0)))
+    });
+    assert_eq!(p2["targets"].as_array().map(Vec::len), Some(n));
+
+    // Leave: practice is off on the menu.
+    exec(&mut c, "game.menu", json!({}));
+    wait_for(&mut c, "practice.state", 5, |p| p["on"] == json!(false));
+
+    // Assert: the squad learned nothing and the career is untouched.
+    let brain_after = exec(&mut c, "ai.brain", json!({}));
+    assert_eq!(brain_after["generation"], brain_before["generation"]);
+    assert_eq!(brain_after["player_model"], brain_before["player_model"]);
+    assert_eq!(brain_after["history"], brain_before["history"]);
+    let career_after = exec(&mut c, "career.state", json!({}));
+    for k in ["xp", "matches", "wins", "rounds_logged", "credited"] {
+        assert_eq!(career_after[k], career_before[k], "career.{k} changed in practice");
+    }
+    exec(&mut c, "game.quit", json!({}));
+}

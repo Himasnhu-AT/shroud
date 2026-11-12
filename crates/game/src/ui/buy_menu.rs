@@ -351,11 +351,14 @@ fn item_card(p: &mut ChildSpawnerCommands, t: &Theme, i: usize, item: BuyItem, q
 
 fn update_texts(
     phase: Res<RoundPhase>,
+    practice: Option<Res<crate::practice::Practice>>,
     notice: Res<BuyNotice>,
     mut timers: Query<&mut Text, (With<MenuTimer>, Without<MenuNotice>)>,
     mut notices: Query<&mut Text, (With<MenuNotice>, Without<MenuTimer>)>,
 ) {
-    let s = if phase.frozen() {
+    let s = if practice.is_some_and(|p| p.on) {
+        "PRACTICE  \u{b7}  ANYTHING, ANY TIME".to_string()
+    } else if phase.frozen() {
         format!("FREEZE TIME  {}", clock(phase.freeze_left))
     } else {
         format!("BUY ZONE  {}", clock(phase.buy_left))

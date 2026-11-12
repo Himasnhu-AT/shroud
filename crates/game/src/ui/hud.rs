@@ -183,8 +183,14 @@ fn style_crosshairs(
     }
 }
 
-fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<Squad>) {
+fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<Squad>, practice: Option<Res<crate::practice::Practice>>) {
     let root = commands.spawn((Name::new("Hud"), hud_root())).id();
+    // Practice: no score, round clock or squad generation; a practice label in their place.
+    let practice = practice.is_some_and(|p| p.on);
+    let match_only = if practice { Display::None } else { Display::Flex };
+    if practice {
+        spawn_practice_label(&mut commands, root, &settings);
+    }
 
     // Crosshair + hit marker, centred.
     commands
@@ -219,6 +225,7 @@ fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<S
     commands
         .spawn((
             Node {
+                display: match_only,
                 position_type: PositionType::Absolute,
                 top: px(26),
                 left: px(0),
@@ -286,7 +293,7 @@ fn spawn_hud(mut commands: Commands, settings: Res<ShroudSettings>, squad: Res<S
     commands.spawn((
         GenText,
         text("", label(SIZE_LABEL), TEXT.with_alpha(0.85)),
-        Node { position_type: PositionType::Absolute, left: px(40), top: px(30), padding: UiRect::axes(px(10), px(4)), ..default() },
+        Node { display: match_only, position_type: PositionType::Absolute, left: px(40), top: px(30), padding: UiRect::axes(px(10), px(4)), ..default() },
         BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.55)),
         ChildOf(root),
     ));
@@ -560,6 +567,53 @@ fn update_pips(
     }
 }
 
+/// Top centre in practice: "PRACTICE · targets don't fight back", and the reset key.
+fn spawn_practice_label(commands: &mut Commands, root: Entity, settings: &ShroudSettings) {
+    use crate::practice::RESET_KEY_LABEL;
+    commands
+        .spawn((
+            Name::new("Practice label"),
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(26),
+                left: px(0),
+                right: px(0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: px(6),
+                ..default()
+            },
+            Pickable::IGNORE,
+            ChildOf(root),
+        ))
+        .with_children(|top| {
+            top.spawn((
+                Node { padding: UiRect::axes(px(16), px(7)), column_gap: px(10), align_items: AlignItems::Baseline, ..default() },
+                BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.72)),
+                Pickable::IGNORE,
+            ))
+            .with_children(|row| {
+                row.spawn(text("PRACTICE", label(SIZE_LABEL + 2.0), ACCENT));
+                row.spawn(text("\u{b7}", label(SIZE_LABEL + 2.0), TEXT_DIM));
+                row.spawn(text("targets don't fight back", body(SIZE_BODY), TEXT));
+            });
+            top.spawn((
+                Node { padding: UiRect::axes(px(12), px(5)), column_gap: px(8), align_items: AlignItems::Baseline, ..default() },
+                BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.72)),
+                Pickable::IGNORE,
+            ))
+            .with_children(|row| {
+                row.spawn(text(RESET_KEY_LABEL, label(SIZE_LABEL), ACCENT));
+                row.spawn(text("RESET TARGETS", label(SIZE_LABEL - 2.0), TEXT));
+                row.spawn(text("\u{b7}", label(SIZE_LABEL - 2.0), TEXT_MUTED));
+                row.spawn(text("B", label(SIZE_LABEL), ACCENT));
+                row.spawn(text("BUY ANYTHING", label(SIZE_LABEL - 2.0), TEXT));
+                row.spawn(text("\u{b7}", label(SIZE_LABEL - 2.0), TEXT_MUTED));
+                row.spawn(text(settings.map.label().to_uppercase(), label(SIZE_LABEL - 2.0), TEXT_MUTED));
+            });
+        });
+}
+
 pub(crate) fn banner_root(c: &mut Commands, life: Option<f32>, top_pct: f32) -> Entity {
     let band = Color::srgba(0.02, 0.03, 0.05, 0.72);
     c.spawn((
@@ -594,10 +648,25 @@ pub(crate) fn banner_root(c: &mut Commands, life: Option<f32>, top_pct: f32) -> 
     .id()
 }
 
-fn round_start_banner(mut commands: Commands, flow: Res<MatchFlow>, settings: Res<ShroudSettings>) {
-    // Long enough to read the objective lines (freeze time is longer).
-    let root = banner_root(&mut commands, Some(3.6), 22.0);
+fn round_start_banner(mut commands: Commands, flow: Res<MatchFlow>, settings: Res<ShroudSettings>, practice: Option<Res<crate::practice::Practice>>) {
+    let practice = practice.is_some_and(|p| p.on);
+    // Long enough to read the objective lines (freeze time is longer). Practice has no freeze
+    // time: it outlasts the camera power-on cover.
+    let root = banner_root(&mut commands, Some(if practice { 7.0 } else { 3.6 }), 22.0);
     commands.entity(root).insert(RoundStartBanner);
+    if practice {
+        commands.entity(root).with_children(|b| {
+            b.spawn(text(format!("{}  \u{b7}  TARGETS DON'T FIGHT BACK", settings.map.label().to_uppercase()), label(SIZE_LABEL + 2.0), TEXT_MUTED));
+            b.spawn((text("PRACTICE", display(88.0), TEXT), TextShadow::default()));
+            b.spawn((Node { width: px(120), height: px(3), ..default() }, BackgroundColor(ACCENT), Pickable::IGNORE));
+            b.spawn((text("Walk up to them, inspect them, shoot them. Nothing here is recorded.", body_bold(SIZE_BODY + 2.0), TEXT), TextShadow::default()));
+            b.spawn((
+                text(format!("{} resets targets  \u{b7}  B buys anything, any time  \u{b7}  ammo refills", crate::practice::RESET_KEY_LABEL), body_bold(SIZE_BODY), TEXT),
+                TextShadow::default(),
+            ));
+        });
+        return;
+    }
     let mp = flow.round > 1 && (flow.player_rounds + 1 >= ROUNDS_TO_WIN || flow.enemy_rounds + 1 >= ROUNDS_TO_WIN);
     let sub = if mp {
         "MATCH POINT".to_string()
