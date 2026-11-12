@@ -40,7 +40,21 @@ pub struct ShroudSettings {
 
 /// Current settings revision. Rev 1 (Nov 2026): Bodycam became the default camera style; files
 /// from before switch to it once (the player can go back to Classic in Settings → Video).
-pub const SETTINGS_REV: u32 = 1;
+/// Rev 2 (Nov 2026): a saved Ultra drops to High once ([`quality_after_migration`]); picking
+/// Ultra again afterwards sticks.
+pub const SETTINGS_REV: u32 = 2;
+
+/// Graphics quality after migrating a settings file written at revision `rev`.
+///
+/// Ultra is opt-in: its 1.25x lens overscan renders 1.56x the pixels and it adds volumetric
+/// fog and SSR, which on a Retina MacBook window (3024x1964) costs far more than the frame
+/// budget (see docs/PERF.md "Quality defaults"). Fresh installs already start on High (the
+/// engine default); files from before rev 2 that say Ultra (an older default, or a pick made
+/// before the cost was shown) go to High once.
+pub fn quality_after_migration(rev: u32, q: engine::settings::GraphicsQuality) -> engine::settings::GraphicsQuality {
+    use engine::settings::GraphicsQuality;
+    if rev < 2 && q == GraphicsQuality::Ultra { GraphicsQuality::High } else { q }
+}
 
 /// Where the bodycam sits (Bodycam style only; `bodycam::mount_offset`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,6 +141,7 @@ impl ShroudSettings {
 /// its own core fields, with a loose sensitivity bound we tighten to Shroud's slider here).
 fn sanitize_loaded(world: &mut World) {
     let mut g = world.resource_mut::<ShroudSettings>();
+    let old_rev = g.rev;
     let mut clean = g.clone().sanitized();
     // `--map <name>`: play any map, hidden ones included, for testing (`MapId::realism_ready`).
     if let Some(id) = map_override(engine::cli::arg_value("map").as_deref()) {
@@ -134,6 +149,11 @@ fn sanitize_loaded(world: &mut World) {
     }
     g.set_if_neq(clean);
     let mut core = world.resource_mut::<engine::settings::CoreSettings>();
+    let q = quality_after_migration(old_rev, core.quality);
+    if core.quality != q {
+        info!("settings: graphics quality {:?} -> {q:?} (Ultra is opt-in now)", core.quality);
+        core.quality = q;
+    }
     let sens = core.sensitivity.clamp(SENSITIVITY_RANGE.0, SENSITIVITY_RANGE.1);
     if core.sensitivity != sens {
         core.sensitivity = sens;
@@ -198,7 +218,19 @@ fn two_decimals(v: f32) -> String {
     format!("{v:.2}")
 }
 
+/// Settings → Video → Graphics quality: what Ultra costs (the engine's hint lists the features).
+/// GPU times: release build, M5 Pro, Foundry A site with the squad in view, Metal System Trace
+/// (scripts/gpu-trace.py, docs/PERF.md "Quality defaults").
+pub const QUALITY_HINT: &str = "Anti-aliasing, ambient occlusion, bloom and shadow detail. High is recommended. \
+Ultra adds volumetric light, reflections and more lamp shadows, and a sharper lens below 1440p: \
+about 3.5x High's GPU time (1080p: ~7 ms High, ~24 ms Ultra).";
+
 fn register_fields(app: &mut App) {
+    if let Some(mut reg) = app.world_mut().get_resource_mut::<SettingsRegistry>()
+        && let Some(f) = reg.fields.iter_mut().find(|f| f.key == "quality")
+    {
+        f.hint = QUALITY_HINT;
+    }
     let difficulties = Difficulty::ALL.iter().map(|d| (d.label(), d.blurb())).collect();
     // Only realism-ready maps are offered (`MapId::listed`); the rest stay in code.
     let maps = MapId::listed().iter().map(|m| (m.label(), m.blurb())).collect();
@@ -306,6 +338,17 @@ mod tests {
         assert_eq!(s.crosshair_size, 0.5);
         assert_eq!(s.crosshair_color, [1.0, 0.0, 0.5]);
         assert_eq!(ShroudSettings::default().sanitized(), ShroudSettings::default());
+    }
+
+    #[test]
+    fn a_saved_ultra_drops_to_high_once() {
+        use engine::settings::GraphicsQuality::*;
+        assert_eq!(quality_after_migration(0, Ultra), High);
+        assert_eq!(quality_after_migration(1, Ultra), High);
+        assert_eq!(quality_after_migration(1, Medium), Medium);
+        // Picked again after the migration: kept.
+        assert_eq!(quality_after_migration(SETTINGS_REV, Ultra), Ultra);
+        assert_eq!(engine::settings::GraphicsQuality::default(), High);
     }
 
     #[test]

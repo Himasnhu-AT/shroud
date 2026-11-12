@@ -83,3 +83,54 @@ Measured with the overlay on, from the session log's `overhead_us`:
   Text and colour are written only when they change.
 
 `overhead_us` does not include Bevy's own text relayout after a change.
+
+## Loading screen and quality defaults (2026-11-12, M5 Pro)
+
+**Loading screen** (`crates/game/src/loading.rs`). Launch, match start and map changes hold play
+behind a loading screen until the map is built, the bake applied and every pipeline compiled
+(later rounds: the short black power-on cover, same checks). Pipelines compile a few meshes per
+frame (all 3D cameras, lights and light probes see only a loading layer; one representative per
+material × vertex layout × lightmap × shadow casting is put on it), so the count on screen is
+real and the window keeps updating. `loading.status` reports it; play.py waits for it.
+`SHROUD_LOADING_DEBUG=1` logs every new pipeline with its shader defs (how the missing
+`IRRADIANCE_VOLUME` / `VISIBILITY_RANGE_DITHER` variants were found).
+
+Cold Metal shader cache (`play.py --cold-cache`: private bundle id, cache deleted after), Foundry,
+debug build, two studio-gen diffusion jobs on the GPU and other agents' builds on the CPU:
+
+| | worst frame | stalls after play starts |
+|---|---|---|
+| before (2efef31) | 59.9 s (+5.8 s, 2.4 s, 1.0 s) | the 59.9 s frame *was* the first round frame |
+| after | 5.3 s, behind the loading screen (most 1–2 s) | worst frame in the next 5 s: 154 ms |
+
+Whole cold load ≈ 45–57 s on that loaded machine; warm loads 0.4–4 s.
+
+**Per-pass GPU** (`scripts/gpu-trace.py`: Metal System Trace of the A-site view with the six
+MetaHumans in view, release build, offscreen 1920×1080, vsync off; `scripts/perf-ab.py` toggles
+features but its OS GPU counter is too noisy on a busy machine, see below):
+
+| config | GPU busy ms / frame |
+|---|---|
+| High | 6.9 |
+| High, render scale 0.5 (¼ pixels) | 6.2 |
+| Ultra (2efef31: 64 fog steps, overscan 1.25) | 39.9 |
+| Ultra − volumetric fog | 16.3 |
+| Ultra − overscan | 31.9 |
+| Ultra now (24 fog steps; overscan only on small windows) | 24.4 at 1080p (overscan 1.25 still applies there) |
+
+High is mostly resolution-independent at 1080p (≈0.5 ms per megapixel), so at the owner's
+3024×1964 (5.9 MP) High should be ≈ 9 ms GPU. Ultra's volumetric fog ray-march was the single
+biggest cost and scales with every pixel (×1.56 overscan, ×2.9 window): the owner's 8 fps run
+was Ultra on that window plus two diffusion jobs on the same GPU.
+
+Changes: Ultra fog 24 steps (`gfx::ULTRA_FOG_STEPS`); Ultra lens overscan capped so the
+rendered image never exceeds 1.25× of 1080p (`quality::overscan_for_window`: 1.25 at 1080p, 1.0
+from ~2560×1300 up); a saved Ultra drops to High once (settings rev 2; fresh installs start on
+High, the engine default); the Settings hint states Ultra's cost.
+
+**Measuring caveats on this machine.** Load average was 10–24 from other agents' builds, so
+fps/p50 swing ±50 % between identical runs and the OS GPU counter (`gpu.frame_ms`) mixes in
+downclocking; use the trace. Onscreen runs render black here (the window lands on the external
+display, which is asleep or covered), so window-size numbers are extrapolated from offscreen.
+The metrics viewer (`--metrics-viewer`) is not a busy loop: 6 % of a core on average during the
+owner's run (max 18 %), 4 % idle; it redraws on every window event while focused (engine).
