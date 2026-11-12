@@ -65,6 +65,10 @@ impl RoundPhase {
     pub fn frozen(&self) -> bool {
         self.freeze_left > 0.0
     }
+    /// Practice: live at once, and the buy window never closes.
+    pub fn practice() -> Self {
+        RoundPhase { freeze_left: 0.0, buy_left: f32::INFINITY, paid: false }
+    }
 }
 
 /// Run condition: the round is live (freeze time over).
@@ -207,7 +211,11 @@ impl Plugin for EconomyPlugin {
             .init_resource::<SquadEconomy>()
             .init_resource::<BuyMenu>()
             .add_systems(Startup, test_runs_skip_freeze)
-            .add_systems(OnEnter(GameState::Playing), (start_round.after(begin_round), squad_buy.after(enemy::spawn_squad).after(start_round)))
+            // Practice has no rounds and no squad buy (`practice::start` sets money and kit).
+            .add_systems(
+                OnEnter(GameState::Playing),
+                (start_round.after(begin_round), squad_buy.after(enemy::spawn_squad).after(start_round)).run_if(crate::practice::in_match),
+            )
             .add_systems(OnExit(GameState::Playing), close_menu)
             // The AI holds during freeze time.
             .configure_sets(FixedUpdate, EnemySet.run_if(round_live))
@@ -305,6 +313,7 @@ fn hold_player(
 /// Can the player buy right now? Freeze time, or the buy window near the spawn; alive; round on.
 pub fn can_buy(world: &mut World) -> Result<(), &'static str> {
     let phase = *world.resource::<RoundPhase>();
+    let practice = world.get_resource::<crate::practice::Practice>().is_some_and(|p| p.on);
     if world.resource::<MatchFlow>().round_over.is_some() {
         return Err("round over");
     }
@@ -318,7 +327,8 @@ pub fn can_buy(world: &mut World) -> Result<(), &'static str> {
     if hp {
         return Err("dead");
     }
-    if phase.frozen() {
+    // Practice: anywhere, any time.
+    if phase.frozen() || practice {
         return Ok(());
     }
     if phase.buy_left <= 0.0 {
