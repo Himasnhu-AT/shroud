@@ -16,7 +16,8 @@ RATIO = float(argv[2]) if len(argv) > 2 else 0.35
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
-meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+# Scene meshes only (the glTF importer keeps a bone-shape icosphere outside the scene).
+meshes = [o for o in bpy.context.scene.objects if o.type == "MESH" and not o.name.startswith("Icosphere")]
 before = after = 0
 for o in meshes:
     bpy.context.view_layer.objects.active = o

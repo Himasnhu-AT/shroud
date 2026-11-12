@@ -21,3 +21,29 @@ Rules:
 - Animation clip names are mapped in one table in `enemy/animation.rs`; if a clip is missing, keep the current pose.
 - Check each pack's license file before adding it, and record it in `assets/CREDITS.md` (pack, author, URL, license).
 - Keep the total under ~50 MB (disk is tight). Prefer `.glb` and drop unused files from the packs.
+
+## Gun packs (high-detail guns)
+
+Every gun kind has a high-detail model (first person, pickups within 6 m) and a low-detail one
+(enemy hands, distant pickups); `weapon/viewmodel.rs` picks them by data. The built-in CC0 set is a
+table in code; `assets/models/weapons/guns.json` adds models and wins for a kind whose `high` file
+exists, so a downloaded pack drops in without code changes and the game falls back cleanly
+without it.
+
+1. Check the listing's licence (Fab Standard, CC0, CC-BY: allowed; UE-only: refused), then import
+   the download with the engine's importer (safe unzip, FBX converted by Blender, ledger entry):
+   `python3 -I ~/codes/game/engine/scripts/assets.py import ~/Downloads/<pack>.zip --source fab
+   --license fab-standard --url <listing> --author <seller> --kind misc`.
+2. `scripts/import-gun.sh assets/library/misc/<pack>/<model>.glb rifle [--length 0.89]
+   [--muzzle +x] [--drop magazine_spare]` writes `models/weapons/hd/rifle.glb` (metres, barrel
+   toward -Z, textures capped at 2K) and `rifle.lod1.glb`, and prints a `guns.json` entry with
+   estimated anchors.
+3. Paste the entry into `guns.json` (a JSON list). Fields: `kind`, `high`, `low`, `scale`,
+   `yaw_deg` (turn about +Y onto -Z), `mesh_m` (metres per mesh unit), `own_materials` (keep the
+   pack's textured materials), `hand`, `muzzle`, `sight` (sight-line height), `center`, `support`,
+   `optic` (`[path, [x, y, z]]`). All in the model's own frame, metres.
+4. Verify with `scripts/arms-look.json` (idle, ADS, pickup, enemy holding each gun): the sight
+   line must sit on the screen centre in ADS, the muzzle flash at the barrel's end, the hands on
+   the grip and handguard. Adjust the anchors and re-run.
+5. `models/weapons/hd/` is gitignored (Standard-licence content isn't redistributable). Commit
+   `guns.json` and the CREDITS/ledger lines only.

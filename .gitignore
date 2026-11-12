@@ -19,3 +19,6 @@ graft/.cache/
 /assets/library/textures/**/*.png
 /assets/library/decals/**/*.jpg
 /assets/library/decals/**/*.png
+
+# Gun packs under a no-redistribution licence (Fab / Sketchfab Standard): local only.
+/assets/models/weapons/hd/
