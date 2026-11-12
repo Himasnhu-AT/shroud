@@ -31,6 +31,11 @@
 //! `<part>.<material>` suffix (pieces sharing a material are one mesh). About 28k triangles in
 //! 12 draws per enemy; only the bulky kit (carrier, pouches, helmet, pack) casts shadows, the
 //! close-fitting clothes leave that to the body.
+//!
+//! With `models/gear/outfit_mh.glb` (`scripts/make-outfit-mh.sh`: the Tactical Soldier Outfit from
+//! Fab, fitted to this MetaHuman; local only) the enemy wears that instead, and the generated gear
+//! is the fallback. Its pieces are named `<part>.own` and keep their own textured materials; it
+//! brings its own helmet, so the pack helmet isn't added.
 
 use std::collections::HashMap;
 
@@ -106,6 +111,9 @@ fn looks() -> [Look; 3] {
 
 /// The MetaHuman's clothing and gear, skinned to its skeleton (local only, see the module docs).
 pub const GEAR_MH: &str = "models/metahuman/gear_mh.glb";
+/// The downloaded outfit fitted to the MetaHuman (local only, see the module docs): preferred
+/// over [`GEAR_MH`] when present.
+pub const OUTFIT_MH: &str = "models/gear/outfit_mh.glb";
 
 /// A downloaded helmet (local only, `assets/models/gear/`, prepared with
 /// `scripts/blender/gun_prepare.py --muzzle +y --max-texture 1024` and decimated): front toward
@@ -139,8 +147,10 @@ struct GearMats {
 /// Shared skin assets.
 #[derive(Resource)]
 struct Kit {
-    /// The skinned gear file, when it exists.
+    /// The skinned gear file, when it exists ([`OUTFIT_MH`] before [`GEAR_MH`]).
     gear_mh: Option<Handle<Gltf>>,
+    /// `gear_mh` is the downloaded outfit (own materials and helmet).
+    outfit: bool,
     gear_mats: GearMats,
     fatigues: [Handle<StandardMaterial>; 3],
     /// Same fabric at the MetaHuman body's UV scale (one 0..1 map for the whole body).
@@ -356,12 +366,14 @@ fn setup(
         metal: materials.add(StandardMaterial { base_color: Color::srgb(0.06, 0.06, 0.065), metallic: 0.7, perceptual_roughness: 0.45, ..default() }),
         pads: mat(&mut materials, Color::srgb(0.05, 0.05, 0.052), 0.55),
     };
-    let gear_mh = match (&server, &dir) {
-        (Some(s), Some(d)) if d.has(GEAR_MH) && crate::assets::enemy_model(d) == crate::assets::ENEMY_MODEL_MH => Some(s.load(GEAR_MH)),
-        _ => None,
+    let (gear_mh, outfit) = match (&server, &dir) {
+        (Some(s), Some(d)) if crate::assets::enemy_model(d) == crate::assets::ENEMY_MODEL_MH && d.has(OUTFIT_MH) => (Some(s.load(OUTFIT_MH)), true),
+        (Some(s), Some(d)) if d.has(GEAR_MH) && crate::assets::enemy_model(d) == crate::assets::ENEMY_MODEL_MH => (Some(s.load(GEAR_MH)), false),
+        _ => (None, false),
     };
     commands.insert_resource(Kit {
         gear_mh,
+        outfit,
         gear_mats,
         fatigues,
         fatigues_mh,
@@ -616,7 +628,9 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
         if (part.starts_with("pack_") && part != pack) || (skip_helmet && part == "helmet") {
             continue;
         }
-        let (Some(mat), Some(mesh), Some(skin)) = (gear_material(kit, m, v), files.meshes.get(mh), files.skins.get(sh)) else {
+        // `own`: the downloaded outfit's textured material, per primitive.
+        let own = m == "own";
+        let (Some(mat), Some(mesh), Some(skin)) = (if own { Some(&kit.gear_mats.metal) } else { gear_material(kit, m, v) }, files.meshes.get(mh), files.skins.get(sh)) else {
             warn!("enemy gear: skipping {}", node.name);
             continue;
         };
@@ -627,13 +641,17 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
         };
         // Cloth, gloves, boots and the balaclava follow the body closely: its own shadow covers
         // theirs. Only the bulky kit (carrier, pouches, helmet, packs) casts.
-        let casts = matches!(m, "cordura" | "helmet");
+        let casts = matches!(m, "cordura" | "helmet" | "own");
         for prim in &mesh.primitives {
+            let mat = match own.then(|| own_material(kit, gltf, files, prim.material.as_ref())).flatten() {
+                Some(m) => m,
+                None => mat.clone(),
+            };
             let mut ec = commands.spawn((
                 Name::new("kit"),
                 Gear,
                 Mesh3d(prim.mesh.clone()),
-                MeshMaterial3d(mat.clone()),
+                MeshMaterial3d(mat),
                 SkinnedMesh { inverse_bindposes: skin.inverse_bind_matrices.clone(), joints: joints.clone() },
                 Transform::default(),
                 ChildOf(parent),
@@ -645,6 +663,15 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
         }
     }
     spawned > 0
+}
+
+/// The StandardMaterial bevy_pbr made for a primitive's glTF material (the `<MaterialN>/std`
+/// sub-asset of the outfit file; same handle for every enemy).
+fn own_material(kit: &Kit, gltf: &Gltf, files: &GearFiles, m: Option<&Handle<bevy::gltf::GltfMaterial>>) -> Option<Handle<StandardMaterial>> {
+    let index = gltf.materials.iter().position(|h| Some(h) == m)?;
+    let path = files.server.get_path(kit.gear_mh.as_ref()?.id())?;
+    let label = bevy::gltf::GltfAssetLabel::Material { index, is_scale_inverted: false };
+    Some(files.server.load(format!("{}#{label}/std", path.path().display())))
 }
 
 /// Every named entity under `root` (the enemy's bones).
@@ -708,7 +735,7 @@ fn dress(
                 Some(true) => {
                     if let Some(body) = rig.body {
                         let bones = bone_names(e, &children, &names);
-                        let pack_helmet = files.dir.has(HELMET_PACK);
+                        let pack_helmet = !kit.outfit && files.dir.has(HELMET_PACK);
                         skinned = spawn_gear_mh(&mut commands, &kit, &files, v, &bones, body, pack_helmet);
                         if skinned && pack_helmet && let Ok(g) = globals.get(head) {
                             // Upright in the character's frame at the head's posed position, then
