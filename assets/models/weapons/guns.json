@@ -106,5 +106,32 @@
       0.03,
       -0.38
     ]
+  },
+  {
+    "kind": "marksman",
+    "high": "models/weapons/hd/sniper.glb",
+    "low": "models/weapons/hd/sniper.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      0.0,
+      0.1078
+    ],
+    "muzzle": [
+      0.0,
+      0.0532,
+      -0.8322
+    ],
+    "sight": 0.095,
+    "center": [
+      0.0,
+      0.0091,
+      -0.2322
+    ],
+    "support": [
+      0.0,
+      0.03,
+      -0.38
+    ]
   }
 ]

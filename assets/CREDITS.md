@@ -186,7 +186,7 @@ where it is priced.
 |---|---|---|---|---|
 | shotgun | Model 12 Pump Action Shotgun Free Standard (shells dropped, rolled upright, 1.2 m, textures 8K -> 2K) | the 9th Earl | https://www.fab.com/listings/c0761ef9-a19c-415b-a5c0-efe2ad238c4f | Fab Standard (Personal and Professional both free) |
 | battlerifle | AKS Tactical Upgrade (suppressed, 1.21 m; PBR set re-applied after FBX conversion) | SpatialNeglect | https://www.fab.com/listings/587e3f02-f8a1-4a3d-8b35-3394e793cfc5 | Fab Standard, Personal tier (Professional ₹748.66) |
-| sniper | **SV-98 Sniper Rifle by SpatialNeglect, CC-BY 4.0** (offset bolt mesh dropped, 1.2 m) | SpatialNeglect | https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b | CC-BY 4.0 (credit required here and in-game) |
+| sniper, marksman | **SV-98 Sniper Rifle by SpatialNeglect, CC-BY 4.0** (offset bolt mesh dropped, 1.2 m) | SpatialNeglect | https://www.fab.com/listings/02db3e6b-1d19-421f-9c87-c8e0a89a3a5b | CC-BY 4.0 (credit required here and in-game) |
 | pistol | Pistol 9mm Custom (the pistol body only; attachments and display copies dropped; PBR set re-applied after FBX conversion) | DTry | https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732 | Fab Standard, Personal tier (Professional ₹1,498.26) |
 | (rifle, pending) | AR-15 style rifle | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
 | (smg, pending) | 10mm AUTO SMG | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
