@@ -8,10 +8,20 @@
 //!
 //! Models are optional: without `assets/library/props/ph-*` the map keeps its pipes and plain
 //! blocks. Small models cast no shadows. Placement is deterministic.
+//!
+//! **Real scans** (Megascans and other Fab downloads, `library/props/ms-*` / `fab-*`): cooked by
+//! the engine's importer into untextured LOD GLBs plus one shared texture set (`tex/`, cooked
+//! KTX2). Fab's Standard License forbids redistributing them, so they are local only (never
+//! committed; `.gitignore`), and every use picks the scan when it is on disk and the CC0 stand-in
+//! otherwise ([`pick_model`], [`Model::present`]): a fresh clone builds the same map from the
+//! stand-ins. Scan-only additions (rubble piles, the workbench, pallets, scrap sheets) are simply
+//! absent there, and they are [`NoBake`] so the committed light bake never holds their shadows
+//! (it must fit both kinds of checkout).
 
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 use brain::arena::{Arena, BlockKind, MapId, Skin};
+use engine::bake::NoBake;
 use engine::render_budget::Scenery;
 use engine::settings::GraphicsQuality;
 
@@ -22,15 +32,35 @@ use super::{ArenaPiece, Gfx};
 /// A scanned model: library path, its bounding box in its own frame (metres, from the glTF), and
 /// which local axis points away from the wall it stands against (`None`: any yaw).
 pub(crate) struct Model {
+    /// A glTF / GLB file; for an engine-cooked scan (`lods` not empty) the item path without the
+    /// suffix: `library/props/<name>/<name>`, files `<path>.lod<i>.glb` and `<dir>/tex/`.
     pub path: &'static str,
     pub min: Vec3,
     pub max: Vec3,
     pub back: Option<Vec3>,
     /// Draw distance (small clutter is culled past it), `None`: always.
     pub range: Option<std::ops::Range<f32>>,
+    /// Cooked scans: where each LOD hands over to the next (metres; `lods.len() + 1` files).
+    pub lods: &'static [f32],
 }
 
 impl Model {
+    /// Engine-cooked scan (LOD files + a shared texture set) rather than a self-contained glTF.
+    pub fn is_scan(&self) -> bool {
+        !self.lods.is_empty()
+    }
+    /// The scan's folder (`library/props/<name>`).
+    fn dir(&self) -> &'static str {
+        self.path.rsplit_once('/').map_or(self.path, |(d, _)| d)
+    }
+    /// Whether the model's files are on disk.
+    pub fn present(&self, g: &Gfx) -> bool {
+        if self.is_scan() {
+            (0..=self.lods.len()).all(|i| g.dir.has(&format!("{}.lod{i}.glb", self.path))) && g.dir.has(&format!("{}/tex/material.json", self.dir()))
+        } else {
+            g.dir.has(self.path)
+        }
+    }
     pub fn size(&self) -> Vec3 {
         self.max - self.min
     }
@@ -41,25 +71,53 @@ impl Model {
 }
 
 // Bounding boxes measured from the glTFs (accessor min/max through the node transforms).
-pub(crate) const BARREL_RED: Model = Model { path: "library/props/ph-barrel-01/Barrel_01_1k.gltf", min: Vec3::new(-0.282, -0.007, -0.282), max: Vec3::new(0.282, 0.873, 0.282), back: None, range: None };
-pub(crate) const BARREL_BLUE: Model = Model { path: "library/props/ph-barrel-03/barrel_03_1k.gltf", min: Vec3::new(-0.317, 0.0, -0.319), max: Vec3::new(0.317, 0.93, 0.319), back: None, range: None };
+pub(crate) const BARREL_RED: Model = Model { path: "library/props/ph-barrel-01/Barrel_01_1k.gltf", min: Vec3::new(-0.282, -0.007, -0.282), max: Vec3::new(0.282, 0.873, 0.282), back: None, range: None, lods: &[] };
+pub(crate) const BARREL_BLUE: Model = Model { path: "library/props/ph-barrel-03/barrel_03_1k.gltf", min: Vec3::new(-0.317, 0.0, -0.319), max: Vec3::new(0.317, 0.93, 0.319), back: None, range: None, lods: &[] };
 /// Lies flat.
-pub(crate) const CEMENT: Model = Model { path: "library/props/ph-cement-bag/cement_bag_1k.gltf", min: Vec3::new(-0.229, 0.001, -0.348), max: Vec3::new(0.234, 0.181, 0.351), back: None, range: Some(0.0..35.0) };
-pub(crate) const BOX: Model = Model { path: "library/props/ph-cardboard-box-01/cardboard_box_01_1k.gltf", min: Vec3::new(-0.193, -0.007, -0.225), max: Vec3::new(0.195, 0.335, 0.291), back: None, range: Some(0.0..35.0) };
-pub(crate) const JERRYCAN: Model = Model { path: "library/props/ph-metal-jerrycan/metal_jerrycan_1k.gltf", min: Vec3::new(-0.17, 0.0, -0.089), max: Vec3::new(0.18, 0.455, 0.083), back: None, range: Some(0.0..35.0) };
+pub(crate) const CEMENT: Model = Model { path: "library/props/ph-cement-bag/cement_bag_1k.gltf", min: Vec3::new(-0.229, 0.001, -0.348), max: Vec3::new(0.234, 0.181, 0.351), back: None, range: Some(0.0..35.0), lods: &[] };
+pub(crate) const BOX: Model = Model { path: "library/props/ph-cardboard-box-01/cardboard_box_01_1k.gltf", min: Vec3::new(-0.193, -0.007, -0.225), max: Vec3::new(0.195, 0.335, 0.291), back: None, range: Some(0.0..35.0), lods: &[] };
+pub(crate) const JERRYCAN: Model = Model { path: "library/props/ph-metal-jerrycan/metal_jerrycan_1k.gltf", min: Vec3::new(-0.17, 0.0, -0.089), max: Vec3::new(0.18, 0.455, 0.083), back: None, range: Some(0.0..35.0), lods: &[] };
 /// Stands on its tread (axle along z): leaned against the wall.
-pub(crate) const TYRE: Model = Model { path: "library/props/ph-old-tyre/old_tyre_1k.gltf", min: Vec3::new(-0.3, -0.3, -0.083), max: Vec3::new(0.3, 0.3, 0.082), back: Some(Vec3::Z), range: Some(0.0..35.0) };
-pub(crate) const PROPANE: Model = Model { path: "library/props/ph-propane-tank/propane_tank_1k.gltf", min: Vec3::new(-0.169, 0.0, -0.169), max: Vec3::new(0.169, 0.554, 0.169), back: None, range: Some(0.0..35.0) };
+pub(crate) const TYRE: Model = Model { path: "library/props/ph-old-tyre/old_tyre_1k.gltf", min: Vec3::new(-0.3, -0.3, -0.083), max: Vec3::new(0.3, 0.3, 0.082), back: Some(Vec3::Z), range: Some(0.0..35.0), lods: &[] };
+pub(crate) const PROPANE: Model = Model { path: "library/props/ph-propane-tank/propane_tank_1k.gltf", min: Vec3::new(-0.169, 0.0, -0.169), max: Vec3::new(0.169, 0.554, 0.169), back: None, range: Some(0.0..35.0), lods: &[] };
 /// Street cabinet, doors on +z.
-pub(crate) const UTILITY_BOX: Model = Model { path: "library/props/ph-utility-box-02/utility_box_02_1k.gltf", min: Vec3::new(-0.46, 0.0, -0.21), max: Vec3::new(0.46, 1.12, 0.222), back: Some(Vec3::NEG_Z), range: Some(0.0..35.0) };
+pub(crate) const UTILITY_BOX: Model = Model { path: "library/props/ph-utility-box-02/utility_box_02_1k.gltf", min: Vec3::new(-0.46, 0.0, -0.21), max: Vec3::new(0.46, 1.12, 0.222), back: Some(Vec3::NEG_Z), range: Some(0.0..35.0), lods: &[] };
 /// Caged bulkhead lamp: back plate on z = 0, glass towards +z.
-pub(crate) const WALL_LAMP: Model = Model { path: "library/props/ph-industrial-wall-lamp/industrial_wall_lamp_1k.gltf", min: Vec3::new(-0.137, -0.215, 0.0), max: Vec3::new(0.137, 0.215, 0.14), back: Some(Vec3::NEG_Z), range: None };
+pub(crate) const WALL_LAMP: Model = Model { path: "library/props/ph-industrial-wall-lamp/industrial_wall_lamp_1k.gltf", min: Vec3::new(-0.137, -0.215, 0.0), max: Vec3::new(0.137, 0.215, 0.14), back: Some(Vec3::NEG_Z), range: None, lods: &[] };
 /// Enamel high-bay shade on a chain; its top (the hook) at y = 0.
-pub(crate) const HIGH_BAY: Model = Model { path: "library/props/ph-hanging-industrial-lamp/hanging_industrial_lamp_1k.gltf", min: Vec3::new(-0.275, -1.34, -0.275), max: Vec3::new(0.275, 0.015, 0.275), back: None, range: None };
+pub(crate) const HIGH_BAY: Model = Model { path: "library/props/ph-hanging-industrial-lamp/hanging_industrial_lamp_1k.gltf", min: Vec3::new(-0.275, -1.34, -0.275), max: Vec3::new(0.275, 0.015, 0.275), back: None, range: None, lods: &[] };
 /// Precast concrete barrier, 1.57 long (x) x 1.11 high x 0.44 deep: the same height as low cover.
 /// The barrier's second LOD (asset-pipe clustering, 2.9 k triangles), past 12.5 m.
 pub(crate) const BARRIER_LOD1: &str = "library/props/ph-concrete-road-barrier-02/barrier.lod1.glb";
-pub(crate) const BARRIER: Model = Model { path: "library/props/ph-concrete-road-barrier-02/concrete_road_barrier_02_1k.gltf", min: Vec3::new(-0.776, -0.003, -0.254), max: Vec3::new(0.789, 1.109, 0.188), back: None, range: None };
+pub(crate) const BARRIER: Model = Model { path: "library/props/ph-concrete-road-barrier-02/concrete_road_barrier_02_1k.gltf", min: Vec3::new(-0.776, -0.003, -0.254), max: Vec3::new(0.789, 1.109, 0.188), back: None, range: None, lods: &[] };
+
+// Real scans (Fab, local only). Bounds from each `<name>.asset.ron` (the importer's asset-pipe
+// puts the pivot at the bottom centre); LOD hand-over distances from the same file.
+/// Megascans "Rusty Metal Barrel" (a 200 l drum, 0.88 m).
+pub(crate) const SCAN_BARREL: Model = Model { path: "library/props/ms-rusty-metal-barrel-tewscfuda/ms-rusty-metal-barrel-tewscfuda", min: Vec3::new(-0.31, 0.0, -0.332), max: Vec3::new(0.31, 0.876, 0.332), back: None, range: None, lods: &[7.0, 17.5] };
+
+/// Megascans "Concrete Barrier": one 5.39 m precast Jersey section, 0.9 m high, chipped along its foot.
+pub(crate) const SCAN_BARRIER: Model = Model { path: "library/props/ms-concrete-barrier-ubitfhtfa/ms-concrete-barrier-ubitfhtfa", min: Vec3::new(-2.695, 0.0, -0.275), max: Vec3::new(2.695, 0.901, 0.275), back: None, range: None, lods: &[15.0, 40.0] };
+
+/// Megascans "Concrete Rubble Pile": a 3.65 x 1.0 x 4.07 m heap of broken slabs and grit, placed
+/// at about 0.4 scale (under knee height) in empty concave corners. Scan-only (no stand-in).
+pub(crate) const SCAN_RUBBLE: Model = Model { path: "library/props/ms-concrete-rubble-pile-tgdtfg0da/ms-concrete-rubble-pile-tgdtfg0da", min: Vec3::new(-1.825, 0.0, -2.037), max: Vec3::new(1.825, 1.017, 2.037), back: None, range: Some(0.0..60.0), lods: &[10.0, 25.0] };
+/// Highest a corner rubble pile may stand (m): below knee height, never cover.
+pub(crate) const RUBBLE_MAX_HEIGHT: f32 = 0.45;
+
+/// Megascans "Rusty Metal Workbench": an open steel table (1.04 x 0.83 x 0.75 m, red-painted top),
+/// long side along x, stood with a long side to a wall. Scan-only.
+pub(crate) const SCAN_WORKBENCH: Model = Model { path: "library/props/ms-rusty-metal-workbench-ukkiejiaw/ms-rusty-metal-workbench-ukkiejiaw", min: Vec3::new(-0.52, 0.0, -0.374), max: Vec3::new(0.52, 0.825, 0.374), back: Some(Vec3::NEG_Z), range: Some(0.0..45.0), lods: &[6.0, 15.0] };
+
+/// "Free – Warehouse Wooden Pallet" (Fab, CC-BY 4.0): a 1.2 x 0.14 x 0.9 m pallet lying flat.
+pub(crate) const SCAN_PALLET: Model = Model { path: "library/props/fab-warehouse-wooden-pallet/fab-warehouse-wooden-pallet", min: Vec3::new(-0.6, 0.0, -0.45), max: Vec3::new(0.6, 0.142, 0.45), back: None, range: Some(0.0..40.0), lods: &[9.6] };
+/// Megascans "Military Trenches Sheet Metal Corrugated 02": a 0.84 x 0.69 m sheet lying flat.
+pub(crate) const SCAN_SHEET: Model = Model { path: "library/props/ms-sheet-metal-corrugated-02-ydzmfhvs/ms-sheet-metal-corrugated-02-ydzmfhvs", min: Vec3::new(-0.421, 0.0, -0.346), max: Vec3::new(0.421, 0.104, 0.346), back: None, range: Some(0.0..35.0), lods: &[6.7, 16.8] };
+
+/// The scan when it is on disk, else the stand-in.
+pub(crate) fn pick_model<'m>(g: &Gfx, scan: &'m Model, standin: &'m Model) -> &'m Model {
+    if scan.present(g) { scan } else { standin }
+}
 
 /// Deterministic 0..1 hash of a few integers.
 fn hash(a: i32, b: i32, salt: u32) -> f32 {
@@ -240,7 +298,7 @@ pub(crate) fn spawn(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut
 
 /// Spawns `m` standing on the ground at `at`, its back against a wall whose outward normal is
 /// `n` (or turned by `yaw` when it has no back), scaled by `scale`. Visual only.
-pub(crate) fn place(commands: &mut Commands, g: &Gfx, m: &Model, at: Vec3, n: Vec3, yaw: f32, scale: f32, shadows: bool) {
+pub(crate) fn place(commands: &mut Commands, g: &mut Gfx, p: &mut Palette, m: &Model, at: Vec3, n: Vec3, yaw: f32, scale: f32, shadows: bool) {
     let rot = match m.back {
         // Turn the model's `back` axis to face away from the wall's normal (towards the wall).
         Some(back) => Quat::from_rotation_arc(Vec3::new(back.x, 0.0, back.z).normalize(), -n),
@@ -257,12 +315,33 @@ pub(crate) fn place(commands: &mut Commands, g: &Gfx, m: &Model, at: Vec3, n: Ve
         }
     }
     let tf = Transform::from_translation(at - rot * (anchor * scale)).with_rotation(rot).with_scale(Vec3::splat(scale));
-    spawn_model(commands, g, m, tf, shadows);
+    spawn_any(commands, g, p, m, tf, shadows, true);
+}
+
+/// Spawns `m` at `tf`, a cooked scan (its LODs on draw ranges, one shared material from its
+/// texture set) or a plain glTF. `bake: false` keeps it out of the light bake ([`NoBake`]).
+pub(crate) fn spawn_any(commands: &mut Commands, g: &mut Gfx, p: &mut Palette, m: &Model, tf: Transform, shadows: bool, bake: bool) -> bool {
+    if !m.is_scan() {
+        return spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: m.range.clone(), material: None, bake }).is_some();
+    }
+    if !m.present(g) {
+        return false;
+    }
+    let mat = p.scan_mat(g, &format!("{}/tex", m.dir()));
+    let end = m.range.as_ref().map_or(f32::INFINITY, |r| r.end);
+    for i in 0..=m.lods.len() {
+        let (a, b) = (if i == 0 { 0.0 } else { m.lods[i - 1] }, m.lods.get(i).copied().unwrap_or(end).min(end));
+        if a >= b {
+            break;
+        }
+        spawn_scene(commands, g, &format!("{}.lod{i}.glb", m.path), tf, ModelMeshes { shadows, range: Some(a..b), material: Some(mat.clone()), bake });
+    }
+    true
 }
 
 /// Spawns model `m` at `tf` (visual only, map scenery). `shadows: false`: its meshes cast none.
 pub(crate) fn spawn_model(commands: &mut Commands, g: &Gfx, m: &Model, tf: Transform, shadows: bool) -> Option<Entity> {
-    spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: m.range.clone() })
+    spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: m.range.clone(), material: None, bake: true })
 }
 
 /// Spawns `m` with its LOD chain: `m` (LOD0) up to `near` metres, `lod1` (a sibling GLB made by the
@@ -271,8 +350,8 @@ pub(crate) fn spawn_lod(commands: &mut Commands, g: &Gfx, m: &Model, lod1: &str,
     if !g.dir.has(lod1) {
         return spawn_model(commands, g, m, tf, shadows).is_some();
     }
-    spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: Some(0.0..near) }).is_some()
-        && spawn_scene(commands, g, lod1, tf, ModelMeshes { shadows, range: Some(near..f32::INFINITY) }).is_some()
+    spawn_scene(commands, g, m.path, tf, ModelMeshes { shadows, range: Some(0.0..near), material: None, bake: true }).is_some()
+        && spawn_scene(commands, g, lod1, tf, ModelMeshes { shadows, range: Some(near..f32::INFINITY), material: None, bake: true }).is_some()
 }
 
 fn spawn_scene(commands: &mut Commands, g: &Gfx, path: &str, tf: Transform, meshes: ModelMeshes) -> Option<Entity> {
@@ -289,6 +368,10 @@ pub(crate) struct ModelMeshes {
     pub shadows: bool,
     /// Drawn only this far from the camera (metres), cross-faded over 2 m at each end.
     pub range: Option<std::ops::Range<f32>>,
+    /// Replaces every mesh's material (cooked scans: their LOD files are untextured).
+    pub material: Option<Handle<StandardMaterial>>,
+    /// Part of the light bake (`false`: [`NoBake`], lit by the probes).
+    pub bake: bool,
 }
 
 /// Meshes a model scene just spawned are static map scenery (`Scenery`, for the render budget
@@ -301,6 +384,12 @@ pub(crate) fn tag_model_meshes(mut commands: Commands, added: Query<Entity, Adde
         if !m.shadows {
             c.insert(NotShadowCaster);
         }
+        if let Some(mat) = &m.material {
+            c.insert(MeshMaterial3d(mat.clone()));
+        }
+        if !m.bake {
+            c.insert(NoBake);
+        }
         if let Some(r) = &m.range {
             let start = if r.start > 0.0 { r.start - 1.0..r.start + 1.0 } else { 0.0..0.0 };
             c.insert(bevy::camera::visibility::VisibilityRange { start_margin: start, end_margin: r.end - 1.0..r.end + 1.0, use_aabb: false });
@@ -308,9 +397,101 @@ pub(crate) fn tag_model_meshes(mut commands: Commands, added: Query<Entity, Adde
     }
 }
 
+/// A heap of rubble (the Megascans pile at 0.32-0.42 scale, under [`RUBBLE_MAX_HEIGHT`]) tucked into
+/// the concave corner at `corner` (face end `end`), when the scan is on disk and the heap clears
+/// every other block, doorway, lamp and sign. Visual only, out of the bake. True when placed.
+fn corner_rubble(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette, (fi, f): (usize, &Face), corner: Vec3, end: f32) -> bool {
+    if hash(fi as i32, end as i32, 23) > 0.75 || !SCAN_RUBBLE.present(g) {
+        return false;
+    }
+    let size = SCAN_RUBBLE.size();
+    let scale = (0.32 + 0.1 * hash(fi as i32, end as i32, 25)).min(RUBBLE_MAX_HEIGHT / size.y);
+    // Turned so its long side runs along the wall; centred half its depth out from both walls.
+    let half = Vec2::new(size.z, size.x) * 0.5 * scale;
+    let at = corner - f.t * (end * (half.x + 0.05)) + f.n * (half.y + 0.05);
+    let doorway = |q: Vec3| arena.decor.headers.iter().any(|h| q.x > h.min.x - 1.0 && q.x < h.max.x + 1.0 && q.z > h.min.y - 1.0 && q.z < h.max.y + 1.0);
+    // Its footprint (centre, the far corner and the middle of each free edge) must be clear.
+    let probes = [Vec3::ZERO, -f.t * end * half.x + f.n * half.y, -f.t * end * half.x, f.n * half.y];
+    if probes.iter().any(|&o| in_other_block(arena, at + o + Vec3::Y * 0.2, 0.05, f.block) || doorway(at + o)) || busy(arena, at + Vec3::Y * 2.0) {
+        return false;
+    }
+    let rot = Quat::from_rotation_arc(Vec3::Z, f.t) * Quat::from_rotation_y((hash(fi as i32, end as i32, 27) - 0.5) * 0.4);
+    let tf = Transform::from_translation(at - rot * (SCAN_RUBBLE.foot() * scale)).with_rotation(rot).with_scale(Vec3::splat(scale));
+    spawn_any(commands, g, p, &SCAN_RUBBLE, tf, true, false)
+}
+
+/// Whether the rectangle from `a` (along the wall, from the corner) by `out` (from the wall) at the
+/// corner is free of other blocks, doorways, lamps and signs.
+fn corner_clear(arena: &Arena, f: &Face, corner: Vec3, end: f32, a: f32, out: f32) -> bool {
+    let doorway = |q: Vec3| arena.decor.headers.iter().any(|h| q.x > h.min.x - 1.0 && q.x < h.max.x + 1.0 && q.z > h.min.y - 1.0 && q.z < h.max.y + 1.0);
+    let mut ok = !busy(arena, corner - f.t * (end * a * 0.5) + f.n * out * 0.5 + Vec3::Y * 2.0);
+    for (u, v) in [(0.15, 0.15), (a, 0.15), (0.15, out), (a, out), (a * 0.5, out * 0.5)] {
+        let q = corner - f.t * (end * u) + f.n * v;
+        ok &= !in_other_block(arena, q + Vec3::Y * 0.2, 0.05, f.block) && !doorway(q);
+    }
+    ok
+}
+
+/// The Megascans workbench with a long side to the wall, just out of the corner. Scan-only.
+fn corner_workbench(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette, f: &Face, corner: Vec3, end: f32) -> bool {
+    let m = &SCAN_WORKBENCH;
+    let along = m.size().x + 0.25;
+    if !m.present(g) || !corner_clear(arena, f, corner, end, along + 0.1, m.size().z + 0.05) {
+        return false;
+    }
+    let at = corner - f.t * (end * (0.15 + m.size().x * 0.5)) + f.n * 0.02;
+    place(commands, g, p, m, at, f.n, 0.0, 1.0, false);
+    debug!("foundry workbench at {:.1} {:.1}", at.x, at.z);
+    true
+}
+
+/// Pallets: a stack of two or three (under knee height) by the corner and one leant on the wall
+/// beside it with a scrap corrugated sheet in front. Scan-only.
+fn corner_pallets(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette, (fi, f): (usize, &Face), corner: Vec3, end: f32) -> bool {
+    let m = &SCAN_PALLET;
+    let s = m.size();
+    if !m.present(g) || !corner_clear(arena, f, corner, end, s.x + 0.25 + 1.3, s.z + 0.1) {
+        return false;
+    }
+    // The stack: long side along the wall, each pallet nudged a little.
+    let n = 2 + (hash(fi as i32, end as i32, 33) > 0.5) as i32;
+    let base = corner - f.t * (end * (0.12 + s.x * 0.5)) + f.n * (0.06 + s.z * 0.5);
+    let along = Quat::from_rotation_arc(Vec3::X, f.t);
+    for k in 0..n {
+        let jitter = Quat::from_rotation_y((hash(fi as i32, k, 35) - 0.5) * 0.12);
+        let nudge = f.t * ((hash(k, fi as i32, 37) - 0.5) * 0.06);
+        let tf = Transform::from_translation(base + nudge + Vec3::Y * (k as f32 * s.y)).with_rotation(along * jitter);
+        spawn_any(commands, g, p, m, Transform { translation: tf.translation - tf.rotation * m.foot(), ..tf }, false, false);
+    }
+    // One stood on its long edge against the wall past the stack, and a sheet leant on it.
+    let slot = corner - f.t * (end * (0.12 + s.x + 0.25 + s.x * 0.5));
+    debug!("foundry pallets at {:.1} {:.1}, leaning at {:.1} {:.1}", base.x, base.z, slot.x, slot.z);
+    lean(commands, g, p, m, slot, f, 0.16);
+    if SCAN_SHEET.present(g) && hash(fi as i32, end as i32, 39) < 0.6 {
+        lean(commands, g, p, &SCAN_SHEET, slot - f.t * (end * 0.2) + f.n * 0.18, f, 0.3);
+    }
+    true
+}
+
+/// Stands flat-lying model `m` (lying in its x-z plane) on edge against the wall of face `f`, its
+/// x along the wall, leaning `tilt` radians back, its foot on the ground just clear of `at`
+/// (a point on the wall line, or in front of it). Visual only, out of the bake, no shadows.
+fn lean(commands: &mut Commands, g: &mut Gfx, p: &mut Palette, m: &Model, at: Vec3, f: &Face, tilt: f32) {
+    // Local x -> along the wall, local y (thickness) -> out of the wall, local z -> down.
+    let stand = Quat::from_mat3(&Mat3::from_cols(f.t, f.n, f.t.cross(f.n)));
+    let rot = Quat::from_axis_angle(f.t, -tilt) * stand;
+    // Put the rotated box's lowest point on the ground and its back against `at`'s plane.
+    let corners = (0..8).map(|i| rot * Vec3::new(if i & 1 == 0 { m.min.x } else { m.max.x }, if i & 2 == 0 { m.min.y } else { m.max.y }, if i & 4 == 0 { m.min.z } else { m.max.z }));
+    let (lo_y, lo_n) = corners.fold((f32::MAX, f32::MAX), |(y, n), c| (y.min(c.y), n.min(c.dot(f.n))));
+    let mid = rot * ((m.min + m.max) * 0.5);
+    let along = mid - f.n * mid.dot(f.n) - Vec3::Y * mid.y;
+    let tf = Transform::from_translation(at - along - Vec3::Y * lo_y - f.n * (lo_n - 0.01)).with_rotation(rot);
+    spawn_any(commands, g, p, m, tf, false, false);
+}
+
 /// Clutter in concave corners (a wall face whose end runs into another block) and street
 /// cabinets against long walls (0.43 m deep: flush, like a pipe, not cover).
-pub(crate) fn clutter(commands: &mut Commands, arena: &Arena, g: &mut Gfx) {
+pub(crate) fn clutter(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
     if arena.id != MapId::Foundry || g.quality == GraphicsQuality::Low {
         return;
     }
@@ -323,7 +504,7 @@ pub(crate) fn clutter(commands: &mut Commands, arena: &Arena, g: &mut Gfx) {
         &[(&BOX, 0.4, 0.34), (&BOX, 0.5, 0.3)],
         &[(&BARREL_RED, 0.35, 0.33), (&PROPANE, 0.85, 0.2), (&PROPANE, 1.15, 0.22)],
     ];
-    let mut placed = 0;
+    let (mut placed, mut rubble) = (0, 0);
     for (fi, f) in faces(arena).iter().enumerate() {
         for end in [-1.0f32, 1.0] {
             let corner = f.mid + f.t * (end * f.len * 0.5);
@@ -333,9 +514,27 @@ pub(crate) fn clutter(commands: &mut Commands, arena: &Arena, g: &mut Gfx) {
                 continue;
             }
             let pick = (hash(fi as i32, end as i32, 21) * 9.0) as usize;
-            let Some(pile) = piles.get(pick) else { continue };
+            let Some(pile) = piles.get(pick) else {
+                // Corners the stand-in clutter leaves empty get scans only: a low rubble heap,
+                // a workbench, or pallets (stacked, and leant on the wall with a scrap sheet).
+                let h = hash(fi as i32, end as i32, 29);
+                let done = if h < 0.45 {
+                    corner_rubble(commands, arena, g, p, (fi, f), corner, end)
+                } else if h < 0.7 {
+                    corner_workbench(commands, arena, g, p, f, corner, end)
+                } else {
+                    corner_pallets(commands, arena, g, p, (fi, f), corner, end)
+                };
+                if done {
+                    rubble += 1;
+                    debug!("foundry scan corner ({:.2}) at {:.1} {:.1}", h, corner.x, corner.z);
+                }
+                continue;
+            };
             let mut ok = true;
-            let spots: Vec<(&Model, Vec3)> = pile.iter().map(|&(m, a, o)| (m, corner - f.t * (end * a) + f.n * o)).collect();
+            // The Megascans drum stands in for both Poly Haven drums when it is on disk.
+            let scan_or = |m: &'static Model| if std::ptr::eq(m, &BARREL_RED) || std::ptr::eq(m, &BARREL_BLUE) { pick_model(g, &SCAN_BARREL, m) } else { m };
+            let spots: Vec<(&Model, Vec3)> = pile.iter().map(|&(m, a, o)| (scan_or(m), corner - f.t * (end * a) + f.n * o)).collect();
             for &(m, s) in &spots {
                 let r = m.size().x.max(m.size().z) * 0.5;
                 if in_other_block(arena, s + Vec3::Y * 0.3, r - 0.05, usize::MAX) || busy(arena, s + Vec3::Y * 2.0) {
@@ -343,13 +542,18 @@ pub(crate) fn clutter(commands: &mut Commands, arena: &Arena, g: &mut Gfx) {
                 }
             }
             if !ok {
+                // No room for the pile: a low rubble heap may still fit (scans only).
+                if corner_rubble(commands, arena, g, p, (fi, f), corner, end) {
+                    rubble += 1;
+                    debug!("foundry scan corner (rubble) at {:.1} {:.1}", corner.x, corner.z);
+                }
                 continue;
             }
             for (k, (m, s)) in spots.into_iter().enumerate() {
                 let yaw = hash(fi as i32, k as i32, 31) * std::f32::consts::TAU;
                 // Stack the second box on the first.
                 let lift = if std::ptr::eq(m, &BOX) && k == 1 && pick == 4 { BOX.size().y } else { 0.0 };
-                place(commands, g, m, s + Vec3::Y * lift, f.n, yaw, 1.0, false);
+                place(commands, g, p, m, s + Vec3::Y * lift, f.n, yaw, 1.0, false);
             }
             placed += 1;
         }
@@ -358,9 +562,9 @@ pub(crate) fn clutter(commands: &mut Commands, arena: &Arena, g: &mut Gfx) {
             let s = f.mid + f.t * ((hash(fi as i32, 7, 47) - 0.5) * (f.len - 2.0)) + f.n * 0.01;
             let clear = !in_other_block(arena, s + f.n * 0.4 + Vec3::Y * 0.6, 0.3, f.block) && !busy(arena, s + Vec3::Y * 1.4);
             if clear {
-                place(commands, g, &UTILITY_BOX, s, f.n, 0.0, 1.0, false);
+                place(commands, g, p, &UTILITY_BOX, s, f.n, 0.0, 1.0, false);
             }
         }
     }
-    debug!("foundry clutter: {placed} corner piles");
+    debug!("foundry clutter: {placed} corner piles, {rubble} scan-only corners");
 }

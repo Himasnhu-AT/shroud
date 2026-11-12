@@ -26,6 +26,9 @@ struct Spec {
     fallback: Color,
     rough: f32,
     tile: f32,
+    /// A real scan (Fab, local only: see `industry` on the licence) used instead of `tex` when it
+    /// is on disk, with its own tint and UV repeat (`0`: its scanned size).
+    scan: Option<(&'static str, Color, f32)>,
 }
 
 const fn spec(tex: &'static str, tint: [f32; 3], fallback: [f32; 3], rough: f32, tile: f32) -> Spec {
@@ -35,6 +38,14 @@ const fn spec(tex: &'static str, tint: [f32; 3], fallback: [f32; 3], rough: f32,
         fallback: Color::srgb(fallback[0], fallback[1], fallback[2]),
         rough,
         tile,
+        scan: None,
+    }
+}
+
+impl Spec {
+    /// Prefer the scan at `path` (tint, tile) when it is on disk.
+    const fn or_scan(self, path: &'static str, tint: [f32; 3], tile: f32) -> Spec {
+        Spec { scan: Some((path, Color::srgb(tint[0], tint[1], tint[2]), tile)), ..self }
     }
 }
 
@@ -54,6 +65,10 @@ const PH_RUST_SHEET: &str = "library/textures/ph-rusty-metal-sheet";
 const PH_METAL_PLATE: &str = "library/textures/ph-metal-plate-02";
 const PH_RUST: &str = "library/textures/ph-rust-coarse-01";
 const PH_PAINTED_RUST: &str = "library/textures/ph-rusty-painted-metal";
+// Real Megascans surfaces from Fab (Standard License: local only, never committed). Each recipe
+// that names one falls back to its Poly Haven stand-in on a checkout without them.
+const MS_FLOOR: &str = "library/textures/ms-industrial-concrete-floor-sl2qedtp";
+const MS_PAINTED_WALL: &str = "library/textures/ms-painted-concrete-wall-tjenbgsfw";
 
 fn recipe(key: &str) -> Spec {
     match key {
@@ -143,8 +158,8 @@ fn recipe(key: &str) -> Spec {
         // Foundry photoscans (Poly Haven CC0, imported Megascans-style: `library/textures/ph-*`,
         // parallax from the scans' height maps). Swap a path for a real Megascans set later.
         "foundry_ground" => spec(PH_DIRTY_CONCRETE, [0.86, 0.85, 0.83], [0.32, 0.33, 0.34], 0.95, 0.0),
-        "foundry_concrete_floor" => spec(PH_CONCRETE_FLOOR, [0.92, 0.92, 0.92], [0.45, 0.45, 0.44], 0.9, 0.0),
-        "foundry_yard" => spec(PH_YARD, [0.90, 0.89, 0.87], [0.42, 0.41, 0.40], 0.95, 0.0),
+        "foundry_concrete_floor" => spec(PH_CONCRETE_FLOOR, [0.92, 0.92, 0.92], [0.45, 0.45, 0.44], 0.9, 0.0).or_scan(MS_FLOOR, [1.0, 1.0, 1.0], 0.0),
+        "foundry_yard" => spec(PH_YARD, [0.90, 0.89, 0.87], [0.42, 0.41, 0.40], 0.95, 0.0).or_scan(MS_FLOOR, [0.85, 0.85, 0.85], 0.0),
         "foundry_asphalt" => spec(PH_ASPHALT, [0.88, 0.88, 0.88], [0.17, 0.17, 0.18], 1.0, 0.0),
         "foundry_gravel" => spec(PH_GRAVEL, [0.80, 0.78, 0.76], [0.30, 0.29, 0.28], 1.0, 0.0),
         "foundry_container0" => spec(PH_CONTAINER, [0.88, 0.92, 0.88], [0.22, 0.36, 0.24], 0.6, 0.0),
@@ -163,6 +178,10 @@ fn recipe(key: &str) -> Spec {
         "foundry_pipe_b" => spec(PH_CONTAINER, [0.70, 0.76, 0.70], [0.20, 0.28, 0.20], 0.6, 1.0),
         // Insides of the hall and the brick houses: cast concrete, corrugated roof sheets.
         "foundry_lining" => spec(PH_CAST_CONCRETE, [0.90, 0.89, 0.88], [0.50, 0.50, 0.49], 0.9, 0.0),
+        // Workshops and offices: old painted concrete. The scan is a salmon paint over grey; the
+        // tint takes the pink out (linear x0.29 / 0.52 / 0.67) so it reads as faded grey-green
+        // paint with rust-brown bare patches. Cast concrete without the scan.
+        "foundry_lining_painted" => spec(PH_CAST_CONCRETE, [0.90, 0.89, 0.88], [0.50, 0.50, 0.49], 0.9, 0.0).or_scan(MS_PAINTED_WALL, [0.58, 0.75, 0.84], 0.0),
         "foundry_ceiling" => spec(PH_CORRUGATED, [0.62, 0.62, 0.63], [0.40, 0.41, 0.42], 0.6, 0.0),
         _ => spec("", [1.0, 1.0, 1.0], [0.6, 0.6, 0.6], 0.9, 2.0),
     }
@@ -222,7 +241,10 @@ impl Palette {
         if let Some(m) = self.cache.get(key) {
             return m.clone();
         }
-        let s = recipe(key);
+        let mut s = recipe(key);
+        if let Some((path, tint, tile)) = s.scan.filter(|(path, ..)| g.dir.has(&format!("{path}/material.json"))) {
+            (s.tex, s.tint, s.tile) = (path, tint, tile);
+        }
         let (m, tile) = if s.tex.starts_with("library/") {
             // A photoscan: tile at its scanned size unless the recipe says otherwise; no
             // parallax on Low (it ray-marches every pixel).
@@ -240,6 +262,19 @@ impl Palette {
         let out = (g.mats.add(m), tile);
         self.cache.insert(key.to_string(), out.clone());
         out
+    }
+
+    /// The material of a cooked scan's texture set (`library/props/<name>/tex`), cached by path:
+    /// every LOD of every instance shares it (one draw batch, one texture copy).
+    pub fn scan_mat(&mut self, g: &mut Gfx, set: &str) -> Handle<StandardMaterial> {
+        let key = format!("scan {set}");
+        if let Some((m, _)) = self.cache.get(&key) {
+            return m.clone();
+        }
+        let m = load_pbr_at(g.server, g.dir, g.pending, set, Color::WHITE).unwrap_or_default();
+        let h = g.mats.add(m);
+        self.cache.insert(key, (h.clone(), 1.0));
+        h
     }
 
     /// An untextured material, cached by key.
@@ -337,9 +372,14 @@ impl Palette {
         if self.id == MapId::Foundry { "foundry_ceiling" } else { Self::ceiling_key(use_) }
     }
 
-    /// Interior wall finish of a building on this map (Foundry's are bare cast concrete).
+    /// Interior wall finish of a building on this map (Foundry: bare cast concrete in the halls,
+    /// painted concrete in workshops and offices).
     pub fn lining_of(&self, use_: BuildingUse) -> &'static str {
-        if self.id == MapId::Foundry { "foundry_lining" } else { Self::lining_key(use_) }
+        match (self.id, use_) {
+            (MapId::Foundry, BuildingUse::Warehouse) => "foundry_lining",
+            (MapId::Foundry, _) => "foundry_lining_painted",
+            _ => Self::lining_key(use_),
+        }
     }
 
     /// Interior wall finish of a building.
@@ -485,12 +525,12 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         _ => {}
     }
     // Foundry: low concrete cover is a row of scanned precast barriers filling the block.
-    if b.skin == Skin::Sandbag && p.id == MapId::Foundry && detail && barriers(commands, size, center, g) {
+    if b.skin == Skin::Sandbag && p.id == MapId::Foundry && detail && barriers(commands, size, center, g, p) {
         commands.entity(e).insert(Visibility::default());
         return;
     }
     // Foundry: low drums are four scanned 200 l drums filling the footprint.
-    if b.skin == Skin::Barrel && b.kind == BlockKind::Low && p.id == MapId::Foundry && detail && drums(commands, i, size, center, g) {
+    if b.skin == Skin::Barrel && b.kind == BlockKind::Low && p.id == MapId::Foundry && detail && drums(commands, i, size, center, g, p) {
         commands.entity(e).insert(Visibility::default());
         return;
     }
@@ -596,21 +636,34 @@ fn is_ladle_car(id: MapId, b: &Block) -> bool {
     id == MapId::Foundry && b.skin == Skin::Container && b.kind == BlockKind::Tall && (b.height - 3.0).abs() < 0.01 && (b.half.x - 1.3).abs() < 0.01 && (b.half.y - 3.0).abs() < 0.01
 }
 
-/// Four drums (2 x 2) standing in a low drum block's footprint, stretched to its height.
-fn drums(commands: &mut Commands, i: usize, size: Vec3, center: Vec3, g: &mut Gfx) -> bool {
-    use super::industry::{BARREL_BLUE, BARREL_RED, spawn_model};
-    if !g.dir.has(BARREL_RED.path) || !g.dir.has(BARREL_BLUE.path) {
+/// Four drums (2 x 2) standing in a low drum block's footprint, stretched to its height: the
+/// Megascans drum when it is on disk, else Poly Haven's red and blue ones.
+fn drums(commands: &mut Commands, i: usize, size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette) -> bool {
+    use super::industry::{BARREL_BLUE, BARREL_RED, SCAN_BARREL, spawn_any};
+    use super::industry::SCAN_PALLET;
+    let scan = SCAN_BARREL.present(g);
+    if !scan && (!g.dir.has(BARREL_RED.path) || !g.dir.has(BARREL_BLUE.path)) {
         return false;
     }
+    // The scanned drums are 0.88 m: on a pallet (stretched to the footprint) they need only a
+    // tenth more height to fill the 1.1 m block, where alone they would stretch by a quarter.
+    let floor = if scan && SCAN_PALLET.present(g) {
+        let ps = SCAN_PALLET.size();
+        let scale = Vec3::new(size.x / ps.x, 1.0, size.z / ps.z);
+        spawn_any(commands, g, p, &SCAN_PALLET, Transform::from_translation(Vec3::new(center.x, 0.0, center.z) - scale * SCAN_PALLET.foot()).with_scale(scale), false, true);
+        ps.y
+    } else {
+        0.0
+    };
     for (k, (dx, dz)) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)].into_iter().enumerate() {
-        let m = if (i + k) % 3 == 0 { &BARREL_RED } else { &BARREL_BLUE };
+        let m = if scan { &SCAN_BARREL } else if (i + k) % 3 == 0 { &BARREL_RED } else { &BARREL_BLUE };
         let ms = m.size();
         let cell = Vec2::new(size.x * 0.5, size.z * 0.5);
-        let s = (cell.x.min(cell.y) * 0.97 / ms.x).min(1.0);
-        let scale = Vec3::new(s, size.y / ms.y, s);
+        let s = (cell.x.min(cell.y) * 0.97 / ms.x.max(ms.z)).min(1.0);
+        let scale = Vec3::new(s, (size.y - floor) / ms.y, s);
         let yaw = (i * 7 + k * 3) as f32 * 1.3;
-        let at = Vec3::new(center.x + dx * cell.x * 0.5, -m.min.y * scale.y, center.z + dz * cell.y * 0.5);
-        spawn_model(commands, g, m, Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)).with_scale(scale), size.x.max(size.z) >= 1.6);
+        let at = Vec3::new(center.x + dx * cell.x * 0.5, floor - m.min.y * scale.y, center.z + dz * cell.y * 0.5);
+        spawn_any(commands, g, p, m, Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)).with_scale(scale), size.x.max(size.z) >= 1.6, true);
     }
     true
 }
@@ -653,28 +706,39 @@ fn ladle_car(size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette, batch: &mut
     batch.add_shape("foundry_ladle", Cylinder::new(1.25, 0.12).mesh().resolution(28), Transform::from_translation(center + Vec3::Y * (h.y + 1.42)));
 }
 
-/// Precast barriers (`industry::BARRIER`, 1.57 m long, as high as low cover) end to end along a
-/// block of `size` at `center`, stretched a little to fill it exactly (the collider is the block).
-/// False when the model is missing.
-fn barriers(commands: &mut Commands, size: Vec3, center: Vec3, g: &mut Gfx) -> bool {
-    use super::industry::{BARRIER, BARRIER_LOD1, spawn_lod};
-    if !g.dir.has(BARRIER.path) {
-        return false;
-    }
+/// Precast barriers end to end along a block of `size` at `center`, stretched a little to fill it
+/// exactly (the collider is the block). The Megascans 5.4 m Jersey section where one fits with
+/// little stretch (blocks of about 3.5-7.5 m), else Poly Haven's 1.57 m barrier
+/// (`industry::BARRIER`). False when neither model is there.
+fn barriers(commands: &mut Commands, size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette) -> bool {
+    use super::industry::{BARRIER, BARRIER_LOD1, SCAN_BARRIER, spawn_any, spawn_lod};
     let along_x = size.x >= size.z;
     let (long, short) = if along_x { (size.x, size.z) } else { (size.z, size.x) };
-    let m = BARRIER.size();
+    let fits = |m: &super::industry::Model| {
+        let n = (long / m.size().x).round().max(1.0);
+        (0.65..=1.4).contains(&(long / n / m.size().x))
+    };
+    let scan = SCAN_BARRIER.present(g) && fits(&SCAN_BARRIER);
+    if !scan && !g.dir.has(BARRIER.path) {
+        return false;
+    }
+    let model = if scan { &SCAN_BARRIER } else { &BARRIER };
+    let m = model.size();
     let n = (long / m.x).round().max(1.0) as i32;
     let scale = Vec3::new(long / n as f32 / m.x, size.y / m.y, short / m.z);
     let rot = if along_x { Quat::IDENTITY } else { Quat::from_rotation_y(std::f32::consts::FRAC_PI_2) };
-    let mid = (BARRIER.min + BARRIER.max) * 0.5;
+    let mid = (model.min + model.max) * 0.5;
     for k in 0..n {
         let a = -long * 0.5 + (k as f32 + 0.5) * long / n as f32;
         let along = if along_x { Vec3::X } else { Vec3::Z };
         // Model centre (x, z) and bottom (y) onto the slot's centre on the ground.
-        let local = Vec3::new(mid.x, BARRIER.min.y, mid.z) * scale;
-        let at = Vec3::new(center.x, 0.0, center.z) + along * a - rot * local;
-        spawn_lod(commands, g, &BARRIER, BARRIER_LOD1, 12.5, Transform::from_translation(at).with_rotation(rot).with_scale(scale), true);
+        let local = Vec3::new(mid.x, model.min.y, mid.z) * scale;
+        let tf = Transform::from_translation(Vec3::new(center.x, 0.0, center.z) + along * a - rot * local).with_rotation(rot).with_scale(scale);
+        if scan {
+            spawn_any(commands, g, p, model, tf, true, true);
+        } else {
+            spawn_lod(commands, g, &BARRIER, BARRIER_LOD1, 12.5, tf, true);
+        }
     }
     true
 }

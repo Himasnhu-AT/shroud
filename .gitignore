@@ -19,3 +19,10 @@ graft/.cache/
 /assets/library/textures/**/*.png
 /assets/library/decals/**/*.jpg
 /assets/library/decals/**/*.png
+
+# Fab downloads (assets/library/*/ms-* Megascans, */fab-* other sellers), imported with the engine's
+# assets.py: Fab's Standard License forbids redistributing them, so none of their files is
+# committed (source maps, cooked KTX2, LOD GLBs). Only their LICENSES.json entries and CREDITS.md
+# rows are. Foundry falls back to the CC0 stand-ins without them (docs/ASSETS.md).
+/assets/library/*/ms-*/
+/assets/library/*/fab-*/

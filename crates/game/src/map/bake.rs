@@ -23,6 +23,13 @@
 //! - **Probes**: one [`BakeVolume`] over the playable area, floor to the highest roof
 //!   ([`probe_volume`]). macOS binds only one irradiance volume, so it's one box per map.
 //!
+//! - **Local-only scans** (Fab, `map::industry`): Foundry is baked with the real scans on disk.
+//!   Matching is by geometry and placement, never material, so walls and floors (the same merged
+//!   boxes with or without the scans) keep their lightmaps on a clone that lacks them. The props
+//!   that swap (scanned barrier and drums against the CC0 stand-ins) have no entry there and fall
+//!   back to the probe volume, with the bake still applied (`allow_stale`); scan-only extras are
+//!   `NoBake` so no clone shows a baked shadow of something missing.
+//!
 //! Baking a map (needs Blender 4.2+; the game's dev build):
 //! `python3 -I scripts/play.py scripts/bake-foundry.json --out .tmp/bake` (a `map.load`, then
 //! `bake.run` and a wait on `bake.status`), then commit `assets/baked/foundry/`.

@@ -280,7 +280,7 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
         small.spawn(commands, g, p, "Low cover", false);
         dressing::spawn(commands, arena, g, p, merged);
         industry::spawn(commands, arena, g, p);
-        industry::clutter(commands, arena, g);
+        industry::clutter(commands, arena, g, p);
         // Baked lighting for this map, when its cache exists (`assets/baked/<map>/`).
         bake::spawn(commands, arena);
     }

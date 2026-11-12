@@ -34,6 +34,48 @@
     "source": "other",
     "url": "https://ambientcg.com/view?id=TireTracks001"
   },
+  "props/fab-warehouse-wooden-pallet": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/c1a98c17-5379-48b7-b129-216e21b6f423",
+    "author": "seller per listing",
+    "license": "CC-BY-4.0",
+    "fetched": "2026-11-12"
+  },
+  "props/ms-concrete-barrier-ubitfhtfa": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/deab69d8-fee9-469b-8b45-579283a8ce46",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "props/ms-concrete-rubble-pile-tgdtfg0da": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/aa404374-059d-4bab-9e0e-cc0ee6ff8c0f",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "props/ms-rusty-metal-barrel-tewscfuda": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/8defe8ec-f655-4e87-8fde-1689af94597c",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "props/ms-rusty-metal-workbench-ukkiejiaw": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/332869a5-a1a1-4f15-a96a-8fc383061b62",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "props/ms-sheet-metal-corrugated-02-ydzmfhvs": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/5a72636f-0abb-426a-9e9e-03deae8f957d",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
   "props/ph-barrel-01": {
     "author": "Jorge Camacho",
     "fetched": "2026-11-12",
@@ -110,6 +152,20 @@
     "license": "CC0-1.0",
     "source": "other",
     "url": "https://polyhaven.com/a/utility_box_02"
+  },
+  "textures/ms-industrial-concrete-floor-sl2qedtp": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/2dece1ec-0941-406c-a7de-ae9fe08085a1",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
+  "textures/ms-painted-concrete-wall-tjenbgsfw": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/08d82370-bf79-461c-96a1-8d7e6d052ec1",
+    "author": "Quixel Megascans",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
   },
   "textures/ph-asphalt-02": {
     "author": "Rob Tuytel",
