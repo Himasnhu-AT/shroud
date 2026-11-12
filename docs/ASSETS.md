@@ -45,5 +45,11 @@ without it.
 4. Verify with `scripts/arms-look.json` (idle, ADS, pickup, enemy holding each gun): the sight
    line must sit on the screen centre in ADS, the muzzle flash at the barrel's end, the hands on
    the grip and handguard. Adjust the anchors and re-run.
-5. `models/weapons/hd/` is gitignored (Standard-licence content isn't redistributable). Commit
+5. FBX packs whose conversion lost their materials (until the importer keeps them): if the pack
+   has a single texture set, its images are pulled from the zip with Python's `zipfile`
+   (basename only, size-capped, nothing executed), put beside the importer's converted GLB and
+   that folder re-imported with `assets.py import <dir>`; then `import-gun.sh ... --texture-set
+   assets/library/misc/<pack>/<prefix>_` applies them (done for the AKS and the 9mm pistol).
+   Packs with several sets (the AR-15) need the importer to keep the FBX materials.
+6. `models/weapons/hd/` is gitignored (Standard-licence content isn't redistributable). Commit
    `guns.json` and the CREDITS/ledger lines only.
