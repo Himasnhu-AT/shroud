@@ -55,6 +55,9 @@ Notes:
 - The Kenney "Animated Characters" packs were checked and rejected: they only ship FBX and contain idle, run and jump clips, with no shoot or death.
 - Animation clip names are listed in `ANIMATIONS.md`.
 - The gun models (Pichuliru's set on poly.pizza, each page marked CC0 1.0) replace the earlier Kenney Blaster Kit toy guns. They are skinned meshes in real-world metres with named part bones (`Magazine`, `Bolt`, `Slide`) and `Attach_*` nodes; the game mounts the separate optics on `Attach_Scope` and swaps their flat colours for its own steel / polymer / wood finishes at load (`weapon/finish.rs`).
+- `models/weapons/lod/*.lod1.glb` are low-detail versions of the Pichuliru guns above (CC0, derived
+  here): rest pose baked, quadric-decimated to 35 % in headless Blender by `scripts/make-gun-lods.sh`.
+  Enemies carry them and distant pickups show them (`weapon/viewmodel.rs`, detail tiers).
 - `models/rifle.glb` and `models/enemy_rifle.glb` (Kenney) are no longer used by the game.
 - The 4K sets (`concrete_4k`, `asphalt_wet`, `peeling_paint`, `ripstop`) keep only the cooked `color.ktx2`, `normal.ktx2`, `orm.ktx2` and `color.avg`; the source JPGs were deleted after cooking to keep the repo small. Re-download the 4K-JPG zip from the URL to re-cook.
 

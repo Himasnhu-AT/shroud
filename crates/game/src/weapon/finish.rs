@@ -25,8 +25,6 @@ use crate::meshprep::MeshPrep;
 
 /// Real-world size of one texture tile on a gun (m).
 const TILE_M: f32 = 0.22;
-/// Gun model units to metres (the set's rigs carry a 100x scale).
-const UNIT_M: f32 = 100.0;
 /// Linear albedo averages of the sets' colour maps (`color.avg`), divided out of the tints.
 const METAL_AVG: f32 = 0.015;
 const POLYMER_AVG: f32 = 0.018;
@@ -48,8 +46,13 @@ fn load_sets(mut commands: Commands, server: Option<Res<AssetServer>>, dir: Opti
 }
 
 /// On a gun scene root (or an optic mounted on it): its meshes get `kind`'s finish.
+/// `mesh_m`: metres per mesh unit (Pichuliru's rigs carry a 100x scale; generated LODs are in
+/// metres), so the photoscan tiles at [`TILE_M`] on every tier.
 #[derive(Component, Clone, Copy)]
-pub struct GunFinish(pub WeaponKind);
+pub struct GunFinish {
+    pub kind: WeaponKind,
+    pub mesh_m: f32,
+}
 
 pub(super) fn build(app: &mut App) {
     app.add_systems(Startup, load_sets.run_if(crate::state::has_visuals))
@@ -138,7 +141,8 @@ fn apply_finish(
         if ours.contains(&mat.id()) {
             continue;
         }
-        let Some(kind) = parents.iter_ancestors(e).find_map(|a| roots.get(a).ok()).map(|f| f.0) else { continue };
+        let Some(root) = parents.iter_ancestors(e).find_map(|a| roots.get(a).ok()).copied() else { continue };
+        let kind = root.kind;
         let key = (kind, name.map_or_else(|| format!("#{:?}", mat.id()), |n| n.0.clone()));
         let (handle, tex) = match cache.get(&key) {
             Some(h) => h.clone(),
@@ -177,7 +181,7 @@ fn apply_finish(
         let mut ec = commands.entity(e);
         ec.insert(MeshMaterial3d(handle));
         if tex {
-            ec.insert(MeshPrep::BoxUv { per_unit: UNIT_M / TILE_M });
+            ec.insert(MeshPrep::BoxUv { per_unit: root.mesh_m / TILE_M });
         }
     }
 }

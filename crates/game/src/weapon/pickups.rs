@@ -53,41 +53,28 @@ pub struct PickupFocus {
     pub hold: f32,
 }
 
-/// Shared pickup visuals: one scene handle per gun, one primitive mesh + material.
+/// Shared pickup visuals: the primitive stand-in for a gun without a model file.
 #[derive(Resource)]
 pub struct PickupAssets {
-    scenes: [Option<Handle<bevy::world_serialization::WorldAsset>>; WeaponKind::ALL.len()],
-    /// Each gun's mounted optic, if it has one.
-    optics: [Option<(Handle<bevy::world_serialization::WorldAsset>, Vec3)>; WeaponKind::ALL.len()],
     mesh: Handle<Mesh>,
     mat: Handle<StandardMaterial>,
 }
 
-fn init_pickup_assets(
-    mut commands: Commands,
-    server: Res<AssetServer>,
-    dir: Res<AssetsDir>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut mats: ResMut<Assets<StandardMaterial>>,
-) {
-    let scenes = WeaponKind::ALL.map(|k| {
-        let path = super::viewmodel::fit(k).path;
-        dir.has(path).then(|| server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(path)))
-    });
-    let optics = WeaponKind::ALL.map(|k| {
-        let (path, at) = super::viewmodel::fit(k).optic?;
-        dir.has(path).then(|| (server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(path)), at))
-    });
+fn init_pickup_assets(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut mats: ResMut<Assets<StandardMaterial>>) {
     commands.insert_resource(PickupAssets {
-        scenes,
-        optics,
         mesh: meshes.add(Cuboid::new(0.08, 0.12, 0.6)),
         mat: mats.add(StandardMaterial { base_color: Color::srgb(0.16, 0.16, 0.17), metallic: 0.6, perceptual_roughness: 0.45, ..default() }),
     });
 }
 
-/// Spawn a pickup (model if present, else a primitive) at `pos` on the ground.
-pub fn spawn_pickup(commands: &mut Commands, assets: Option<&PickupAssets>, gun: GunState, pos: Vec3) -> Entity {
+/// What a pickup needs to show its model: the asset server and folder (absent headless).
+pub type PickupCtx<'a> = Option<(&'a PickupAssets, &'a AssetServer, &'a AssetsDir)>;
+
+/// Spawn a pickup (model if present, else a primitive) at `pos` on the ground. The model is the
+/// high-detail one within [`viewmodel::PICKUP_HIGH_M`](super::viewmodel::PICKUP_HIGH_M) and the
+/// low one beyond (dithered cross-fade), so a gun the player can reach is the same model that
+/// appears in the hands when it is taken.
+pub fn spawn_pickup(commands: &mut Commands, ctx: PickupCtx, gun: GunState, pos: Vec3) -> Entity {
     let y = pos.y.max(0.0) + 0.08;
     let yaw = rand::random_range(0.0..std::f32::consts::TAU);
     let e = commands
@@ -100,35 +87,16 @@ pub fn spawn_pickup(commands: &mut Commands, assets: Option<&PickupAssets>, gun:
             DespawnOnExit(GameState::Playing),
         ))
         .id();
-    let Some(assets) = assets else { return e };
+    let Some((assets, server, dir)) = ctx else { return e };
     let f = super::viewmodel::fit(gun.kind);
-    let idx = WeaponKind::ALL.iter().position(|k| *k == gun.kind).unwrap_or(0);
-    match &assets.scenes[idx] {
+    if dir.has(f.path) {
         // Lying on its side, centred on the pickup.
-        Some(scene) => {
-            let model = commands.spawn((
-                bevy::world_serialization::WorldAssetRoot(scene.clone()),
-                super::finish::GunFinish(gun.kind),
-                {
-                    let rot = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2) * Quat::from_rotation_y(f.yaw);
-                    let scale = f.scale * 1.15;
-                    Transform { translation: -(rot * (f.center * scale)), rotation: rot, scale: Vec3::splat(scale) }
-                },
-                ChildOf(e),
-            ));
-            let model = model.id();
-            if let Some((optic, at)) = &assets.optics[idx] {
-                commands.spawn((
-                    bevy::world_serialization::WorldAssetRoot(optic.clone()),
-                    super::finish::GunFinish(gun.kind),
-                    Transform::from_translation(*at),
-                    ChildOf(model),
-                ));
-            }
-        }
-        None => {
-            commands.spawn((Mesh3d(assets.mesh.clone()), MeshMaterial3d(assets.mat.clone()), Transform::default(), ChildOf(e)));
-        }
+        let rot = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2) * Quat::from_rotation_y(f.yaw);
+        let scale = f.scale * 1.15;
+        let tf = Transform { translation: -(rot * (f.center * scale)), rotation: rot, scale: Vec3::splat(scale) };
+        super::viewmodel::spawn_gun_tiers(commands, server, dir, gun.kind, super::viewmodel::PICKUP_HIGH_M, tf, e);
+    } else {
+        commands.spawn((Mesh3d(assets.mesh.clone()), MeshMaterial3d(assets.mat.clone()), Transform::default(), ChildOf(e)));
     }
     e
 }
@@ -136,6 +104,8 @@ pub fn spawn_pickup(commands: &mut Commands, assets: Option<&PickupAssets>, gun:
 fn drop_enemy_guns(
     mut commands: Commands,
     assets: Option<Res<PickupAssets>>,
+    server: Option<Res<AssetServer>>,
+    dir: Option<Res<AssetsDir>>,
     enemies: Query<(Entity, &Transform, &Health, Option<&Armed>), (With<Enemy>, Without<Dropped>)>,
     pickups: Query<(Entity, &Pickup)>,
 ) {
@@ -155,7 +125,11 @@ fn drop_enemy_guns(
             count -= 1;
         }
         let at = tf.translation + tf.right() * 0.4;
-        spawn_pickup(&mut commands, assets.as_deref(), gun, Vec3::new(at.x, 0.0, at.z));
+        let ctx = match (assets.as_deref(), server.as_deref(), dir.as_deref()) {
+            (Some(a), Some(s), Some(d)) => Some((a, s, d)),
+            _ => None,
+        };
+        spawn_pickup(&mut commands, ctx, gun, Vec3::new(at.x, 0.0, at.z));
         count += 1;
     }
 }
@@ -207,6 +181,8 @@ fn swap_pickup(
     time: Res<Time>,
     input: Res<WeaponInput>,
     assets: Option<Res<PickupAssets>>,
+    server: Option<Res<AssetServer>>,
+    dir: Option<Res<AssetsDir>>,
     mut player: Query<(&Transform, &mut Weapon, &mut Arsenal, &mut Armed), With<Player>>,
     cams: Query<&Transform, (With<engine::gfx::MainCamera>, Without<Player>, Without<Pickup>)>,
     pickups: Query<(Entity, &Transform, &Pickup)>,
@@ -240,7 +216,11 @@ fn swap_pickup(
         // Leave the current primary where the new one was.
         let old = if a.active == 0 { Some(w.state()) } else { a.slots[0] };
         if let (Some(old), Ok((_, tf, _))) = (old, pickups.get(e)) {
-            spawn_pickup(&mut commands, assets.as_deref(), old, tf.translation.with_y(0.0));
+            let ctx = match (assets.as_deref(), server.as_deref(), dir.as_deref()) {
+                (Some(a), Some(s), Some(d)) => Some((a, s, d)),
+                _ => None,
+            };
+            spawn_pickup(&mut commands, ctx, old, tf.translation.with_y(0.0));
         }
         commands.entity(e).despawn();
         // Holding the sidearm: its live state (magazine, reserve) goes back in its slot first.
