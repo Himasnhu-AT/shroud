@@ -37,6 +37,11 @@ const HEADS: [&str; 2] = ["Head", "head"];
 const CHESTS: [&str; 2] = ["spine_03", "spine_05"];
 const HANDS: [&str; 2] = ["hand_l", "hand_r"];
 const CALVES: [&str; 2] = ["calf_l", "calf_r"];
+const THIGHS: [&str; 2] = ["thigh_l", "thigh_r"];
+const UPPERARMS: [&str; 2] = ["upperarm_l", "upperarm_r"];
+const LOWERARMS: [&str; 2] = ["lowerarm_l", "lowerarm_r"];
+const FEET: [&str; 2] = ["foot_l", "foot_r"];
+const BALLS: [&str; 2] = ["ball_l", "ball_r"];
 const ARM_L: &str = "upperarm_l";
 /// Frames after the rig appears before the pose is read (transforms have propagated, idle).
 const SETTLE_FRAMES: u8 = 4;
@@ -95,14 +100,35 @@ struct Kit {
     base: [Handle<StandardMaterial>; 3],
     gear: [Handle<StandardMaterial>; 3],
     helmet_mat: [Handle<StandardMaterial>; 3],
-    black: Handle<StandardMaterial>,
+    /// Gloves and boots: photoscanned black leather when present.
+    leather: Handle<StandardMaterial>,
+    /// Trouser legs and sleeves: the variant's fatigues at the tubes' UV scale.
+    cloth: [Handle<StandardMaterial>; 3],
     accent: Handle<StandardMaterial>,
     helmet: Handle<Mesh>,
     vest: [Handle<Mesh>; 3],
     glove: Handle<Mesh>,
     boot: Handle<Mesh>,
     band: Handle<Mesh>,
+    /// Unit tapered tubes, one per [`CLOTHS`] entry: y 0..1, radius 1 at y = 0, r1 / r0 at y = 1.
+    tubes: [Handle<Mesh>; 4],
 }
+
+/// Loose cloth over a limb bone: tube radii (m) at the bone's start and end, and how much of
+/// the bone it covers. Sized for a soldier's cargo trousers and combat shirt, a little looser
+/// than the body under them so the silhouette reads as clothes, not a body suit.
+struct Cloth {
+    r0: f32,
+    r1: f32,
+    from: f32,
+    to: f32,
+}
+
+const THIGH_CLOTH: Cloth = Cloth { r0: 0.098, r1: 0.07, from: -0.06, to: 1.04 };
+const CALF_CLOTH: Cloth = Cloth { r0: 0.072, r1: 0.06, from: 0.0, to: 0.78 };
+const UPPERARM_CLOTH: Cloth = Cloth { r0: 0.066, r1: 0.054, from: -0.05, to: 1.03 };
+const LOWERARM_CLOTH: Cloth = Cloth { r0: 0.053, r1: 0.046, from: 0.0, to: 0.72 };
+const CLOTHS: [&Cloth; 4] = [&THIGH_CLOTH, &CALF_CLOTH, &UPPERARM_CLOTH, &LOWERARM_CLOTH];
 
 /// Bones found under an enemy, until it is dressed.
 #[derive(Component, Default)]
@@ -111,6 +137,11 @@ struct Rig {
     chest: Option<Entity>,
     hands: [Option<Entity>; 2],
     calves: [Option<Entity>; 2],
+    thighs: [Option<Entity>; 2],
+    upperarms: [Option<Entity>; 2],
+    lowerarms: [Option<Entity>; 2],
+    feet: [Option<Entity>; 2],
+    balls: [Option<Entity>; 2],
     arm: Option<Entity>,
     /// Rank in [`CHESTS`] of the chest found so far.
     chest_rank: usize,
@@ -142,6 +173,54 @@ pub fn fabric_tint(c: Color) -> Color {
     // The ripstop colour map averages ~0.27 linear (`textures/ripstop/color.avg`); divide it out.
     let k = 1.0 / 0.27;
     Color::LinearRgba(LinearRgba::rgb(l.red * k, l.green * k, l.blue * k))
+}
+
+/// Linear albedo averages of the sets' colour maps (`color.avg`), divided out of the tints.
+const CORDURA_AVG: f32 = 0.52;
+const LEATHER_AVG: f32 = 0.009;
+
+fn divided(c: Color, avg: f32) -> Color {
+    let l = c.to_linear();
+    Color::LinearRgba(LinearRgba::rgb(l.red / avg, l.green / avg, l.blue / avg))
+}
+
+/// `m` with MikkTSpace tangents (the kit's materials are normal-mapped photoscans).
+fn tangents(m: Mesh) -> Mesh {
+    m.clone().with_generated_tangents().unwrap_or(m)
+}
+
+/// Unit tapered tube along +Y (0..1), radius 1 at the bottom and `taper` at the top.
+fn tube_mesh(taper: f32) -> Mesh {
+    ConicalFrustum { radius_top: taper, radius_bottom: 1.0, height: 1.0 }
+        .mesh()
+        .resolution(14)
+        .segments(1)
+        .build()
+        .translated_by(Vec3::Y * 0.5)
+}
+
+/// Glove in the hand bone's frame, unit size along +Y (wrist to fingertips): a flattened
+/// mitt over the palm and fingers and a cuff at the wrist.
+fn glove_mesh() -> Mesh {
+    merge([
+        (Sphere::new(1.0).mesh().uv(12, 8), Transform::from_xyz(0.0, 0.55, 0.0).with_scale(Vec3::new(0.55, 0.5, 0.5))),
+        (Cylinder::new(1.0, 1.0).mesh().resolution(12).segments(1).build(), Transform::from_xyz(0.0, 0.05, 0.0).with_scale(Vec3::new(0.45, 0.3, 0.42))),
+    ])
+}
+
+/// Combat boot in its own frame (metres; origin at the ankle joint, +Y up, -Z toward the toe),
+/// for an ankle 0.085 m above the sole and the toe 0.2 m ahead of it; the dress step scales it
+/// to the rig's foot.
+fn boot_mesh() -> Mesh {
+    let t = |x: f32, y: f32, z: f32| Transform::from_xyz(x, y, z);
+    merge([
+        // Shaft round the ankle and lower shin.
+        (Cylinder::new(0.056, 0.17).mesh().resolution(14).segments(1).build(), t(0.0, 0.03, 0.005)),
+        // Upper over the foot: a rounded box from the heel to the toe cap.
+        (Capsule3d::new(0.045, 0.2).mesh().rings(1).latitudes(6).longitudes(12).build(), t(0.0, -0.045, -0.075).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)).with_scale(Vec3::new(1.0, 1.0, 0.8))),
+        // Lugged sole, a little wider than the upper.
+        (cuboid(0.1, 0.025, 0.31), t(0.0, -0.075, -0.07)),
+    ])
 }
 
 fn mat(materials: &mut Assets<StandardMaterial>, c: Color, rough: f32) -> Handle<StandardMaterial> {
@@ -183,9 +262,25 @@ fn setup(
         materials.add(StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(FABRIC_REPEAT_MH)), ..m })
     });
     let base = std::array::from_fn(|i| mat(&mut materials, l[i].base, 0.8));
-    let gear = std::array::from_fn(|i| mat(&mut materials, l[i].gear, 0.75));
-    let helmet_mat = std::array::from_fn(|i| mat(&mut materials, l[i].helmet, 0.6));
-    let black = mat(&mut materials, Color::srgb(0.03, 0.03, 0.035), 0.7);
+    // Photoscanned sets (CC0): nylon cordura for the carrier and the helmet's cover, leather for
+    // gloves and boots; flat colours without them.
+    let mut set = |materials: &mut Assets<StandardMaterial>, name: &str, c: Color, avg: f32, uv: Vec2, rough: f32| -> Handle<StandardMaterial> {
+        let m = match (&server, &dir, pending.as_deref_mut()) {
+            (Some(s), Some(d), Some(p)) => crate::gfx::load_pbr(s, d, p, name, divided(c, avg)),
+            _ => None,
+        };
+        match m {
+            Some(m) => materials.add(StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(uv), perceptual_roughness: rough, reflectance: 0.35, ..m }),
+            None => mat(materials, c, rough),
+        }
+    };
+    let gear = std::array::from_fn(|i| set(&mut materials, "cordura", l[i].gear, CORDURA_AVG, Vec2::splat(3.0), 1.0));
+    let helmet_mat = std::array::from_fn(|i| set(&mut materials, "cordura", l[i].helmet, CORDURA_AVG, Vec2::new(8.0, 2.0), 0.95));
+    let leather = set(&mut materials, "glove_leather", Color::srgb(0.035, 0.034, 0.033), LEATHER_AVG, Vec2::splat(3.0), 0.9);
+    let cloth = std::array::from_fn(|i| {
+        let m = materials.get(&fatigues[i]).cloned().unwrap_or_default();
+        materials.add(StandardMaterial { uv_transform: bevy::math::Affine2::from_scale(Vec2::new(5.0, 3.0)), ..m })
+    });
     // Team colour: a red armband with a little glow so the squad reads at 30 m.
     let accent = materials.add(StandardMaterial {
         base_color: Color::srgb(0.55, 0.05, 0.03),
@@ -193,20 +288,22 @@ fn setup(
         perceptual_roughness: 0.6,
         ..default()
     });
-    let vest = std::array::from_fn(|i| meshes.add(vest_mesh(l[i].pack)));
+    let vest = std::array::from_fn(|i| meshes.add(tangents(vest_mesh(l[i].pack))));
     commands.insert_resource(Kit {
         fatigues,
         fatigues_mh,
         base,
         gear,
         helmet_mat,
-        black,
+        leather,
+        cloth,
         accent,
-        helmet: meshes.add(helmet_mesh()),
+        helmet: meshes.add(tangents(helmet_mesh())),
         vest,
-        glove: meshes.add(Sphere::new(1.0).mesh().ico(1).unwrap()),
-        boot: meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(10).segments(1)),
+        glove: meshes.add(tangents(glove_mesh())),
+        boot: meshes.add(tangents(boot_mesh())),
         band: meshes.add(Cylinder::new(1.0, 1.0).mesh().resolution(12).segments(1)),
+        tubes: CLOTHS.map(|c| meshes.add(tangents(tube_mesh(c.r1 / c.r0)))),
     });
 }
 
@@ -334,21 +431,39 @@ fn find_bones(
                 }
             }
             ARM_L => r.arm = Some(e),
-            _ => {
-                if let Some(i) = HANDS.iter().position(|h| *h == n) {
-                    r.hands[i] = Some(e);
-                } else if let Some(i) = CALVES.iter().position(|c| *c == n) {
-                    r.calves[i] = Some(e);
+            _ => {}
+        };
+        let pair = |r: &mut Rig| {
+            let lists: [(&[&str; 2], &mut [Option<Entity>; 2]); 7] = [
+                (&HANDS, &mut r.hands),
+                (&CALVES, &mut r.calves),
+                (&THIGHS, &mut r.thighs),
+                (&UPPERARMS, &mut r.upperarms),
+                (&LOWERARMS, &mut r.lowerarms),
+                (&FEET, &mut r.feet),
+                (&BALLS, &mut r.balls),
+            ];
+            for (names, slots) in lists {
+                if let Some(i) = names.iter().position(|h| *h == n) {
+                    slots[i] = Some(e);
                 }
             }
         };
-        if !HEADS.contains(&n) && !CHESTS.contains(&n) && n != ARM_L && !HANDS.contains(&n) && !CALVES.contains(&n) {
+        let paired = [HANDS, CALVES, THIGHS, UPPERARMS, LOWERARMS, FEET, BALLS].iter().any(|l| l.contains(&n));
+        if !HEADS.contains(&n) && !CHESTS.contains(&n) && n != ARM_L && !paired {
             continue;
         }
         let Some(root) = owner(e, &parents, &enemies) else { continue };
         match rigs.get_mut(root) {
-            Ok(mut r) => slot(&mut r),
-            Err(_) => slot(fresh.entry(root).or_default()),
+            Ok(mut r) => {
+                slot(&mut r);
+                pair(&mut r);
+            }
+            Err(_) => {
+                let r = fresh.entry(root).or_default();
+                slot(r);
+                pair(r);
+            }
         }
     }
     for (root, rig) in fresh.drain() {
@@ -366,6 +481,7 @@ fn dress(
     globals: Query<&GlobalTransform>,
     children: Query<&Children>,
     locals: Query<&Transform>,
+    names: Query<&Name>,
 ) {
     // A bone's direction and length in its own space: towards its farthest child (UAL bones run
     // along +Y, MetaHuman bones along ±X).
@@ -415,12 +531,51 @@ fn dress(
         if let Some(tf) = upright(chest, Vec3::new(0.0, 0.02, -0.01)) {
             put(chest, tf, &kit.vest[v], &kit.gear[v]);
         }
-        // Limbs along their bones (boots near the ankle: 0.86 of the calf).
+        // Gloves along the hand bones: a mitt from the wrist over the fingers, flat across the
+        // palm (its width toward the thumb).
         for hand in rig.hands.into_iter().flatten() {
-            put(hand, on_bone(hand, 0.05, None, Vec3::new(0.05, 0.075, 0.05)), &kit.glove, &kit.black);
+            let (dir, _) = axis(hand);
+            let thumb = children
+                .get(hand)
+                .ok()
+                .and_then(|c| c.iter().find(|c| names.get(*c).is_ok_and(|n| n.as_str().starts_with("thumb_01"))))
+                .and_then(|t| locals.get(t).ok())
+                .map(|t| t.translation.reject_from(dir));
+            let x = thumb.and_then(|t| t.try_normalize()).unwrap_or_else(|| dir.any_orthonormal_vector());
+            let rot = Quat::from_mat3(&Mat3::from_cols(x, dir, x.cross(dir)));
+            put(hand, Transform::from_rotation(rot).with_scale(Vec3::new(0.078, 0.15, 0.062)), &kit.glove, &kit.leather);
         }
-        for calf in rig.calves.into_iter().flatten() {
-            put(calf, on_bone(calf, 0.37, Some(0.86), Vec3::new(0.066, 0.13, 0.066)), &kit.boot, &kit.black);
+        // Trouser legs and sleeves: loose tubes along the limb bones, over the body's uniform.
+        let limbs = [rig.thighs, rig.calves, rig.upperarms, rig.lowerarms];
+        for (i, bones) in limbs.into_iter().enumerate() {
+            let c = CLOTHS[i];
+            for bone in bones.into_iter().flatten() {
+                let (dir, len) = axis(bone);
+                if len <= 0.0 {
+                    continue;
+                }
+                let l = (c.to - c.from) * len;
+                let tf = Transform::from_translation(dir * c.from * len)
+                    .with_rotation(Quat::from_rotation_arc(Vec3::Y, dir))
+                    .with_scale(Vec3::new(c.r0, l, c.r0));
+                put(bone, tf, &kit.tubes[i], &kit.cloth[v]);
+            }
+        }
+        // Boots: built in the character's frame from the idle pose (ankle above the ball of the
+        // foot, toe ahead of it), then parented to the foot so they follow the animation.
+        for (foot, ball) in rig.feet.into_iter().zip(rig.balls) {
+            let (Some(foot), Some(ball)) = (foot, ball) else { continue };
+            let (Ok(f), Ok(b)) = (globals.get(foot), globals.get(ball)) else { continue };
+            let (ankle, toe) = (f.translation(), b.translation());
+            let up = Vec3::Y;
+            let ahead = (toe - ankle).reject_from(up);
+            let Some(fwd) = ahead.try_normalize() else { continue };
+            // The boot mesh is posed for an ankle 0.085 m up and the ball 0.14 m ahead.
+            let height = ((ankle - toe).dot(up) + 0.03).clamp(0.05, 0.14);
+            let length = ahead.length().clamp(0.08, 0.2);
+            let scale = Vec3::new(1.0, height / 0.085, length / 0.14);
+            let world = GlobalTransform::from(Transform::from_translation(ankle).looking_to(fwd, up).with_scale(scale));
+            put(foot, world.reparented_to(f), &kit.boot, &kit.leather);
         }
         if let Some(arm) = rig.arm {
             put(arm, on_bone(arm, 0.12, None, Vec3::new(0.062, 0.06, 0.062)), &kit.band, &kit.accent);
