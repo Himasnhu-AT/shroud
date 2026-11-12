@@ -17,6 +17,8 @@ use crate::state::has_visuals;
 
 /// Where the fog is opaque: nothing is drawn beyond it.
 pub const FOG_END: f32 = 180.0;
+/// Volumetric fog ray-march steps on Ultra (see `GfxPlugin`).
+pub const ULTRA_FOG_STEPS: u32 = 24;
 
 pub struct GfxPlugin;
 
@@ -25,7 +27,15 @@ impl Plugin for GfxPlugin {
         // Medium keeps TAA but no bloom (the engine's default Medium has bloom). Volumetric fog
         // (Foundry's sun shafts) only on Ultra: on High it cost 5-6 ms GPU at 1080p (Foundry A
         // site, 14.0 → 8.2-8.9 ms p50 without it), more than the rest of the look together.
-        app.insert_resource(QualityPreset { bloom: [false, false, true, true], volumetric_fog: [false, false, false, true], ..default() })
+        // Ultra marches 24 steps, not the engine's 64: at 64 the fog alone was 23.6 ms of a
+        // 39.9 ms Ultra frame at 1080p (Metal System Trace, Foundry A site, scripts/gpu-trace.py),
+        // and it scales with every rendered pixel (x2.9 on a 3024x1964 window, x1.56 overscan).
+        app.insert_resource(QualityPreset {
+            bloom: [false, false, true, true],
+            volumetric_fog: [false, false, false, true],
+            volumetric_steps: [16, 24, 32, ULTRA_FOG_STEPS],
+            ..default()
+        })
             // Arenas are at most ~91 m corner to corner: even on Low (x0.6) nothing inside one
             // fades, loses its shadow or goes flat; scenery stops at the fog.
             .insert_resource(SceneryRanges { shadow: 160.0, small_props: 160.0, far: 160.0, view: FOG_END, ..default() })
