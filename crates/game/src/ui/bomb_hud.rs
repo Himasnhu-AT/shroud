@@ -50,7 +50,9 @@ fn spawn(mut commands: Commands) {
             Node {
                 position_type: PositionType::Absolute,
                 left: px(40),
-                bottom: px(146),
+                // Above the armor bar (`armor::spawn_ui`, bottom 142), which sits in the same
+                // corner: in Bodycam (no health panel) the two overlapped.
+                bottom: px(180),
                 align_items: AlignItems::Center,
                 column_gap: px(8),
                 padding: UiRect::axes(px(10), px(4)),
