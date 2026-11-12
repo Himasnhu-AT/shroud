@@ -1,0 +1,128 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "map.load",
+  "params": {
+   "name": "Office"
+  }
+ },
+ {
+  "cmd": "video.camera_style",
+  "params": {
+   "style": "classic"
+  }
+ },
+ {
+  "sleep": 4
+ },
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "round.freeze",
+  "params": {
+   "seconds": 0
+  }
+ },
+ {
+  "cmd": "look.set",
+  "params": {
+   "fields": {
+    "exposure": {
+     "auto": false,
+     "ev100": 7.0
+    }
+   }
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 6.0,
+   "z": 5.0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -1,
+    0.3,
+    -1
+   ]
+  }
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "shot": "lamp_on_baked"
+ },
+ {
+  "cmd": "lamp.break",
+  "params": {
+   "id": 0
+  }
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "shot": "lamp0_out_baked"
+ },
+ {
+  "cmd": "bake.unload"
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "shot": "lamp0_out_unbaked"
+ },
+ {
+  "cmd": "game.start"
+ },
+ {
+  "sleep": 3
+ },
+ {
+  "cmd": "bake.status"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": 6.0,
+   "z": 5.0
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -1,
+    0.3,
+    -1
+   ]
+  }
+ },
+ {
+  "sleep": 2
+ },
+ {
+  "shot": "lamp_on_unbaked"
+ }
+]

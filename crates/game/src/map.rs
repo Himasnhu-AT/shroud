@@ -3,8 +3,9 @@
 //!
 //! Ground plane mapping: `V2 { x, y }` ↔ world `(x, h, y)`.
 //! Sky, sun and post-processing live in [`crate::gfx`]; per-map materials, lighting and set
-//! dressing in [`look`], [`dressing`], [`props`] and [`grime`].
+//! dressing in [`look`], [`dressing`], [`props`] and [`grime`]; baked lighting in [`bake`].
 
+pub mod bake;
 mod dressing;
 pub mod glass;
 mod grime;
@@ -36,6 +37,7 @@ impl Plugin for MapPlugin {
         app.insert_resource(ArenaRes(Arena::build(id)))
             .init_resource::<MapRequest>()
             .add_plugins((GlassPlugin, lamps::LampsPlugin))
+            .add_plugins(bake::build)
             .add_systems(Startup, (spawn_current_map, grime::setup.run_if(has_visuals)))
             .add_systems(OnExit(AppState::MainMenu), |mut r: ResMut<MapRequest>| r.from_menu = true)
             // Map pieces are static scenery for the engine's render budget.
@@ -276,6 +278,8 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
     if let (Some(g), Some(p)) = (gfx, pal.as_mut()) {
         small.spawn(commands, g, p, "Low cover", false);
         dressing::spawn(commands, arena, g, p, merged);
+        // Baked lighting for this map, when its cache exists (`assets/baked/<map>/`).
+        bake::spawn(commands, arena);
     }
 }
 
