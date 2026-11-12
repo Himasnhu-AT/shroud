@@ -190,3 +190,9 @@ where it is priced.
 | pistol | Pistol 9mm Custom (the pistol body only; attachments and display copies dropped; PBR set re-applied after FBX conversion) | DTry | https://www.fab.com/listings/3a8d9b13-2d8b-4cec-8d0a-0badd999f732 | Fab Standard, Personal tier (Professional ₹1,498.26) |
 | (rifle, pending) | AR-15 style rifle | SpatialNeglect | https://www.fab.com/listings/9d67f325-8817-4385-9871-02ad21b73a8c | Fab Standard (Personal and Professional both free) |
 | (smg, pending) | 10mm AUTO SMG | Kratos2025 | https://www.fab.com/listings/ec579709-9ca0-45b7-b72a-9be242d4b973 | Fab Standard, Personal tier (Professional ₹92.76) |
+
+## Downloaded gear (local only, not in this repo)
+| Use | Model | Author | URL | Licence |
+|---|---|---|---|---|
+| enemy helmet (`models/gear/helmet.glb`: textures 1K, decimated to 35 %; replaces the modelled helmet when present) | Military Helmet | CG Vertexium | https://www.fab.com/listings/6c747a89-ceb4-4147-a154-801c6dbb1846 | Fab Standard (Personal and Professional both free) |
+| (pending: the engine's FBX conversion drops its skin and materials) | Tactical Soldier Outfit for MetaHuman (UE 5.6+) | RMDavid | https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7 | Fab Standard (Personal and Professional both free) |

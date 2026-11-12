@@ -1,4 +1,11 @@
 {
+  "characters/helmet-military": {
+    "source": "fab",
+    "url": "https://www.fab.com/listings/6c747a89-ceb4-4147-a154-801c6dbb1846",
+    "author": "CG Vertexium",
+    "license": "fab-standard",
+    "fetched": "2026-11-12"
+  },
   "characters/outfit-tactical-soldier": {
     "source": "fab",
     "url": "https://www.fab.com/listings/8547291f-699f-45b3-87ca-3fdf2db85bb7",
