@@ -26,3 +26,4 @@ graft/.cache/
 # Fab Standard (Personal) guns and outfits: not redistributable; local only, ledger committed.
 /assets/library/misc/
 /assets/library/characters/
+/assets/models/gear/

@@ -78,6 +78,43 @@ for o in list(bpy.data.objects):
         bpy.data.objects.remove(o, do_unlink=True)
 
 
+def keep_main_cluster():
+    """Packs often lay out several copies (display variants, exploded parts): group the meshes
+    whose bounds touch (1 cm slack) and keep the group with the most triangles."""
+    boxes = []
+    for o in meshes:
+        vs = [v.co for v in o.data.vertices]
+        if not vs:
+            boxes.append(None)
+            continue
+        boxes.append((Vector([min(v[i] for v in vs) - 0.01 for i in range(3)]), Vector([max(v[i] for v in vs) + 0.01 for i in range(3)])))
+    parent = list(range(len(meshes)))
+    def find(a):
+        while parent[a] != a:
+            a = parent[a]
+        return a
+    for i in range(len(meshes)):
+        for j in range(i + 1, len(meshes)):
+            a, b = boxes[i], boxes[j]
+            if a and b and all(a[0][k] <= b[1][k] and b[0][k] <= a[1][k] for k in range(3)):
+                parent[find(i)] = find(j)
+    tri = {}
+    for i, o in enumerate(meshes):
+        tri[find(i)] = tri.get(find(i), 0) + sum(len(p.vertices) - 2 for p in o.data.polygons)
+    if len(tri) > 1:
+        best = max(tri, key=tri.get)
+        keep = [o for i, o in enumerate(meshes) if find(i) == best]
+        drop = [o for i, o in enumerate(meshes) if find(i) != best]
+        print(f"gun_prepare: {len(tri)} separate groups; keeping the largest ({tri[best]} triangles), dropping {len(drop)} meshes")
+        for o in drop:
+            bpy.data.objects.remove(o, do_unlink=True)
+        meshes[:] = keep
+
+
+if "--all-parts" not in argv:
+    keep_main_cluster()
+
+
 def all_verts():
     return [v.co.copy() for o in meshes for v in o.data.vertices]
 

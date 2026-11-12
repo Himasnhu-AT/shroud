@@ -1093,7 +1093,8 @@ def merge_by_material():
     groups = {}
     for o in OUTS:
         part, mat = o.name.split(".")[:2]
-        key = o.name.split(".")[0] if part.startswith("pack_") else "kit." + mat
+        # Packs (one per squad look) and the helmet (replaceable by a pack helmet) stay apart.
+        key = o.name.split(".")[0] if part.startswith("pack_") else (f"helmet.{mat}" if part == "helmet" else "kit." + mat)
         groups.setdefault(key, []).append(o)
     merged = []
     for key, objs in groups.items():
@@ -1101,7 +1102,7 @@ def merge_by_material():
             with bpy.context.temp_override(active_object=objs[0], selected_editable_objects=objs, object=objs[0]):
                 bpy.ops.object.join()
         o = objs[0]
-        name = key if key.startswith("kit.") else o.name.split(".")[0] + "." + o.name.split(".")[1]
+        name = key if key.startswith(("kit.", "helmet.")) else o.name.split(".")[0] + "." + o.name.split(".")[1]
         o.name = name
         o.data.name = name
         merged.append(o)

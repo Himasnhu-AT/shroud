@@ -1,5 +1,32 @@
 [
   {
+    "kind": "pistol",
+    "high": "models/weapons/hd/pistol.glb",
+    "low": "models/weapons/hd/pistol.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      0.06,
+      0.24
+    ],
+    "muzzle": [
+      0.0,
+      0.112,
+      0.082
+    ],
+    "sight": 0.124,
+    "center": [
+      0.0,
+      0.0709,
+      0.1774
+    ],
+    "support": [
+      -0.022,
+      0.045,
+      0.225
+    ]
+  },
+  {
     "kind": "battlerifle",
     "high": "models/weapons/hd/battlerifle.glb",
     "low": "models/weapons/hd/battlerifle.lod1.glb",
@@ -55,6 +82,33 @@
   },
   {
     "kind": "sniper",
+    "high": "models/weapons/hd/sniper.glb",
+    "low": "models/weapons/hd/sniper.lod1.glb",
+    "own_materials": true,
+    "hand": [
+      0.0,
+      0.0,
+      0.1078
+    ],
+    "muzzle": [
+      0.0,
+      0.0532,
+      -0.8322
+    ],
+    "sight": 0.095,
+    "center": [
+      0.0,
+      0.0091,
+      -0.2322
+    ],
+    "support": [
+      0.0,
+      0.03,
+      -0.38
+    ]
+  },
+  {
+    "kind": "marksman",
     "high": "models/weapons/hd/sniper.glb",
     "low": "models/weapons/hd/sniper.lod1.glb",
     "own_materials": true,

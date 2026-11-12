@@ -107,6 +107,19 @@ fn looks() -> [Look; 3] {
 /// The MetaHuman's clothing and gear, skinned to its skeleton (local only, see the module docs).
 pub const GEAR_MH: &str = "models/metahuman/gear_mh.glb";
 
+/// A downloaded helmet (local only, `assets/models/gear/`, prepared with
+/// `scripts/blender/gun_prepare.py --muzzle +y --max-texture 1024` and decimated): front toward
+/// -Z, base at y = 0, metres. When it exists it replaces the modelled helmet, rigid on the head
+/// bone with its own materials. CREDITS.md has the listing.
+pub const HELMET_PACK: &str = "models/gear/helmet.glb";
+/// The pack helmet's base below the helmet frame's origin (the MetaHuman's head bone + 7 cm):
+/// its brow then clears the eyes and the crown sits about 4 cm over the scalp.
+const HELMET_PACK_DROP: f32 = 0.082;
+
+/// On a model under an enemy whose own materials stay (no fatigues recolour).
+#[derive(Component)]
+struct KeepMaterials;
+
 /// Materials for the skinned gear (by the mesh name's material suffix).
 struct GearMats {
     /// Fatigues on box-projected metre UVs (pockets).
@@ -542,6 +555,7 @@ fn find_bones(
 #[derive(SystemParam)]
 struct GearFiles<'w> {
     server: Res<'w, AssetServer>,
+    dir: Res<'w, crate::assets::AssetsDir>,
     gltfs: Res<'w, Assets<Gltf>>,
     nodes: Res<'w, Assets<GltfNode>>,
     meshes: Res<'w, Assets<GltfMesh>>,
@@ -587,7 +601,7 @@ fn gear_material<'a>(kit: &'a Kit, mat: &str, v: usize) -> Option<&'a Handle<Sta
 
 /// Spawn every skinned gear piece for squad look `v` beside the body mesh (`parent`), bound to
 /// the enemy's bones (`bones`: name -> entity). False if a piece can't be bound.
-fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize, bones: &HashMap<String, Entity>, parent: Entity) -> bool {
+fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize, bones: &HashMap<String, Entity>, parent: Entity, skip_helmet: bool) -> bool {
     let Some(gltf) = kit.gear_mh.as_ref().and_then(|h| files.gltfs.get(h)) else { return false };
     let pack = match looks()[v].pack {
         Pack::Backpack => "pack_backpack",
@@ -599,7 +613,7 @@ fn spawn_gear_mh(commands: &mut Commands, kit: &Kit, files: &GearFiles, v: usize
         let Some(node) = files.nodes.get(nh) else { continue };
         let (Some(mh), Some(sh)) = (&node.mesh, &node.skin) else { continue };
         let Some((part, m)) = gear_name(&node.name) else { continue };
-        if part.starts_with("pack_") && part != pack {
+        if (part.starts_with("pack_") && part != pack) || (skip_helmet && part == "helmet") {
             continue;
         }
         let (Some(mat), Some(mesh), Some(skin)) = (gear_material(kit, m, v), files.meshes.get(mh), files.skins.get(sh)) else {
@@ -694,7 +708,17 @@ fn dress(
                 Some(true) => {
                     if let Some(body) = rig.body {
                         let bones = bone_names(e, &children, &names);
-                        skinned = spawn_gear_mh(&mut commands, &kit, &files, v, &bones, body);
+                        let pack_helmet = files.dir.has(HELMET_PACK);
+                        skinned = spawn_gear_mh(&mut commands, &kit, &files, v, &bones, body, pack_helmet);
+                        if skinned && pack_helmet && let Ok(g) = globals.get(head) {
+                            // Upright in the character's frame at the head's posed position, then
+                            // carried by the head bone.
+                            let at = g.translation() + root.rotation() * Vec3::new(0.0, 0.07, 0.005);
+                            let world = GlobalTransform::from(Transform::from_translation(at).with_rotation(root.rotation()));
+                            let tf = world.reparented_to(g).mul_transform(Transform::from_xyz(0.0, -HELMET_PACK_DROP, 0.0));
+                            let scene = files.server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(HELMET_PACK));
+                            commands.spawn((Name::new("kit helmet"), KeepMaterials, bevy::world_serialization::WorldAssetRoot(scene), tf, Visibility::default(), ChildOf(head)));
+                        }
                     }
                 }
                 Some(false) => {}
@@ -791,6 +815,7 @@ fn recolour(
     parents: Query<&ChildOf>,
     enemies: Query<&Enemy>,
     guns: Query<(), With<super::gun::EnemyGun>>,
+    keep: Query<(), With<KeepMaterials>>,
     names: Query<&Name>,
     materials: Res<Assets<StandardMaterial>>,
 ) {
@@ -807,7 +832,7 @@ fn recolour(
         let mut gun = false;
         while let Ok(p) = parents.get(a) {
             a = p.parent();
-            gun |= guns.contains(a);
+            gun |= guns.contains(a) || keep.contains(a);
             if let Ok(en) = enemies.get(a) {
                 enemy = Some(en.slot % 3);
                 break;
