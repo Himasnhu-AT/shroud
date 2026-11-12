@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    3.0,
+    3.0
+  ],
+  "height_m": 0.01,
+  "parallax": 0.00333,
+  "source": {
+    "megascans_id": "phasp002",
+    "name": "Asphalt",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phasp002_2K_Albedo.jpg",
+      "ao": "phasp002_2K_AO.jpg",
+      "height": "phasp002_2K_Displacement.png",
+      "normal": "phasp002_2K_NormalGL.jpg",
+      "rough": "phasp002_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

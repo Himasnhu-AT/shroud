@@ -1,0 +1,21 @@
+{
+  "kind": "decal",
+  "normal_y": "gl",
+  "size_m": [
+    1.0,
+    2.0
+  ],
+  "source": {
+    "megascans_id": "actire01",
+    "name": "Tyre Tracks",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "actire01_2K_Albedo.jpg",
+      "ao": "actire01_2K_AO.jpg",
+      "height": "actire01_2K_Displacement.jpg",
+      "normal": "actire01_2K_NormalGL.jpg",
+      "rough": "actire01_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

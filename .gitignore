@@ -12,3 +12,10 @@ graft/.cache/
 /scripts/metahuman/Saved/
 /scripts/metahuman/Intermediate/
 /scripts/metahuman/DerivedDataCache/
+
+# Imported photoscan sets (assets/library, engine assets.py): only the cooked KTX2, color.avg and
+# material.json are committed; the source maps stay local (re-import from the URL in CREDITS.md).
+/assets/library/textures/**/*.jpg
+/assets/library/textures/**/*.png
+/assets/library/decals/**/*.jpg
+/assets/library/decals/**/*.png

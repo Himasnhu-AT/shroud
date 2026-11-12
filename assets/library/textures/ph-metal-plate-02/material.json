@@ -1,0 +1,25 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    2.0,
+    2.0
+  ],
+  "height_m": 0.006,
+  "parallax": 0.003,
+  "metallic": true,
+  "source": {
+    "megascans_id": "phmp0002",
+    "name": "Metal Plate",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phmp0002_2K_Albedo.jpg",
+      "ao": "phmp0002_2K_AO.jpg",
+      "height": "phmp0002_2K_Displacement.png",
+      "metal": "phmp0002_2K_Metalness.jpg",
+      "normal": "phmp0002_2K_NormalGL.jpg",
+      "rough": "phmp0002_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

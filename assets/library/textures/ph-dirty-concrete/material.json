@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    3.0,
+    3.0
+  ],
+  "height_m": 0.01,
+  "parallax": 0.00333,
+  "source": {
+    "megascans_id": "phdcnc01",
+    "name": "Dirty Concrete",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phdcnc01_2K_Albedo.jpg",
+      "ao": "phdcnc01_2K_AO.jpg",
+      "height": "phdcnc01_2K_Displacement.png",
+      "normal": "phdcnc01_2K_NormalGL.jpg",
+      "rough": "phdcnc01_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

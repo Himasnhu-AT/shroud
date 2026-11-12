@@ -1,0 +1,219 @@
+{
+  "decals/acg-leaking001": {
+    "author": "ambientCG (Lennart Demes)",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://ambientcg.com/view?id=Leaking001"
+  },
+  "decals/acg-leaking003": {
+    "author": "ambientCG (Lennart Demes)",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://ambientcg.com/view?id=Leaking003"
+  },
+  "decals/acg-leaking007": {
+    "author": "ambientCG (Lennart Demes)",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://ambientcg.com/view?id=Leaking007"
+  },
+  "decals/acg-manholecover009": {
+    "author": "ambientCG (Lennart Demes)",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://ambientcg.com/view?id=ManholeCover009"
+  },
+  "decals/acg-tiretracks001": {
+    "author": "ambientCG (Lennart Demes)",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://ambientcg.com/view?id=TireTracks001"
+  },
+  "props/ph-barrel-01": {
+    "author": "Jorge Camacho",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/Barrel_01"
+  },
+  "props/ph-barrel-03": {
+    "author": "Serhii Khromov",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/barrel_03"
+  },
+  "props/ph-cardboard-box-01": {
+    "author": "Rahul Chaudhary",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/cardboard_box_01"
+  },
+  "props/ph-cement-bag": {
+    "author": "PierreB3D",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/cement_bag"
+  },
+  "props/ph-concrete-road-barrier-02": {
+    "author": "Amal Kumar",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/concrete_road_barrier_02"
+  },
+  "props/ph-hanging-industrial-lamp": {
+    "author": "Kuutti Siitonen",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/hanging_industrial_lamp"
+  },
+  "props/ph-industrial-wall-lamp": {
+    "author": "Kuutti Siitonen",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/industrial_wall_lamp"
+  },
+  "props/ph-metal-jerrycan": {
+    "author": "Sean Buckley",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/metal_jerrycan"
+  },
+  "props/ph-old-tyre": {
+    "author": "MP",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/old_tyre"
+  },
+  "props/ph-propane-tank": {
+    "author": "Slinc",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/propane_tank"
+  },
+  "props/ph-utility-box-02": {
+    "author": "James Ray Cock",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/utility_box_02"
+  },
+  "textures/ph-asphalt-02": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/asphalt_02"
+  },
+  "textures/ph-brown-planks-09": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/brown_planks_09"
+  },
+  "textures/ph-concrete-floor-damaged": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/concrete_floor_damaged_01"
+  },
+  "textures/ph-concrete-wall-006": {
+    "author": "Dario Barresi, Charlotte Baglioni",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/concrete_wall_006"
+  },
+  "textures/ph-container-side": {
+    "author": "Dimitrios Savva",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/container_side"
+  },
+  "textures/ph-corrugated-iron-02": {
+    "author": "Jenelle van Heerden, Sergej Majboroda",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/corrugated_iron_02"
+  },
+  "textures/ph-damaged-concrete-floor": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/damaged_concrete_floor"
+  },
+  "textures/ph-dirty-concrete": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/dirty_concrete"
+  },
+  "textures/ph-factory-brick": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/factory_brick"
+  },
+  "textures/ph-gravel-floor-03": {
+    "author": "Charlotte Baglioni",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/gravel_floor_03"
+  },
+  "textures/ph-metal-plate-02": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/metal_plate_02"
+  },
+  "textures/ph-rust-coarse-01": {
+    "author": "Dimitrios Savva, Rico Cilliers",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/rust_coarse_01"
+  },
+  "textures/ph-rusty-corrugated-iron": {
+    "author": "Charlotte Baglioni",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/rusty_corrugated_iron"
+  },
+  "textures/ph-rusty-metal-sheet": {
+    "author": "Amal Kumar",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/rusty_metal_sheet"
+  },
+  "textures/ph-rusty-painted-metal": {
+    "author": "Amal Kumar",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/rusty_painted_metal"
+  }
+}

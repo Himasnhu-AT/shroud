@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    5.0,
+    5.0
+  ],
+  "height_m": 0.012,
+  "parallax": 0.0024,
+  "source": {
+    "megascans_id": "phcfd001",
+    "name": "Concrete Floor Damaged",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phcfd001_2K_Albedo.jpg",
+      "ao": "phcfd001_2K_AO.jpg",
+      "height": "phcfd001_2K_Displacement.png",
+      "normal": "phcfd001_2K_NormalGL.jpg",
+      "rough": "phcfd001_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

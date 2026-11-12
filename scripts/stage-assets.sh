@@ -23,6 +23,10 @@ trap 'rm -f "$COOKED_JPGS"' EXIT
 for set in assets/textures/*/; do
   [ -f "${set}color.ktx2" ] && find "$set" -maxdepth 1 -name '*.jpg' | sed 's|^assets/||' >>"$COOKED_JPGS"
 done
+# Imported photoscan sets (assets/library): sources and the cook's PNG fallbacks stay home too.
+for set in assets/library/textures/*/ assets/library/decals/*/; do
+  [ -f "${set}color.ktx2" ] && find "$set" -maxdepth 1 \( -name '*.jpg' -o -name '*.png' \) | sed 's|^assets/||' >>"$COOKED_JPGS"
+done
 mkdir -p "$DEST"
 rsync -a --delete --exclude '.DS_Store' --exclude '*.md' --exclude '*metahuman*' --exclude-from="$COOKED_JPGS" assets/ "$DEST/"
 

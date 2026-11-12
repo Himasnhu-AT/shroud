@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    1.0,
+    1.0
+  ],
+  "height_m": 0.006,
+  "parallax": 0.006,
+  "source": {
+    "megascans_id": "phbpl009",
+    "name": "Crate Planks",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phbpl009_2K_Albedo.jpg",
+      "ao": "phbpl009_2K_AO.jpg",
+      "height": "phbpl009_2K_Displacement.png",
+      "normal": "phbpl009_2K_NormalGL.jpg",
+      "rough": "phbpl009_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

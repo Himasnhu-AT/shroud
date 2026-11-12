@@ -13,10 +13,13 @@ use engine::render_budget::SceneryRanges;
 
 use super::{ArenaRes, Gfx};
 use crate::gfx::load_pbr;
+use engine::gfx::{load_pbr_at, surface_info};
 use engine::settings::{CoreSettings as Settings, GraphicsQuality};
 
-/// A material recipe: texture set under `assets/textures/<tex>/`, tint, flat fallback
-/// colour and roughness (used when the textures are missing), UV repeat in metres.
+/// A material recipe: texture set under `assets/textures/<tex>/` (or, for a path starting
+/// with `library/`, an imported photoscan set under `assets/<tex>/`), tint, flat fallback colour
+/// and roughness (used when the textures are missing), UV repeat in metres (`0`: the scan's own
+/// size from its `material.json`).
 struct Spec {
     tex: &'static str,
     tint: Color,
@@ -34,6 +37,23 @@ const fn spec(tex: &'static str, tint: [f32; 3], fallback: [f32; 3], rough: f32,
         tile,
     }
 }
+
+// Foundry's photoscanned sets (`assets/library/textures/`, credits in `assets/CREDITS.md`).
+const PH_DIRTY_CONCRETE: &str = "library/textures/ph-dirty-concrete";
+const PH_CONCRETE_FLOOR: &str = "library/textures/ph-concrete-floor-damaged";
+const PH_YARD: &str = "library/textures/ph-damaged-concrete-floor";
+const PH_ASPHALT: &str = "library/textures/ph-asphalt-02";
+const PH_GRAVEL: &str = "library/textures/ph-gravel-floor-03";
+const PH_CAST_CONCRETE: &str = "library/textures/ph-concrete-wall-006";
+const PH_PLANKS: &str = "library/textures/ph-brown-planks-09";
+const PH_BRICK: &str = "library/textures/ph-factory-brick";
+const PH_RUSTY_CORRUGATED: &str = "library/textures/ph-rusty-corrugated-iron";
+const PH_CORRUGATED: &str = "library/textures/ph-corrugated-iron-02";
+const PH_CONTAINER: &str = "library/textures/ph-container-side";
+const PH_RUST_SHEET: &str = "library/textures/ph-rusty-metal-sheet";
+const PH_METAL_PLATE: &str = "library/textures/ph-metal-plate-02";
+const PH_RUST: &str = "library/textures/ph-rust-coarse-01";
+const PH_PAINTED_RUST: &str = "library/textures/ph-rusty-painted-metal";
 
 fn recipe(key: &str) -> Spec {
     match key {
@@ -113,13 +133,37 @@ fn recipe(key: &str) -> Spec {
         "gravel" => spec("roof_gravel", [0.86, 0.83, 0.80], [0.40, 0.38, 0.36], 1.0, 2.0),
         "crane_paint" => spec("tall", [1.0, 0.74, 0.16], [0.82, 0.58, 0.10], 0.5, 2.0),
         // Foundry: oxide-red and soot-grey cladding, smoke-stained brick, dark steel.
-        "foundry_siding" => spec("container", [0.58, 0.30, 0.22], [0.42, 0.22, 0.16], 0.6, 2.4),
-        "foundry_siding_b" => spec("container", [0.44, 0.45, 0.46], [0.30, 0.31, 0.32], 0.6, 2.4),
-        "foundry_brick" => spec("brick", [0.82, 0.70, 0.64], [0.40, 0.27, 0.22], 0.95, 0.9),
-        "foundry_concrete" => spec("concrete_4k", [0.80, 0.78, 0.75], [0.48, 0.47, 0.45], 0.9, 3.0),
-        "foundry_outer" => spec("concrete_4k", [0.66, 0.64, 0.62], [0.38, 0.37, 0.36], 0.9, 3.5),
-        "foundry_steel" => spec("tall", [0.30, 0.30, 0.32], [0.16, 0.16, 0.17], 0.5, 2.0),
-        "foundry_ladle" => spec("tall", [0.24, 0.22, 0.21], [0.13, 0.12, 0.11], 0.55, 1.5),
+        "foundry_siding" => spec(PH_RUSTY_CORRUGATED, [0.92, 0.86, 0.82], [0.42, 0.22, 0.16], 0.6, 0.0),
+        "foundry_siding_b" => spec(PH_CORRUGATED, [0.80, 0.80, 0.80], [0.30, 0.31, 0.32], 0.6, 0.0),
+        "foundry_brick" => spec(PH_BRICK, [0.80, 0.74, 0.70], [0.40, 0.27, 0.22], 0.95, 0.0),
+        "foundry_concrete" => spec(PH_CAST_CONCRETE, [1.0, 1.0, 1.0], [0.48, 0.47, 0.45], 0.9, 0.0),
+        "foundry_outer" => spec(PH_CAST_CONCRETE, [0.84, 0.84, 0.84], [0.38, 0.37, 0.36], 0.9, 0.0),
+        "foundry_steel" => spec(PH_METAL_PLATE, [0.78, 0.78, 0.80], [0.16, 0.16, 0.17], 0.5, 0.0),
+        "foundry_ladle" => spec(PH_RUST, [0.62, 0.56, 0.52], [0.13, 0.12, 0.11], 0.55, 0.0),
+        // Foundry photoscans (Poly Haven CC0, imported Megascans-style: `library/textures/ph-*`,
+        // parallax from the scans' height maps). Swap a path for a real Megascans set later.
+        "foundry_ground" => spec(PH_DIRTY_CONCRETE, [0.86, 0.85, 0.83], [0.32, 0.33, 0.34], 0.95, 0.0),
+        "foundry_concrete_floor" => spec(PH_CONCRETE_FLOOR, [0.92, 0.92, 0.92], [0.45, 0.45, 0.44], 0.9, 0.0),
+        "foundry_yard" => spec(PH_YARD, [0.90, 0.89, 0.87], [0.42, 0.41, 0.40], 0.95, 0.0),
+        "foundry_asphalt" => spec(PH_ASPHALT, [0.88, 0.88, 0.88], [0.17, 0.17, 0.18], 1.0, 0.0),
+        "foundry_gravel" => spec(PH_GRAVEL, [0.80, 0.78, 0.76], [0.30, 0.29, 0.28], 1.0, 0.0),
+        "foundry_container0" => spec(PH_CONTAINER, [0.88, 0.92, 0.88], [0.22, 0.36, 0.24], 0.6, 0.0),
+        "foundry_container1" => spec(PH_PAINTED_RUST, [0.92, 0.88, 0.86], [0.55, 0.20, 0.14], 0.6, 0.0),
+        "foundry_container2" => spec(PH_RUST_SHEET, [0.70, 0.66, 0.62], [0.40, 0.30, 0.24], 0.6, 0.0),
+        // Low concrete cover (the jersey barriers between lanes) and steel drums.
+        "foundry_barrier" => spec(PH_CAST_CONCRETE, [1.0, 1.0, 1.0], [0.55, 0.54, 0.52], 0.9, 1.6),
+        "foundry_drum" => spec(PH_RUST_SHEET, [0.42, 0.50, 0.62], [0.20, 0.30, 0.45], 0.5, 1.2),
+        // Packing crates: raw pine boards, darker battens.
+        "foundry_crate" => spec(PH_PLANKS, [0.92, 0.86, 0.78], [0.52, 0.40, 0.28], 1.0, 0.0),
+        "foundry_batten" => spec(PH_PLANKS, [0.62, 0.55, 0.48], [0.36, 0.28, 0.20], 1.0, 0.0),
+        // Rubble: broken cast concrete.
+        "foundry_rubble" => spec(PH_CAST_CONCRETE, [0.95, 0.93, 0.90], [0.40, 0.39, 0.38], 0.95, 0.3),
+        // Pipe runs on the walls: rusted bare steel, and old green paint.
+        "foundry_pipe" => spec(PH_RUST, [0.55, 0.50, 0.46], [0.22, 0.17, 0.13], 0.6, 1.0),
+        "foundry_pipe_b" => spec(PH_CONTAINER, [0.70, 0.76, 0.70], [0.20, 0.28, 0.20], 0.6, 1.0),
+        // Insides of the hall and the brick houses: cast concrete, corrugated roof sheets.
+        "foundry_lining" => spec(PH_CAST_CONCRETE, [0.90, 0.89, 0.88], [0.50, 0.50, 0.49], 0.9, 0.0),
+        "foundry_ceiling" => spec(PH_CORRUGATED, [0.62, 0.62, 0.63], [0.40, 0.41, 0.42], 0.6, 0.0),
         _ => spec("", [1.0, 1.0, 1.0], [0.6, 0.6, 0.6], 0.9, 2.0),
     }
 }
@@ -179,12 +223,21 @@ impl Palette {
             return m.clone();
         }
         let s = recipe(key);
-        let m = load_pbr(g.server, g.dir, g.pending, s.tex, s.tint).unwrap_or(StandardMaterial {
+        let (m, tile) = if s.tex.starts_with("library/") {
+            // A photoscan: tile at its scanned size unless the recipe says otherwise; no
+            // parallax on Low (it ray-marches every pixel).
+            let size = surface_info(g.dir, s.tex).size_m.map_or(2.0, |v| v[0]);
+            let m = load_pbr_at(g.server, g.dir, g.pending, s.tex, s.tint).map(|m| if g.quality == GraphicsQuality::Low { StandardMaterial { depth_map: None, ..m } } else { m });
+            (m, if s.tile > 0.0 { s.tile } else { size })
+        } else {
+            (load_pbr(g.server, g.dir, g.pending, s.tex, s.tint), s.tile)
+        };
+        let m = m.unwrap_or(StandardMaterial {
             base_color: s.fallback,
             perceptual_roughness: s.rough,
             ..default()
         });
-        let out = (g.mats.add(m), s.tile);
+        let out = (g.mats.add(m), tile);
         self.cache.insert(key.to_string(), out.clone());
         out
     }
@@ -221,7 +274,7 @@ impl Palette {
 
     pub fn floor(&mut self, g: &mut Gfx) -> (Handle<StandardMaterial>, f32) {
         let key = match self.id {
-            MapId::Foundry => "foundry_floor",
+            MapId::Foundry => "foundry_ground",
             MapId::Depot => "sand",
             MapId::Office => "carpet",
             MapId::Township => "town_ground",
@@ -237,6 +290,10 @@ impl Palette {
             (MapId::Sirocco, FloorSkin::Pavement) => "cobble".into(),
             (MapId::Sirocco, FloorSkin::Sidewalk) => "sirocco_paving".into(),
             (MapId::Sirocco, FloorSkin::Tiles) => "terracotta_floor".into(),
+            (MapId::Foundry, FloorSkin::Asphalt) => "foundry_asphalt".into(),
+            (MapId::Foundry, FloorSkin::Pavement) => "foundry_yard".into(),
+            (MapId::Foundry, FloorSkin::Gravel) => "foundry_gravel".into(),
+            (MapId::Foundry, FloorSkin::Concrete | FloorSkin::Tiles) => "foundry_concrete_floor".into(),
             _ => super::dressing::floor_key(f).into(),
         }
     }
@@ -248,6 +305,7 @@ impl Palette {
             MapId::Office => "drywall",
             MapId::Sirocco => "white1",
             MapId::Gantry => "harbor_concrete",
+            MapId::Foundry => "foundry_concrete",
             _ => "concrete",
         };
         self.mat(g, key)
@@ -272,6 +330,16 @@ impl Palette {
             BuildingUse::Shop | BuildingUse::Office => "ceiling",
             BuildingUse::Warehouse | BuildingUse::Workshop => "ceiling_shed",
         }
+    }
+
+    /// Ceiling of a building on this map (Foundry's sheds have bare corrugated roofs).
+    pub fn ceiling_of(&self, use_: BuildingUse) -> &'static str {
+        if self.id == MapId::Foundry { "foundry_ceiling" } else { Self::ceiling_key(use_) }
+    }
+
+    /// Interior wall finish of a building on this map (Foundry's are bare cast concrete).
+    pub fn lining_of(&self, use_: BuildingUse) -> &'static str {
+        if self.id == MapId::Foundry { "foundry_lining" } else { Self::lining_key(use_) }
     }
 
     /// Interior wall finish of a building.
@@ -324,17 +392,25 @@ impl Palette {
             Skin::Stucco if self.id == MapId::Sirocco => format!("white{}", i % 3),
             Skin::Stucco if b.kind == BlockKind::Wall => "stucco_outer".into(),
             Skin::Stucco => if i.is_multiple_of(2) { "stucco" } else { "stucco_b" }.into(),
+            Skin::Container if self.id == MapId::Foundry => format!("foundry_container{}", i % 3),
             Skin::Container => format!("container{}", i % 4),
+            Skin::Crate if self.id == MapId::Foundry => "foundry_crate".into(),
             Skin::Crate => "crate".into(),
             Skin::Barrel if self.id == MapId::Office => "planter".into(),
             // Foundry: tall drums are ladles and the boiler (dark, heat-stained steel).
             Skin::Barrel if self.id == MapId::Foundry && b.kind == BlockKind::Tall => "foundry_ladle".into(),
+            Skin::Barrel if self.id == MapId::Foundry => "foundry_drum".into(),
             Skin::Barrel => "barrel".into(),
+            Skin::Sandbag if self.id == MapId::Foundry => "foundry_barrier".into(),
             Skin::Sandbag => "sandbag".into(),
+            // Foundry's partitions are bare cast concrete like its walls.
+            Skin::Drywall | Skin::Plaster if self.id == MapId::Foundry => "foundry_lining".into(),
             Skin::Drywall if b.kind == BlockKind::Wall => "drywall_outer".into(),
             Skin::Drywall => "drywall".into(),
             Skin::Desk if is_cubicle(b) && self.id == MapId::Office => "cubicle".into(),
             Skin::Desk => "desk".into(),
+            // Foundry's hall columns: bare steel plate.
+            Skin::Cabinet if is_crane(b) && self.id == MapId::Foundry => "foundry_steel".into(),
             Skin::Cabinet if is_crane(b) => "crane_paint".into(),
             Skin::Cabinet => "cabinet".into(),
             Skin::Brick if b.kind == BlockKind::Wall => "town_wall".into(),
@@ -408,8 +484,25 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         }
         _ => {}
     }
+    // Foundry: low concrete cover is a row of scanned precast barriers filling the block.
+    if b.skin == Skin::Sandbag && p.id == MapId::Foundry && detail && barriers(commands, size, center, g) {
+        commands.entity(e).insert(Visibility::default());
+        return;
+    }
+    // Foundry: low drums are four scanned 200 l drums filling the footprint.
+    if b.skin == Skin::Barrel && b.kind == BlockKind::Low && p.id == MapId::Foundry && detail && drums(commands, i, size, center, g) {
+        commands.entity(e).insert(Visibility::default());
+        return;
+    }
     let key = p.block_key(i, b);
     let (mat, _) = p.mat(g, &key);
+    // Foundry packing crates: battens on every edge and round the middle (merged with the box).
+    if b.skin == Skin::Crate && p.id == MapId::Foundry && detail {
+        crate_battens(size, center, g, p, if b.kind == BlockKind::Low && size.x.max(size.z) < 1.6 { &mut *small } else { &mut *walls });
+    }
+    if is_ladle_car(p.id, b) && detail {
+        ladle_car(size, center, g, p, walls);
+    }
     // Small props don't cast shadows (perf rule); walls and big cover do.
     let small_prop = b.kind == BlockKind::Low && size.x.max(size.z) < 1.6;
     if b.skin == Skin::Barrel {
@@ -496,6 +589,94 @@ pub(crate) fn dress_block(commands: &mut Commands, e: Entity, i: usize, b: &Bloc
         (Skin::Cabinet, _) if detail => super::props::cabinet_fronts(commands, e, size, g, p),
         _ => {}
     }
+}
+
+/// Foundry's ladle car: the 2.6 x 6 m container on the ladle track.
+fn is_ladle_car(id: MapId, b: &Block) -> bool {
+    id == MapId::Foundry && b.skin == Skin::Container && b.kind == BlockKind::Tall && (b.height - 3.0).abs() < 0.01 && (b.half.x - 1.3).abs() < 0.01 && (b.half.y - 3.0).abs() < 0.01
+}
+
+/// Four drums (2 x 2) standing in a low drum block's footprint, stretched to its height.
+fn drums(commands: &mut Commands, i: usize, size: Vec3, center: Vec3, g: &mut Gfx) -> bool {
+    use super::industry::{BARREL_BLUE, BARREL_RED, spawn_model};
+    if !g.dir.has(BARREL_RED.path) || !g.dir.has(BARREL_BLUE.path) {
+        return false;
+    }
+    for (k, (dx, dz)) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)].into_iter().enumerate() {
+        let m = if (i + k) % 3 == 0 { &BARREL_RED } else { &BARREL_BLUE };
+        let ms = m.size();
+        let cell = Vec2::new(size.x * 0.5, size.z * 0.5);
+        let s = (cell.x.min(cell.y) * 0.97 / ms.x).min(1.0);
+        let scale = Vec3::new(s, size.y / ms.y, s);
+        let yaw = (i * 7 + k * 3) as f32 * 1.3;
+        let at = Vec3::new(center.x + dx * cell.x * 0.5, -m.min.y * scale.y, center.z + dz * cell.y * 0.5);
+        spawn_model(commands, g, m, Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)).with_scale(scale), size.x.max(size.z) >= 1.6);
+    }
+    true
+}
+
+/// Battens on a packing crate of `size` at `center`: every edge, plus a band round the middle.
+fn crate_battens(size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette, batch: &mut super::dressing::Batch) {
+    let (t, o) = (0.09, 0.02); // batten width, how far it stands proud
+    let h = size * 0.5;
+    for (sx, sz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        // Vertical corner posts.
+        batch.add(g, p, "foundry_batten", Vec3::new(t, size.y, t), center + Vec3::new(sx * (h.x - t * 0.5 + o), 0.0, sz * (h.z - t * 0.5 + o)));
+    }
+    for y in [-h.y + t * 0.5, h.y - t * 0.5, 0.0] {
+        for s in [-1.0f32, 1.0] {
+            batch.add(g, p, "foundry_batten", Vec3::new(size.x + 2.0 * o, t, t), center + Vec3::new(0.0, y, s * (h.z - t * 0.5 + o)));
+            batch.add(g, p, "foundry_batten", Vec3::new(t, t, size.z + 2.0 * o), center + Vec3::new(s * (h.x - t * 0.5 + o), y, 0.0));
+        }
+    }
+}
+
+/// The ladle car's chassis: wheel sets and stiffening ribs on its long sides, a rim round the top,
+/// and the ladle itself (a rusted drum) riding above it. All above or flush with the block.
+fn ladle_car(size: Vec3, center: Vec3, g: &mut Gfx, p: &mut Palette, batch: &mut super::dressing::Batch) {
+    let h = size * 0.5;
+    p.flat(g, "ladle_wheel", || StandardMaterial { base_color: Color::srgb(0.07, 0.065, 0.06), perceptual_roughness: 0.5, metallic: 0.9, ..default() });
+    for z in [-h.z + 0.7, -h.z + 1.6, h.z - 1.6, h.z - 0.7] {
+        for s in [-1.0f32, 1.0] {
+            let at = center + Vec3::new(s * (h.x + 0.04), -h.y + 0.42, z);
+            batch.add_shape("ladle_wheel", Cylinder::new(0.42, 0.08).mesh().resolution(20), Transform::from_translation(at).with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)));
+        }
+    }
+    for k in 0..7 {
+        let z = -h.z + 0.3 + k as f32 * (size.z - 0.6) / 6.0;
+        for s in [-1.0f32, 1.0] {
+            batch.add(g, p, "foundry_steel", Vec3::new(0.06, size.y - 1.0, 0.14), center + Vec3::new(s * (h.x + 0.03), 0.4, z));
+        }
+    }
+    batch.add(g, p, "foundry_steel", Vec3::new(size.x + 0.1, 0.18, size.z + 0.1), center + Vec3::Y * (h.y + 0.09));
+    batch.add_shape("foundry_ladle", Cylinder::new(1.15, 1.2).mesh().resolution(28), Transform::from_translation(center + Vec3::Y * (h.y + 0.78)));
+    batch.add_shape("foundry_ladle", Cylinder::new(1.25, 0.12).mesh().resolution(28), Transform::from_translation(center + Vec3::Y * (h.y + 1.42)));
+}
+
+/// Precast barriers (`industry::BARRIER`, 1.57 m long, as high as low cover) end to end along a
+/// block of `size` at `center`, stretched a little to fill it exactly (the collider is the block).
+/// False when the model is missing.
+fn barriers(commands: &mut Commands, size: Vec3, center: Vec3, g: &mut Gfx) -> bool {
+    use super::industry::{BARRIER, BARRIER_LOD1, spawn_lod};
+    if !g.dir.has(BARRIER.path) {
+        return false;
+    }
+    let along_x = size.x >= size.z;
+    let (long, short) = if along_x { (size.x, size.z) } else { (size.z, size.x) };
+    let m = BARRIER.size();
+    let n = (long / m.x).round().max(1.0) as i32;
+    let scale = Vec3::new(long / n as f32 / m.x, size.y / m.y, short / m.z);
+    let rot = if along_x { Quat::IDENTITY } else { Quat::from_rotation_y(std::f32::consts::FRAC_PI_2) };
+    let mid = (BARRIER.min + BARRIER.max) * 0.5;
+    for k in 0..n {
+        let a = -long * 0.5 + (k as f32 + 0.5) * long / n as f32;
+        let along = if along_x { Vec3::X } else { Vec3::Z };
+        // Model centre (x, z) and bottom (y) onto the slot's centre on the ground.
+        let local = Vec3::new(mid.x, BARRIER.min.y, mid.z) * scale;
+        let at = Vec3::new(center.x, 0.0, center.z) + along * a - rot * local;
+        spawn_lod(commands, g, &BARRIER, BARRIER_LOD1, 12.5, Transform::from_translation(at).with_rotation(rot).with_scale(scale), true);
+    }
+    true
 }
 
 fn rack_fronts(commands: &mut Commands, e: Entity, size: Vec3, g: &mut Gfx, p: &mut Palette) {

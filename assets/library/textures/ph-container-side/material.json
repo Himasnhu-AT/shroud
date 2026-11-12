@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    1.94,
+    1.94
+  ],
+  "height_m": 0.03,
+  "parallax": 0.01546,
+  "source": {
+    "megascans_id": "phcon001",
+    "name": "Container Side",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phcon001_2K_Albedo.jpg",
+      "ao": "phcon001_2K_AO.jpg",
+      "height": "phcon001_2K_Displacement.png",
+      "normal": "phcon001_2K_NormalGL.jpg",
+      "rough": "phcon001_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

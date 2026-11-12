@@ -17,13 +17,18 @@ use bevy::image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::light::NotShadowCaster;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::pbr::decal::ForwardDecalMaterial;
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use brain::arena::{Arena, Block, BlockKind, MapId, Skin};
 use engine::look::{decal_image, decal_material, spawn_decal};
+use engine::render_budget::KeepDetail;
 use engine::settings::{CoreSettings, GraphicsQuality};
 
 use super::{ArenaPiece, ArenaRes};
+use crate::assets::AssetsDir;
+use crate::gfx::PendingMips;
 
 /// Edge-grime texture repeats every this many metres along a wall.
 const STRIP_TILE: f32 = 2.5;
@@ -36,6 +41,32 @@ pub(crate) struct GrimeAssets {
     stain: Handle<ForwardDecalMaterial<StandardMaterial>>,
     streak: Handle<ForwardDecalMaterial<StandardMaterial>>,
     marks: Handle<ForwardDecalMaterial<StandardMaterial>>,
+    /// Foundry draws all its grime as merged alpha-blended quads, one mesh per material
+    /// ([`Kind`]): a few draws instead of one per decal.
+    quad_mats: HashMap<Kind, Handle<StandardMaterial>>,
+}
+
+/// What a grime quad / decal shows.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Kind {
+    Stain,
+    Marks,
+    Streak,
+    /// Scanned rust / water runs (two variants).
+    Leak0,
+    Leak1,
+    /// Scanned damp band at a wall foot.
+    Damp,
+    Manhole,
+    Tyres,
+    /// Big soft dirt at wall feet and soot at wall tops, varying along the wall.
+    Wash,
+    /// Yellow / black hazard stripes.
+    Hazard,
+    /// Yellow warning triangle plate.
+    Warning,
+    /// Dust drifts on the floor against walls.
+    Dust,
 }
 
 // ---------------------------------------------------------------- noise
@@ -158,12 +189,96 @@ fn marks_image() -> Image {
     })
 }
 
+/// Wash texture repeats every this many metres along a wall.
+const WASH_TILE: f32 = 9.0;
+
+/// Large-scale wall variation, one image for the full wall height (v = 0 at the top): soot under
+/// the top, dirt rising from the foot, each with a ragged, low-frequency edge that varies along u
+/// (tiles in u).
+fn wash_image() -> Image {
+    decal_image(256, |uv| {
+        let (u, v) = (uv.x, uv.y);
+        let up = 1.0 - v;
+        let foot_reach = 0.22 + 0.28 * fbm(u * 4.0, 0.5, 4, 101);
+        let foot = (1.0 - smoothstep(0.0, foot_reach, up)).powf(1.4) * (0.55 + 0.45 * fbm(u * 12.0, v * 5.0, 12, 103));
+        let soot_reach = 0.08 + 0.18 * fbm(u * 3.0, 2.5, 3, 107);
+        let soot = (1.0 - smoothstep(0.0, soot_reach, v)).powf(1.2) * (0.5 + 0.5 * fbm(u * 10.0, v * 4.0, 10, 109));
+        let blotch = smoothstep(0.55, 0.85, fbm(u * 6.0, v * 3.0, 6, 113)) * 0.25;
+        let a = (foot * 0.95 + soot * 0.8 + blotch).clamp(0.0, 0.9);
+        // Darker than the scans themselves (Foundry's cast concrete and brick are ~0.2 albedo);
+        // decal_image stores the values as given in an sRGB texture.
+        if soot > foot { [0.05, 0.048, 0.045, a] } else { [0.12, 0.105, 0.09, a] }
+    })
+}
+
+/// Worn yellow / black diagonal stripes (one stripe pair per u unit), chipped by noise.
+fn hazard_image() -> Image {
+    let mut img = decal_image(128, |uv| {
+        let stripe = ((uv.x * 2.0 + uv.y * 0.5).fract() < 0.5) as i32;
+        let wear = fbm(uv.x * 9.0, uv.y * 9.0, 9, 131);
+        let a = smoothstep(0.25, 0.45, wear) * 0.92;
+        if stripe == 1 { [0.78, 0.56, 0.06, a] } else { [0.03, 0.03, 0.03, a] }
+    });
+    engine::gfx::build_mips(&mut img);
+    img
+}
+
+/// A yellow warning triangle with a black border and exclamation mark on a white plate.
+fn warning_image() -> Image {
+    decal_image(128, |uv| {
+        let p = Vec2::new(uv.x - 0.5, 0.92 - uv.y); // y up from the plate's bottom margin
+        let inside = |m: f32| p.y >= m && p.y <= 0.84 - m * 1.6 && p.x.abs() <= (0.84 - p.y) * 0.62 - m;
+        let mark = (p.x.abs() < 0.035 && p.y > 0.22 && p.y < 0.58) || (p.x.abs() < 0.04 && p.y > 0.11 && p.y < 0.17);
+        let grime = 0.85 + 0.15 * fbm(uv.x * 8.0, uv.y * 8.0, 0, 137);
+        let c = if inside(0.07) && !mark { [0.85 * grime, 0.62 * grime, 0.05] } else if inside(0.0) || mark { [0.03, 0.03, 0.03] } else { [0.8 * grime, 0.8 * grime, 0.76 * grime] };
+        [c[0], c[1], c[2], 1.0]
+    })
+}
+
+/// A drift of grey dust along a wall foot: dense at v = 1 (the wall), fading out by v = 0.
+fn dust_image() -> Image {
+    let mut img = decal_image(128, |uv| {
+        let edge = 0.35 + 0.5 * fbm(uv.x * 6.0, 0.5, 0, 141);
+        let a = smoothstep(1.0 - edge, 1.0, uv.y) * (0.55 + 0.45 * fbm(uv.x * 20.0, uv.y * 8.0, 0, 143)) * 0.8;
+        [0.36, 0.34, 0.31, a]
+    });
+    img.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor { address_mode_u: ImageAddressMode::Repeat, ..ImageSamplerDescriptor::linear() });
+    img
+}
+
 pub(crate) fn setup(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
     mut decals: ResMut<Assets<ForwardDecalMaterial<StandardMaterial>>>,
+    server: Option<Res<AssetServer>>,
+    dir: Option<Res<AssetsDir>>,
+    pending: Option<ResMut<PendingMips>>,
 ) {
+    let mut quad_mats = HashMap::new();
+    let blend = |m: StandardMaterial| StandardMaterial { alpha_mode: AlphaMode::Blend, depth_map: None, double_sided: false, cull_mode: Some(bevy::render::render_resource::Face::Back), ..m };
+    if let (Some(server), Some(dir), Some(mut pending)) = (server, dir, pending) {
+        for (k, name) in [(Kind::Leak0, "acg-leaking001"), (Kind::Leak1, "acg-leaking003"), (Kind::Damp, "acg-leaking007"), (Kind::Manhole, "acg-manholecover009"), (Kind::Tyres, "acg-tiretracks001")] {
+            // The leak scans were shot on pale walls: darken them to read on dark concrete.
+            let tint = match k {
+                Kind::Leak0 | Kind::Leak1 => Color::srgb(0.30, 0.27, 0.24),
+                Kind::Damp => Color::srgb(0.45, 0.42, 0.38),
+                _ => Color::WHITE,
+            };
+            if let Some(m) = engine::gfx::load_pbr_at(&server, &dir, &mut pending, &format!("library/decals/{name}"), tint) {
+                quad_mats.insert(k, mats.add(blend(m)));
+            }
+        }
+    }
+    let tiled = |img: Image| {
+        let mut img = img;
+        img.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor { address_mode_u: ImageAddressMode::Repeat, address_mode_v: ImageAddressMode::ClampToEdge, anisotropy_clamp: 8, ..ImageSamplerDescriptor::linear() });
+        img
+    };
+    for (k, img, rough) in [(Kind::Wash, tiled(wash_image()), 1.0), (Kind::Hazard, tiled(hazard_image()), 0.7), (Kind::Warning, warning_image(), 0.5), (Kind::Dust, dust_image(), 1.0)] {
+        let h = images.add(img);
+        quad_mats.insert(k, mats.add(StandardMaterial { base_color_texture: Some(h), perceptual_roughness: rough, reflectance: 0.3, alpha_mode: AlphaMode::Blend, ..default() }));
+    }
     let strip = |img: Handle<Image>| StandardMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(img),
@@ -183,12 +298,16 @@ pub(crate) fn setup(
     let stain = decal(stain_image(), &mut images);
     let streak = decal(streak_image(), &mut images);
     let marks = decal(marks_image(), &mut images);
+    for (k, m) in [(Kind::Stain, &stain), (Kind::Streak, &streak), (Kind::Marks, &marks)] {
+        quad_mats.insert(k, mats.add(blend(m.clone())));
+    }
     commands.insert_resource(GrimeAssets {
         strip_strong: mats.add(strip(strong)),
         strip_light: mats.add(strip(light)),
         stain: decals.add(decal_material(stain, 0.06)),
         streak: decals.add(decal_material(streak, 0.06)),
         marks: decals.add(decal_material(marks, 0.06)),
+        quad_mats,
     });
 }
 
@@ -326,18 +445,18 @@ pub(crate) fn spawn_grime(
         MeshMaterial3d(if strong { g.strip_strong.clone() } else { g.strip_light.clone() }),
         Transform::default(),
         NotShadowCaster,
+        // A map-wide mesh: its centre is far from most views, so the render budget would draw
+        // its flat far version (the average colour, nearly invisible) everywhere.
+        KeepDetail,
     ));
     if core.quality == GraphicsQuality::Low {
         return;
     }
     let mut rng = Seq(arena.id as u32 * 7919 + 17);
     let half = arena.half() - 1.0;
-    let decal = |commands: &mut Commands, m: &Handle<ForwardDecalMaterial<StandardMaterial>>, tf: Transform| {
-        let e = spawn_decal(commands, m.clone(), tf);
-        commands.entity(e).insert((ArenaPiece, NotShadowCaster));
-    };
+    let mut sink = Sink { g: &g, quads: (arena.id == MapId::Foundry).then(HashMap::new) };
     // Floor stains and marks, on open ground (inside buildings too).
-    for (count, mat, kind) in [(n_stains, &g.stain, 0), (n_marks, &g.marks, 1)] {
+    for (count, kind) in [(n_stains, Kind::Stain), (n_marks, Kind::Marks)] {
         let mut placed = 0;
         for _ in 0..count * 8 {
             if placed == count {
@@ -345,7 +464,7 @@ pub(crate) fn spawn_grime(
             }
             let p = Vec2::new(rng.range(-half, half), rng.range(-half, half));
             let (w, l) = match (kind, arena.id) {
-                (0, _) => {
+                (Kind::Stain, _) => {
                     let s = rng.range(0.8, 2.6);
                     (s, s * rng.range(0.7, 1.3))
                 }
@@ -358,16 +477,13 @@ pub(crate) fn spawn_grime(
             let yaw = rng.range(0.0, std::f32::consts::TAU);
             // Between the ground slab (y 0) and floor patches (y 0.012).
             let tf = Transform::from_xyz(p.x, 0.006, p.y).with_rotation(Quat::from_rotation_y(yaw)).with_scale(Vec3::new(w, 0.1, l));
-            decal(&mut commands, mat, tf);
+            sink.put(&mut commands, kind, tf);
             placed += 1;
         }
     }
     // Water streaks running down from the top of outer wall faces.
     let tall: Vec<&Face> = faces.iter().filter(|f| f.outer && f.len >= 2.0 && f.height >= 2.4).collect();
-    if tall.is_empty() {
-        return;
-    }
-    for _ in 0..n_streaks {
+    for _ in 0..if tall.is_empty() { 0 } else { n_streaks } {
         let f = tall[(rng.next() * tall.len() as f32) as usize % tall.len()];
         let w = rng.range(1.0, 2.2).min(f.len - 0.2);
         let h = rng.range(1.2, 2.4).min(f.height - 0.3);
@@ -375,9 +491,191 @@ pub(crate) fn spawn_grime(
         let s = rng.range(-0.5, 0.5) * (f.len - w);
         let top = f.height - rng.range(0.02, 0.4);
         let at = f.at + t * s + f.n * 0.005 + Vec3::Y * (top - h * 0.5);
-        // Decal quad: local +Y = wall normal; texture top (v = 0) is local -Z, so -Z = up.
-        let rot = Quat::from_mat3(&Mat3::from_cols(f.n.cross(Vec3::NEG_Y), f.n, Vec3::NEG_Y));
-        decal(&mut commands, &g.streak, Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::new(w, 0.1, h)));
+        sink.put(&mut commands, Kind::Streak, Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(w, 0.1, h)));
+    }
+    if arena.id == MapId::Foundry {
+        scanned(&mut commands, arena, &mut sink, &faces, &mut rng);
+        signage(&mut commands, arena, &mut sink, &faces);
+    }
+    if let Some(quads) = sink.quads {
+        let mut kinds: Vec<_> = quads.keys().copied().collect();
+        kinds.sort_by_key(|k| *k as u8);
+        for k in kinds {
+            let Some(m) = g.quad_mats.get(&k) else { continue };
+            commands.spawn((Name::new(format!("Grime {k:?}")), ArenaPiece, Mesh3d(meshes.add(quad_mesh(&quads[&k]))), MeshMaterial3d(m.clone()), Transform::default(), NotShadowCaster, KeepDetail));
+        }
+    }
+}
+
+/// Wall decal frame: local +Y = the face normal, -Z = up (the texture's top edge).
+fn wall_rot(n: Vec3) -> Quat {
+    Quat::from_mat3(&Mat3::from_cols(n.cross(Vec3::NEG_Y), n, Vec3::NEG_Y))
+}
+
+/// Where grime goes: forward decals, or (Foundry) quads collected per [`Kind`] and merged into
+/// one mesh each. A placement is a decal transform (unit quad in x/z, +Y out of the surface) and
+/// the u range across it (tiling textures run along a wall in world metres).
+struct Sink<'a> {
+    g: &'a GrimeAssets,
+    quads: Option<HashMap<Kind, Vec<(Transform, [f32; 2])>>>,
+}
+
+impl Sink<'_> {
+    fn put(&mut self, commands: &mut Commands, k: Kind, tf: Transform) {
+        self.put_u(commands, k, tf, [0.0, 1.0]);
+    }
+    fn put_u(&mut self, commands: &mut Commands, k: Kind, tf: Transform, u: [f32; 2]) {
+        if let Some(q) = &mut self.quads {
+            q.entry(k).or_default().push((tf, u));
+            return;
+        }
+        let m = match k {
+            Kind::Stain => &self.g.stain,
+            Kind::Marks => &self.g.marks,
+            Kind::Streak => &self.g.streak,
+            _ => return,
+        };
+        let e = spawn_decal(commands, m.clone(), tf);
+        commands.entity(e).insert((ArenaPiece, NotShadowCaster));
+    }
+}
+
+/// One mesh of quads from decal transforms. Quads are lifted off their surface: floor ones just
+/// above the floor patches (under the paint), wall ones in front of linings and the edge-grime band.
+fn quad_mesh(quads: &[(Transform, [f32; 2])]) -> Mesh {
+    let (mut pos, mut nrm, mut uv, mut idx) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for (k, (tf, [u0, u1])) in quads.iter().enumerate() {
+        let n = tf.rotation * Vec3::Y;
+        let r = tf.rotation * Vec3::X * (tf.scale.x * 0.5);
+        let d = tf.rotation * Vec3::Z * (tf.scale.z * 0.5);
+        let mut c = tf.translation;
+        if n.y > 0.9 {
+            c.y = 0.0135 + (k % 7) as f32 * 0.0001;
+        } else {
+            c += n * (0.0165 + (k % 5) as f32 * 0.0003);
+        }
+        let i0 = pos.len() as u32;
+        for (p, t) in [(c - r - d, [*u0, 0.0]), (c + r - d, [*u1, 0.0]), (c + r + d, [*u1, 1.0]), (c - r + d, [*u0, 1.0])] {
+            pos.push(p.to_array());
+            nrm.push(n.to_array());
+            uv.push(t);
+        }
+        // Counter-clockwise seen from the front (n).
+        if r.cross(d).dot(n) > 0.0 { idx.extend_from_slice(&[i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3]) } else { idx.extend_from_slice(&[i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2]) }
+    }
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, nrm)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uv)
+        .with_inserted_indices(Indices::U32(idx));
+    let _ = mesh.generate_tangents();
+    mesh
+}
+
+/// Foundry's photoscanned and large-scale grime: a soft dirt wash up every wall foot and soot under
+/// every wall top (varying along the wall, so tiling breaks up), rust and water runs, damp wall
+/// feet, dust drifts in the floor corners, manholes and tyre tracks. Deterministic.
+fn scanned(commands: &mut Commands, arena: &Arena, s: &mut Sink, faces: &[Face], rng: &mut Seq) {
+    for f in faces.iter().filter(|f| f.len >= 1.0) {
+        let t = Vec3::Y.cross(f.n);
+        let along = f.at.x * t.x + f.at.z * t.z;
+        let u = [(along - f.len * 0.5) / WASH_TILE, (along + f.len * 0.5) / WASH_TILE];
+        // The wash image holds the foot band in its lower half and the soot band in its upper half.
+        let h = f.height;
+        let at = f.at + Vec3::Y * (h * 0.5);
+        s.put_u(commands, Kind::Wash, Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(f.len, 0.1, h)), u);
+        // Dust drift on the floor along the foot of the wall.
+        let dust_at = f.at + f.n * 0.35;
+        if clear_of_blocks(arena, Vec2::new(dust_at.x, dust_at.z), 0.05) || f.height >= 2.0 {
+            let rot = Quat::from_mat3(&Mat3::from_cols(t, Vec3::Y, -f.n));
+            s.put_u(commands, Kind::Dust, Transform::from_translation(f.at + f.n * 0.4).with_rotation(rot).with_scale(Vec3::new(f.len, 0.1, 0.8)), [u[0] * 3.0, u[1] * 3.0]);
+        }
+    }
+    let tall: Vec<&Face> = faces.iter().filter(|f| f.len >= 2.0 && f.height >= 2.4).collect();
+    for k in 0..if tall.is_empty() { 0 } else { 70 } {
+        let f = tall[(rng.next() * tall.len() as f32) as usize % tall.len()];
+        let w = rng.range(1.4, 3.2).min(f.len - 0.1);
+        let h = rng.range(1.6, 3.4).min(f.height - 0.2);
+        let t = Vec3::Y.cross(f.n);
+        let along = rng.range(-0.5, 0.5) * (f.len - w);
+        let top = f.height - rng.range(0.0, 0.25);
+        let at = f.at + t * along + Vec3::Y * (top - h * 0.5);
+        s.put(commands, if k % 2 == 0 { Kind::Leak0 } else { Kind::Leak1 }, Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(w, 0.1, h)));
+    }
+    for f in faces.iter().filter(|f| f.len >= 1.5) {
+        if rng.next() > 0.55 {
+            continue;
+        }
+        let w = rng.range(2.0, 4.0).min(f.len);
+        let h = rng.range(0.7, 1.3).min(f.height * 0.6);
+        let t = Vec3::Y.cross(f.n);
+        let at = f.at + t * (rng.range(-0.5, 0.5) * (f.len - w)) + Vec3::Y * (h * 0.5);
+        s.put(commands, Kind::Damp, Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(w, 0.1, h)));
+    }
+    let half = arena.half() - 1.5;
+    let ground = |commands: &mut Commands, s: &mut Sink, k: Kind, count: usize, size: (f32, f32), aspect: f32, rng: &mut Seq| {
+        let mut placed = 0;
+        for _ in 0..count * 10 {
+            if placed == count {
+                break;
+            }
+            let p = Vec2::new(rng.range(-half, half), rng.range(-half, half));
+            let w = rng.range(size.0, size.1);
+            let l = w * aspect;
+            if !clear_of_blocks(arena, p, 0.1 + w.max(l) * 0.5) {
+                continue;
+            }
+            let yaw = rng.range(0.0, std::f32::consts::TAU);
+            s.put(commands, k, Transform::from_xyz(p.x, 0.006, p.y).with_rotation(Quat::from_rotation_y(yaw)).with_scale(Vec3::new(w, 0.1, l)));
+            placed += 1;
+        }
+    };
+    ground(commands, s, Kind::Manhole, 5, (0.9, 0.9), 1.0, rng);
+    ground(commands, s, Kind::Tyres, 10, (1.0, 1.3), 3.5, rng);
+}
+
+/// Safety paint: hazard stripes round the foot of the hall's columns and the furnace, along the
+/// ladle car's flanks on the floor, and a warning plate beside every doorway with a frame.
+fn signage(commands: &mut Commands, arena: &Arena, s: &mut Sink, faces: &[Face]) {
+    for b in &arena.blocks {
+        let column = b.skin == Skin::Cabinet && b.height > 4.0 && b.half.x.max(b.half.y) <= 1.0;
+        let furnace = b.kind == BlockKind::Tall && b.skin == Skin::Concrete && b.half.x > 2.5 && (b.half.x - b.half.y).abs() < 0.01 && (b.height - 6.0).abs() < 0.01;
+        let ladle_car = b.skin == Skin::Container && b.kind == BlockKind::Tall && (b.height - 3.0).abs() < 0.01 && (b.half.x - 1.3).abs() < 0.01;
+        let c = Vec3::new(b.center.x, 0.0, b.center.y);
+        if column || furnace {
+            // A 1.2 m (columns) / 0.4 m (furnace) striped band on each face.
+            let band = if column { 1.2 } else { 0.4 };
+            for (n, hn, len) in [(Vec3::X, b.half.x, b.half.y * 2.0), (-Vec3::X, b.half.x, b.half.y * 2.0), (Vec3::Z, b.half.y, b.half.x * 2.0), (-Vec3::Z, b.half.y, b.half.x * 2.0)] {
+                let at = c + n * (hn - 0.0145) + Vec3::Y * (band * 0.5);
+                s.put_u(commands, Kind::Hazard, Transform::from_translation(at).with_rotation(wall_rot(n)).with_scale(Vec3::new(len, 0.1, band)), [0.0, len / 0.6]);
+            }
+        }
+        if ladle_car {
+            for side in [-1.0f32, 1.0] {
+                let len = b.half.y * 2.0 + 0.6;
+                let at = c + Vec3::X * side * (b.half.x + 0.35);
+                let rot = Quat::from_mat3(&Mat3::from_cols(Vec3::Z, Vec3::Y, -Vec3::X));
+                s.put_u(commands, Kind::Hazard, Transform::from_translation(at).with_rotation(rot).with_scale(Vec3::new(len, 0.1, 0.22)), [0.0, len / 0.6]);
+            }
+        }
+    }
+    // Warning plates at 1.7 m beside doorways (on the wall face the header sits in).
+    for h in &arena.decor.headers {
+        if h.bottom > 3.5 {
+            continue;
+        }
+        for f in faces {
+            let t = Vec3::Y.cross(f.n);
+            let end = f.at + t * (f.len * 0.5);
+            let mid = Vec3::new((h.min.x + h.max.x) * 0.5, 0.0, (h.min.y + h.max.y) * 0.5);
+            // The face whose positive end touches this opening, facing out of its gap's sides.
+            if end.distance(mid) > (h.max.x - h.min.x).max(h.max.y - h.min.y) * 0.5 + 0.8 || f.len < 1.5 || f.height < 2.2 {
+                continue;
+            }
+            let at = end - t * 0.6 + Vec3::Y * 1.7;
+            s.put(commands, Kind::Warning, Transform::from_translation(at).with_rotation(wall_rot(f.n)).with_scale(Vec3::new(0.4, 0.1, 0.36)));
+            break;
+        }
     }
 }
 

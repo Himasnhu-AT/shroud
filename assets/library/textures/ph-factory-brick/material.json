@@ -1,0 +1,23 @@
+{
+  "kind": "surface",
+  "normal_y": "gl",
+  "size_m": [
+    1.5,
+    1.5
+  ],
+  "height_m": 0.02,
+  "parallax": 0.01333,
+  "source": {
+    "megascans_id": "phfbr001",
+    "name": "Factory Brick",
+    "resolution": "2k",
+    "maps": {
+      "albedo": "phfbr001_2K_Albedo.jpg",
+      "ao": "phfbr001_2K_AO.jpg",
+      "height": "phfbr001_2K_Displacement.png",
+      "normal": "phfbr001_2K_NormalGL.jpg",
+      "rough": "phfbr001_2K_Roughness.jpg"
+    },
+    "normal_y_from": "file name"
+  }
+}

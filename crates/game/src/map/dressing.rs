@@ -82,6 +82,17 @@ impl Batch {
 
     /// One entity per material. `shadows`: whether the merged pieces cast shadows.
     pub fn spawn(self, commands: &mut Commands, g: &mut Gfx, p: &mut Palette, name: &str, shadows: bool) {
+        self.spawn_with(commands, g, p, name, shadows, false);
+    }
+
+    /// [`Batch::spawn`] for small pieces scattered over the whole map (pipes, debris): the merged
+    /// mesh's centre is far from most views, so it keeps full detail (`KeepDetail`) instead of
+    /// the render budget's flat far version.
+    pub fn spawn_scattered(self, commands: &mut Commands, g: &mut Gfx, p: &mut Palette, name: &str, shadows: bool) {
+        self.spawn_with(commands, g, p, name, shadows, true);
+    }
+
+    fn spawn_with(self, commands: &mut Commands, g: &mut Gfx, p: &mut Palette, name: &str, shadows: bool, keep: bool) {
         let Batch { mut kits, order } = self;
         for key in order {
             let Some(kit) = kits.remove(&key) else { continue };
@@ -91,6 +102,9 @@ impl Batch {
             let mut e = commands.spawn((Name::new(format!("{name} ({key})")), ArenaPiece, Mesh3d(g.meshes.add(mesh)), MeshMaterial3d(mat), Transform::default()));
             if !shadows {
                 e.insert(NotShadowCaster);
+            }
+            if keep {
+                e.insert(engine::render_budget::KeepDetail);
             }
         }
     }
@@ -286,6 +300,13 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
             NotShadowCaster,
         ));
     };
+    // Foundry: scanned fixtures (caged bulkheads, enamel high-bays) instead of boxes.
+    let scanned = arena.id == MapId::Foundry && g.quality != GraphicsQuality::Low;
+    let bulkhead = |commands: &mut Commands, g: &Gfx, at: Vec3, along: Vec3| {
+        // Back plate up against what it hangs from, glass facing down, long side along `along`.
+        let rot = Quat::from_mat3(&Mat3::from_cols(along.cross(Vec3::NEG_Y), along, Vec3::NEG_Y));
+        super::industry::spawn_model(commands, g, &super::industry::WALL_LAMP, Transform::from_translation(at).with_rotation(rot), false).is_some()
+    };
     for (rank, l) in arena.decor.lamps.iter().enumerate() {
         let top = l.height + 0.02;
         let at = |y: f32| Vec3::new(l.pos.x, y, l.pos.y);
@@ -313,6 +334,10 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
                 ));
             }
             // Caged bulkhead under a roof + a warm point light.
+            LampStyle::Bulkhead if scanned && bulkhead(commands, g, at(top + 0.12), Vec3::X) => {
+                glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.03)).with_scale(Vec3::new(0.3, 0.02, 0.16)));
+                point(commands, rank, at(top - 0.2), Color::srgb(1.0, 0.78, 0.5), 1_500_000.0, 12.0);
+            }
             LampStyle::Bulkhead => {
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(at(top + 0.06)).with_scale(Vec3::new(0.5, 0.12, 0.26)));
                 glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.025)).with_scale(Vec3::new(0.4, 0.05, 0.16)));
@@ -327,6 +352,10 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
                 point(commands, rank, at(top - drop - 0.3), Color::srgb(1.0, 0.8, 0.58), 600_000.0, 10.0);
             }
             // Industrial high-bay under a tall roof.
+            LampStyle::HighBay if scanned && super::industry::spawn_model(commands, g, &super::industry::HIGH_BAY, Transform::from_translation(at(top)).with_scale(Vec3::splat(0.75)), false).is_some() => {
+                glow(commands, rank, &bulb, Transform::from_translation(at(top - 0.97)).with_scale(Vec3::new(0.3, 0.02, 0.3)));
+                point(commands, rank, at(top - 1.15), Color::srgb(1.0, 0.88, 0.7), 3_000_000.0, 18.0);
+            }
             LampStyle::HighBay => {
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(at(top - 0.3)).with_scale(Vec3::new(0.02, 0.6, 0.02)));
                 fx.add_shape("lamp_cage", Cylinder::new(0.38, 0.22), Transform::from_translation(at(top - 0.7)));
@@ -340,8 +369,12 @@ fn lamps(commands: &mut Commands, arena: &Arena, g: &mut Gfx, p: &mut Palette) {
                 let arm = base + f * 0.3 + Vec3::Y * 0.1;
                 let arm_scale = if facing_x != 0 { Vec3::new(0.6, 0.05, 0.05) } else { Vec3::new(0.05, 0.05, 0.6) };
                 fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(arm).with_scale(arm_scale));
-                fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(base + f * 0.62).with_scale(Vec3::new(0.26, 0.2, 0.26)));
-                glow(commands, rank, &bulb, Transform::from_translation(base + f * 0.62 - Vec3::Y * 0.13).with_scale(Vec3::new(0.2, 0.06, 0.2)));
+                if scanned && bulkhead(commands, g, base + f * 0.62 + Vec3::Y * 0.075, f) {
+                    glow(commands, rank, &bulb, Transform::from_translation(base + f * 0.62 - Vec3::Y * 0.075).with_scale(Vec3::new(0.16, 0.015, 0.16)));
+                } else {
+                    fx.add_shape("lamp_cage", Cuboid::from_length(1.0), Transform::from_translation(base + f * 0.62).with_scale(Vec3::new(0.26, 0.2, 0.26)));
+                    glow(commands, rank, &bulb, Transform::from_translation(base + f * 0.62 - Vec3::Y * 0.13).with_scale(Vec3::new(0.2, 0.06, 0.2)));
+                }
                 point(commands, rank, base + f * 0.62 - Vec3::Y * 0.3, Color::srgb(1.0, 0.72, 0.42), 900_000.0, 14.0);
             }
         }
@@ -483,7 +516,7 @@ fn building_trims(commands: &mut Commands, arena: &Arena, bi: usize, b: &Buildin
     let k = |open: bool| if open { 0.0 } else { t2 };
     let imin = V2::new(b.min.x + k(ow), b.min.y + k(on));
     let imax = V2::new(b.max.x - k(oe), b.max.y - k(os));
-    let lining = Palette::lining_key(b.use_);
+    let lining = p.lining_of(b.use_);
     let facade = p.facade_key(bi, b.facade);
     p.flat(g, "skirting", || StandardMaterial { base_color: Color::srgb(0.16, 0.16, 0.17), perceptual_roughness: 0.6, ..default() });
     p.flat(g, "plinth", || StandardMaterial { base_color: Color::srgb(0.24, 0.23, 0.22), perceptual_roughness: 0.9, ..default() });

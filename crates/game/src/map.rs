@@ -8,6 +8,7 @@
 mod dressing;
 pub mod glass;
 mod grime;
+mod industry;
 pub mod lamps;
 mod look;
 mod props;
@@ -50,7 +51,7 @@ impl Plugin for MapPlugin {
                     .before(crate::match_flow::begin_round)
                     .before(crate::enemy::spawn_squad),
             )
-            .add_systems(Update, (look::sync_look.run_if(look::look_inputs_changed), look::apply_light_budget, grime::spawn_grime).run_if(has_visuals));
+            .add_systems(Update, (look::sync_look.run_if(look::look_inputs_changed), look::apply_light_budget, grime::spawn_grime, industry::tag_model_meshes).run_if(has_visuals));
         #[cfg(feature = "dev")]
         {
             use engine::devtools::{AddControlCommand, params};
@@ -266,7 +267,7 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
         if let (Some(g), Some(p)) = (gfx.as_deref_mut(), pal.as_mut()) {
             // A building's roof slab is its ceiling inside.
             let (mat, tile) = match arena.decor.buildings.iter().find(|b| b.roof == i) {
-                Some(b) => p.mat(g, look::Palette::ceiling_key(b.use_)),
+                Some(b) => { let k = p.ceiling_of(b.use_); p.mat(g, k) }
                 None => p.roof(g),
             };
             e.insert((Mesh3d(g.meshes.add(crate::gfx::world_uv_cuboid(size, center, tile))), MeshMaterial3d(mat)));
@@ -276,6 +277,8 @@ fn spawn_map(commands: &mut Commands, arena: &Arena, mut gfx: Option<&mut Gfx>) 
     if let (Some(g), Some(p)) = (gfx, pal.as_mut()) {
         small.spawn(commands, g, p, "Low cover", false);
         dressing::spawn(commands, arena, g, p, merged);
+        industry::spawn(commands, arena, g, p);
+        industry::clutter(commands, arena, g);
     }
 }
 
