@@ -173,13 +173,15 @@ Nov 2026 switch to Bodycam once (`ShroudSettings::rev`); picking Classic afterwa
   what clips. What runs depends on the quality tier: Low fisheye + curve + vignette, Medium +
   CA, sharpening, noise, High/Ultra + smear, blocks, rolling shutter; Ultra renders 1.25×
   overscan. No pipeline rebuild when switching styles.
-- **Free aim**: the mouse moves the gun inside an 18° × 12° box; the camera follows only past
-  its edge (stiffness 14, 35 aimed); ADS collapses the box so the sight lines up. Dutch roll
-  from turning speed and strafing (±7°), a small vest shock per shot.
+- **Free aim**: the mouse moves the gun inside a 6° × 4° box; past its edge the camera turns
+  with the mouse in the same frame (no smoothing: turning is immediate); ADS collapses the box so
+  the sight lines up. Dutch roll from turning speed and strafing (±7°), a small vest shock per
+  shot. The chest mount is pulled back towards the eyes by a 0.12 m sphere cast so the camera
+  never ends up in or past a wall (near plane 0.03 m).
 - **Handling**: 6-DOF spring rig on the gun (recoil impulses: kick back, climb, twist); near a
   wall (0.65 m of barrel past the body) the gun folds up to high ready. **Shots leave the
   muzzle along the barrel**, not the screen centre (no crosshair).
-- **HUD**: [REC] stamp with local time and a device id; no crosshair, health or ammo numbers.
+- **HUD**: [REC] stamp with local time and a device id (`UNIT 4 // BWC-X84-9921`); no crosshair, health or ammo numbers.
   The hit marker appears where the hit landed, mapped through the fisheye
   (`engine::look::world_to_screen`), not at the screen centre.
   Money, timer, score, kill feed, freeze time and the buy menu stay (the round loop needs them).
@@ -202,6 +204,19 @@ Nov 2026 switch to Bodycam once (`ShroudSettings::rev`); picking Classic afterwa
   `{turn, strafe, fire, ms}` drives the player for screenshots); the engine's `look.get` /
   `look.set` show and patch the live bodycam (`lens.bodycam`). Visual checks:
   `scripts/bodycam.json`, `scripts/look-foundry.json`, `scripts/look-office.json`.
+
+## Smoothness: quality governor, warm-up, power-on
+- The engine's quality governor (`quality.rs`) never changes anything during a live round: it
+  may step once per round, in freeze time after 3 s (pipelines warm), shadow resolution and the
+  lamp-shadow budget before any render-scale step (never below 75 %). During live play its
+  ladder is cut at the level it chose. No toast in a round (logged; perf overlay). A render
+  scale change mid-play shows a black frame and a mis-sized frame (`.tmp` evidence in the
+  render branch report), which is what the owner saw as glitches.
+- Round start: pipelines are warmed (`gfx.rs`), plus one impact per surface and a tracer inside
+  the floor slab (`weapon/warm.rs`; the first shot and first impact stalled 0.3 s and 1 s),
+  under a black "camera power-on" cover that fades in once the warm-up frames are done.
+- Dev: `--governor` turns the governor on in play.py runs; `scripts/governor-rounds.json`,
+  `scripts/spawn-hitches.json` measure it.
 
 ## Lighting: per-map looks and baked light
 Each map has one engine `Look` (`map/look.rs`, `look_of`): sun, sky, fog, volumetric shafts
