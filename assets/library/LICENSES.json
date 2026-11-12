@@ -118,6 +118,13 @@
     "source": "other",
     "url": "https://polyhaven.com/a/asphalt_02"
   },
+  "textures/ph-brown-planks-09": {
+    "author": "Rob Tuytel",
+    "fetched": "2026-11-12",
+    "license": "CC0-1.0",
+    "source": "other",
+    "url": "https://polyhaven.com/a/brown_planks_09"
+  },
   "textures/ph-concrete-floor-damaged": {
     "author": "Rob Tuytel",
     "fetched": "2026-11-12",
@@ -131,13 +138,6 @@
     "license": "CC0-1.0",
     "source": "other",
     "url": "https://polyhaven.com/a/concrete_wall_006"
-  },
-  "textures/ph-concrete-wall-008": {
-    "author": "Dario Barresi, Charlotte Baglioni",
-    "fetched": "2026-11-12",
-    "license": "CC0-1.0",
-    "source": "other",
-    "url": "https://polyhaven.com/a/concrete_wall_008"
   },
   "textures/ph-container-side": {
     "author": "Dimitrios Savva",

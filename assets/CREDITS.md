@@ -59,7 +59,10 @@ importer (`~/codes/game/engine/scripts/assets.py import`; the Megascans path for
 decals, so a real Megascans set can replace one by importing it and changing the path in
 `crates/game/src/map/look.rs` / `grime.rs` / `industry.rs`). The ledger is
 `library/LICENSES.json`. Source maps are not committed (`.gitignore`): re-download from the URL
-to re-cook.
+to re-cook. Metal, rust, gravel, asphalt, planks and all decals are cooked at 1K
+(`--max 1024`), the concrete floors, walls and brick at 2K.
+`props/ph-concrete-road-barrier-02/barrier.lod1.glb` is a second LOD made by the engine's
+`asset-pipe` (`--lods 0.12`).
 
 | Item | What | Author | URL | License |
 |---|---|---|---|---|
@@ -82,7 +85,6 @@ to re-cook.
 | `library/textures/ph-asphalt-02/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/asphalt_02 | CC0 1.0 |
 | `library/textures/ph-concrete-floor-damaged/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/concrete_floor_damaged_01 | CC0 1.0 |
 | `library/textures/ph-concrete-wall-006/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dario Barresi, Charlotte Baglioni | https://polyhaven.com/a/concrete_wall_006 | CC0 1.0 |
-| `library/textures/ph-concrete-wall-008/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dario Barresi, Charlotte Baglioni | https://polyhaven.com/a/concrete_wall_008 | CC0 1.0 |
 | `library/textures/ph-container-side/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Dimitrios Savva | https://polyhaven.com/a/container_side | CC0 1.0 |
 | `library/textures/ph-corrugated-iron-02/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Jenelle van Heerden, Sergej Majboroda | https://polyhaven.com/a/corrugated_iron_02 | CC0 1.0 |
 | `library/textures/ph-damaged-concrete-floor/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Rob Tuytel | https://polyhaven.com/a/damaged_concrete_floor | CC0 1.0 |
@@ -94,6 +96,7 @@ to re-cook.
 | `library/textures/ph-rusty-corrugated-iron/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Charlotte Baglioni | https://polyhaven.com/a/rusty_corrugated_iron | CC0 1.0 |
 | `library/textures/ph-rusty-metal-sheet/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Amal Kumar | https://polyhaven.com/a/rusty_metal_sheet | CC0 1.0 |
 | `library/textures/ph-rusty-painted-metal/` | 2K JPG (Diffuse, nor_gl, Rough, AO, Displacement PNG) laid out as a Megascans surface; cooked KTX2 (color, normal, orm, depth for parallax) + material.json committed, sources not | Amal Kumar | https://polyhaven.com/a/rusty_painted_metal | CC0 1.0 |
+| `library/textures/ph-brown-planks-09/` | 2K JPG laid out as a Megascans surface, cooked at 1K (packing crates) | Rob Tuytel | https://polyhaven.com/a/brown_planks_09 | CC0 1.0 |
 
 ## HDRI skies (`sky/*.ktx2`), CC0
 Poly Haven 2K Radiance `.hdr` files, converted by `scripts/hdri_to_cube.py` into KTX2 cubemaps
