@@ -14,9 +14,9 @@ export type Placeholder = { label: string; value: string; placeholder: boolean; 
 
 // The game's name (formerly the codename Shroud). Change it here. Other spots that still spell it out
 // (none of them visible copy) are listed in README.md under "Renaming".
-export const NAME = 'Pattern of Life';
+export const NAME = 'Tells';
 // The itch.io page: live, free download for Windows and macOS.
-export const ITCH_URL = 'https://himanshuat.itch.io/patternoflife';
+export const ITCH_URL = 'https://himanshuat.itch.io/tells';
 
 export const download = {
   href: ITCH_URL,
@@ -33,7 +33,7 @@ export const site = {
   urlPlaceholder: true,
   title: `${NAME}: they get smarter, never faster`,
   description:
-    `${NAME} is a tactical shooter where the enemy squad builds your pattern of life, and plays against it. They get smarter, never faster.`,
+    `${NAME} is a tactical shooter where the enemy squad reads your tells, and plays against them. They get smarter, never faster.`,
   tagline: 'They get smarter, never faster.',
   kind: 'Tactical squad shooter',
 } as const;
@@ -68,7 +68,7 @@ export const release: Placeholder[] = [
 ];
 
 export const home = {
-  heroLine: 'A tactical shooter where the enemy squad builds your pattern of life, and plays against it.',
+  heroLine: 'A tactical shooter where the enemy squad reads your tells, and plays against them.',
   heroHint: 'Live on Foundry: point at or tap the map. That is you.',
   heroCta: { href: '/squad/', label: 'See how they hunt' },
   statement:

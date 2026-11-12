@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Pattern of Life</string>
-  <key>CFBundleDisplayName</key><string>Pattern of Life</string>
+  <key>CFBundleName</key><string>Tells</string>
+  <key>CFBundleDisplayName</key><string>Tells</string>
   <key>CFBundleIdentifier</key><string>__BUNDLE_ID__</string>
   <key>CFBundleExecutable</key><string>shroud</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -14,6 +14,6 @@
   <key>LSApplicationCategoryType</key><string>public.app-category.action-games</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
-  <key>NSHumanReadableCopyright</key><string>Pattern of Life review build. Assets CC0 (Kenney, Quaternius, ambientCG).</string>
+  <key>NSHumanReadableCopyright</key><string>Tells review build. Assets CC0 (Kenney, Quaternius, ambientCG).</string>
 </dict>
 </plist>

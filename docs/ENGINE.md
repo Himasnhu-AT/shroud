@@ -56,7 +56,7 @@ fn main() -> kiln::Result<()> {
 
 ## Recommended plan
 ### Phase 0: ship on stock Bevy (now)
-Pattern of Life as designed. The AI is in the engine-free `brain` crate, so nothing here blocks it.
+Tells as designed. The AI is in the engine-free `brain` crate, so nothing here blocks it.
 Measure frame time, input latency, and draw calls with `ashlar-trace`-style telemetry from day one.
 
 ### Phase 1: Kiln façade (2–4 weeks, overlaps Phase 0)

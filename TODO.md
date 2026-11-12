@@ -1,4 +1,4 @@
-# Pattern of Life: CS2-style tactical loop + bodycam roadmap
+# Tells: CS2-style tactical loop + bodycam roadmap
 
 Started 2026-11-03. Two sources:
 - **Ask A (chat):** CS2-like maps, operator skins, guns, buy menu, simple menu

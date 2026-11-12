@@ -1,4 +1,4 @@
-PATTERN OF LIFE
+TELLS
 
 A first-person shooter where the enemy squad learns from how you play.
 

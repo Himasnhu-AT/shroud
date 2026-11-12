@@ -38,7 +38,7 @@ pub use state::{GameState, Headless};
 fn info() -> GameInfo {
     // `id` "shroud" names the save folder and the SHROUD_* env vars: keep it, or players lose
     // their saves. `title` is only the player-facing name (window, menu).
-    GameInfo::new("shroud", "Pattern of Life")
+    GameInfo::new("shroud", "Tells")
         // Second line: the fairness promise (aim/reaction are fixed per difficulty, see brain::limits).
         .tagline("They learn from you.\nThey never aim faster. They play smarter.")
         .version(env!("CARGO_PKG_VERSION"))

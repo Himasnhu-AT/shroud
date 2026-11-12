@@ -1,5 +1,5 @@
-Title: Pattern of Life
-Tagline (short description): A tactical shooter where the enemy squad learns how you play.
+Title: Tells
+Tagline (short description): A tactical shooter where the enemy squad reads your tells. They get smarter, never faster.
 Kind: Downloadable
 Pricing: No payments
 Classification: Games

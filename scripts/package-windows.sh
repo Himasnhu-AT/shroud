@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build Pattern of Life for Windows x64 on this Mac (cross-compiled with cargo-xwin):
+# Build Tells for Windows x64 on this Mac (cross-compiled with cargo-xwin):
 #
-#   dist/windows/PatternOfLife/       PatternOfLife.exe + assets/ + README.txt + CREDITS.md
-#   dist/pattern-of-life-<version>-windows-x64.zip
+#   dist/windows/Tells/       Tells.exe + assets/ + README.txt + CREDITS.md
+#   dist/tells-<version>-windows-x64.zip
 #
 #   scripts/package-windows.sh                # build and zip
 #   scripts/package-windows.sh --skip-build   # re-zip what the target dir holds
@@ -38,8 +38,8 @@ TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import s
 BIN="$TARGET_DIR/$TARGET/release/shroud.exe"
 RES_DIR="$TARGET_DIR/winres"
 DIST="$ROOT/dist"
-OUT="$DIST/windows/PatternOfLife"
-ZIP="$DIST/pattern-of-life-$VERSION-windows-x64.zip"
+OUT="$DIST/windows/Tells"
+ZIP="$DIST/tells-$VERSION-windows-x64.zip"
 
 if [ "$SKIP_BUILD" = 0 ]; then
   command -v cargo-xwin >/dev/null || die "cargo-xwin missing (cargo install cargo-xwin)"
@@ -65,12 +65,12 @@ BEGIN
   BEGIN
     BLOCK "040904b0"
     BEGIN
-      VALUE "CompanyName", "Pattern of Life"
-      VALUE "FileDescription", "Pattern of Life"
+      VALUE "CompanyName", "Tells"
+      VALUE "FileDescription", "Tells"
       VALUE "FileVersion", "$VERSION"
       VALUE "InternalName", "shroud"
-      VALUE "OriginalFilename", "PatternOfLife.exe"
-      VALUE "ProductName", "Pattern of Life"
+      VALUE "OriginalFilename", "Tells.exe"
+      VALUE "ProductName", "Tells"
       VALUE "ProductVersion", "$VERSION ($GIT_SHA)"
     END
   END
@@ -116,18 +116,18 @@ EOF
 
 step "Stage $OUT"
 rm -rf "$OUT"; mkdir -p "$OUT"
-cp "$BIN" "$OUT/PatternOfLife.exe"
+cp "$BIN" "$OUT/Tells.exe"
 # The engine finds the assets folder next to the exe.
 # Shipped assets: no MetaHuman, no source JPGs of cooked sets, KTX2s over 2048 px cut to 2K
 # (FULL_TEXTURES=1 keeps 4K). See scripts/stage-assets.sh.
 scripts/stage-assets.sh "$OUT/assets"
 cp assets/CREDITS.md "$OUT/CREDITS.md"
 sed -e 's|__DATA_DIR__|%APPDATA%\\shroud\\data|' packaging/README.txt | perl -pe 's/\r?\n/\r\n/' >"$OUT/README.txt"
-if strings "$OUT/PatternOfLife.exe" | grep -q "$GAME_DIR"; then
+if strings "$OUT/Tells.exe" | grep -q "$GAME_DIR"; then
   echo "note: the exe still contains the build folder path (GameInfo::assets_fallback); harmless" >&2
 fi
 
 step "Zip"
 rm -f "$ZIP"
-( cd "$DIST/windows" && zip -qr -X "$ZIP" PatternOfLife )
+( cd "$DIST/windows" && zip -qr -X "$ZIP" Tells )
 step "Done: $ZIP ($(du -h "$ZIP" | cut -f1))"

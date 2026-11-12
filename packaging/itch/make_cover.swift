@@ -25,7 +25,7 @@ func draw(_ s: String, _ font: NSFont, _ color: NSColor, _ y: CGFloat, kern: CGF
 }
 let barlow = NSFont(name: "Barlow-Medium", size: 82) ?? NSFont.systemFont(ofSize: 82, weight: .heavy)
 // Title: the largest size up to 86pt that fits the cover width; the eyebrow sits just above it.
-let title = "PATTERN OF LIFE", titleKern: CGFloat = 2
+let title = "TELLS", titleKern: CGFloat = 2
 var titleFont = NSFont.systemFont(ofSize: 86, weight: .black)
 while titleFont.pointSize > 30 && NSAttributedString(string: title, attributes: [.font: titleFont, .kern: titleKern]).size().width > CGFloat(W) - 68 {
     titleFont = NSFont.systemFont(ofSize: titleFont.pointSize - 1, weight: .black)

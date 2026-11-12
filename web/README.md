@@ -1,6 +1,6 @@
-# Pattern of Life website
+# Tells website
 
-Launch site for Pattern of Life (codename Shroud). Astro (static), GSAP + Lenis, a 2D canvas for the live belief grid.
+Launch site for Tells (codename Shroud). Astro (static), GSAP + Lenis, a 2D canvas for the live belief grid.
 Design record: `DESIGN.md`. All copy: `src/data/site.ts`.
 
 ```sh

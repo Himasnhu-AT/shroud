@@ -1,6 +1,6 @@
-PATTERN OF LIFE - review build
+TELLS - review build
 
-Install: drag Pattern of Life into Applications, then open it.
+Install: drag Tells into Applications, then open it.
 
 Controls
   WASD move, Shift sprint, Space jump, Ctrl or C crouch, mouse look

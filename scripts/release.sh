@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a release of Pattern of Life with crash, performance and match reports on, for macOS and
+# Build a release of Tells with crash, performance and match reports on, for macOS and
 # Windows, and (with --upload) push it to itch.io.
 #
 #   scripts/release.sh                 # check the server and key, build both platforms

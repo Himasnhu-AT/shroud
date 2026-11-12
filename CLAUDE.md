@@ -1,4 +1,4 @@
-# Pattern of Life (codename Shroud)
+# Tells (codename Shroud)
 
 FPS in Rust (Bevy 0.20.1 + avian3d 0.8) where enemies evolve from your past matches.
 Plan: ~/.claude/plans/make-game-in-rust-peppy-snail.md

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a universal, Developer ID-signed, notarized Pattern of Life dmg for sharing.
+# Build a universal, Developer ID-signed, notarized Tells dmg for sharing.
 #
 #   scripts/package-macos.sh            # build, sign, notarize, staple
 #   NOTARIZE=0 scripts/package-macos.sh # skip notarization (local test)
@@ -8,8 +8,8 @@
 #                                            # which bakes in the server and write key)
 #
 # Env: SIGN_ID (Developer ID Application identity), NOTARY_PROFILE (notarytool keychain profile),
-#      BUNDLE_ID, VERSION. Output: dist/PatternOfLife-<version>.dmg, and
-#      dist/pattern-of-life-<version>-macos-universal.zip (the stapled app, for itch.io / butler).
+#      BUNDLE_ID, VERSION. Output: dist/Tells-<version>.dmg, and
+#      dist/tells-<version>-macos-universal.zip (the stapled app, for itch.io / butler).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
@@ -21,8 +21,8 @@ VERSION="${VERSION:-$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)}"
 BUILD="$(git rev-list --count HEAD)"
 NOTARIZE="${NOTARIZE:-1}"
 TARGET_DIR="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')"
-DIST="$ROOT/dist"; APP="$DIST/Pattern of Life.app"; DMG="$DIST/PatternOfLife-$VERSION.dmg"
-ZIP="$DIST/pattern-of-life-$VERSION-macos-universal.zip"
+DIST="$ROOT/dist"; APP="$DIST/Tells.app"; DMG="$DIST/Tells-$VERSION.dmg"
+ZIP="$DIST/tells-$VERSION-macos-universal.zip"
 export MACOSX_DEPLOYMENT_TARGET=12.0
 
 step() { printf '\n==> %s\n' "$*"; }
@@ -45,7 +45,7 @@ done
 
 for t in aarch64-apple-darwin x86_64-apple-darwin; do check_baked "$TARGET_DIR/$t/release/shroud"; done
 
-step "Assemble Pattern of Life.app"
+step "Assemble Tells.app"
 rm -rf "$APP" "$DMG"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create -output "$APP/Contents/MacOS/shroud" \
   "$TARGET_DIR/aarch64-apple-darwin/release/shroud" "$TARGET_DIR/x86_64-apple-darwin/release/shroud"
@@ -69,7 +69,7 @@ codesign --verify --strict --deep --verbose=2 "$APP"
 step "Make DMG"
 STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
 sed 's|__DATA_DIR__|~/Library/Application Support/shroud|' packaging/README.txt >"$STAGE/Read me first.txt"
-hdiutil create -volname "Pattern of Life" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Tells" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
 
@@ -86,9 +86,9 @@ fi
 step "Zip the app for itch.io"
 rm -f "$ZIP"
 ZSTAGE="$(mktemp -d)"
-ditto --norsrc --noextattr --noqtn "$APP" "$ZSTAGE/Pattern of Life.app"
+ditto --norsrc --noextattr --noqtn "$APP" "$ZSTAGE/Tells.app"
 find "$ZSTAGE" -name $'Icon\r' -delete; xattr -cr "$ZSTAGE"
-codesign --verify --strict --deep "$ZSTAGE/Pattern of Life.app"
-( cd "$ZSTAGE" && ditto -c -k --norsrc --noextattr --noqtn --keepParent "Pattern of Life.app" "$ZIP" )
+codesign --verify --strict --deep "$ZSTAGE/Tells.app"
+( cd "$ZSTAGE" && ditto -c -k --norsrc --noextattr --noqtn --keepParent "Tells.app" "$ZIP" )
 rm -rf "$ZSTAGE"
 step "Done: $DMG ($(du -h "$DMG" | cut -f1)), $ZIP ($(du -h "$ZIP" | cut -f1))"
