@@ -23,6 +23,7 @@ mod map;
 mod match_flow;
 mod menu;
 mod player;
+mod quality;
 mod save;
 mod settings;
 mod state;
@@ -64,6 +65,7 @@ fn main() {
             menu::MenuPlugin,
             ui::UiPlugin,
             bodycam::BodycamPlugin,
+            quality::QualityPlugin,
         ))
         .add_plugins((enemy::EnemyPlugin, match_flow::MatchFlowPlugin, bomb::BombPlugin, career::CareerPlugin, telemetry::TelemetryPlugin, audio::AudioPlugin, dev::DevPlugin))
         .run();
