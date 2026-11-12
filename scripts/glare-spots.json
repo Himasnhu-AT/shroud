@@ -1,0 +1,92 @@
+[
+ {
+  "cmd": "enemy.freeze",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.god",
+  "params": {
+   "on": true
+  }
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -22.07,
+   "z": -6.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -22.07,
+    1.2,
+    -12.4
+   ]
+  }
+ },
+ {
+  "sleep": 3.0
+ },
+ {
+  "shot": "lowbay"
+ },
+ {
+  "cmd": "light.viewmodel"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -26.2,
+   "z": -26.4
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -26.2,
+    1.2,
+    -32.4
+   ]
+  }
+ },
+ {
+  "sleep": 3.0
+ },
+ {
+  "shot": "tallbay"
+ },
+ {
+  "cmd": "light.viewmodel"
+ },
+ {
+  "cmd": "player.teleport",
+  "params": {
+   "x": -8.08,
+   "z": 8.6
+  }
+ },
+ {
+  "cmd": "player.look",
+  "params": {
+   "at": [
+    -8.08,
+    1.2,
+    2.6
+   ]
+  }
+ },
+ {
+  "sleep": 3.0
+ },
+ {
+  "shot": "bulkhead"
+ },
+ {
+  "cmd": "light.viewmodel"
+ }
+]

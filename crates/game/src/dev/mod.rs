@@ -11,6 +11,8 @@ mod cinema;
 #[cfg(feature = "dev")]
 mod commands;
 #[cfg(feature = "dev")]
+mod lighting;
+#[cfg(feature = "dev")]
 pub use commands::ControlDrive;
 
 use std::marker::PhantomData;
@@ -145,6 +147,7 @@ fn build_dev(app: &mut App) {
     commands::register(app);
     ai_commands::register(app);
     cinema::register(app);
+    lighting::register(app);
     // Pre-engine command names used by scripts and tests.
     app.alias_control_command("game.quit", "engine.quit")
         .alias_control_command("game.pause", "engine.pause")

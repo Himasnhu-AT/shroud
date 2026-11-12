@@ -1,0 +1,10 @@
+[
+ {"cmd": "render.governor", "params": {"enabled": false}},
+ {"cmd": "enemy.freeze", "params": {"on": true}},
+ {"cmd": "loading.status"},
+ {"shot": "first_view"},
+ {"sleep": 6},
+ {"cmd": "loading.status"},
+ {"cmd": "perf.stats"},
+ {"shot": "after_6s"}
+]
