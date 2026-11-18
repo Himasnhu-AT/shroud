@@ -12,7 +12,7 @@ path = "src/main.rs"
 brain = { path = "../brain" }
 # The game shell: window, settings, menus, pause, UI kit, input, audio, FPS controller, render
 # budget; devtools/trace only through the `dev` feature below.
-engine = { path = "/Users/himanshu/codes/game/engine", default-features = false, features = ["physics", "fps", "vfx", "look", "bake", "anim", "ktx2"] }
+engine = { git = "https://github.com/himasnhu-AT/hull-dep", rev = "caf33e1887e106de3409c7796d0e244bfa30858e", default-features = false, features = ["physics", "fps", "vfx", "look", "bake", "anim", "ktx2"] }
 bevy = { version = "=0.20.1", features = ["jpeg"] }
 avian3d = "=0.8.0"
 rand.workspace = true

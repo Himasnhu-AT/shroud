@@ -1,5 +1,0 @@
-# Shared with the engine and every game (the engine owns it): Bevy is compiled once.
-# Prune it with ~/codes/game/engine/scripts/sweep-target.sh (cargo-sweep).
-# Build jobs / test threads come from memgate (it sets them per job).
-[build]
-target-dir = "/Users/himanshu/codes/game/engine/target"

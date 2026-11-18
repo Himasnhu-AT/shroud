@@ -38,8 +38,13 @@ pick; evolution only improves how the squad plays.
 | [CONTROL_AND_TELEMETRY](docs/CONTROL_AND_TELEMETRY.md) | Test control port (dev builds only) + crash/perf reporting (ashlar crates on stock Bevy) |
 | [ENGINE](docs/ENGINE.md) | Engine research record; decision: stock Bevy ([ADR 0001](docs/adr/0001-engine-strategy.md)) |
 
+**Play it:** [himanshuat.itch.io/tells](https://himanshuat.itch.io/tells)
+
 ## Quick start
+Needs a Rust toolchain. The engine (Hull) is a git dependency
+([himasnhu-AT/hull-dep](https://github.com/himasnhu-AT/hull-dep)), so Cargo fetches it on the first build.
 ```sh
+git clone https://github.com/himasnhu-AT/shroud && cd shroud
 cargo test -p brain     # AI tests
 cargo run -p game       # play
 ```
